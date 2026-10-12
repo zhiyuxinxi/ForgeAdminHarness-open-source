@@ -1,0 +1,583 @@
+name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME is required}
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 20m
+    max-file: "5"
+
+services:
+  forge-flow:
+    image: ${FORGE_FLOW_IMAGE:-${COMPOSE_PROJECT_NAME}/forge-flow:${FORGE_ADMIN_REF}}
+    build:
+      context: ../workspace
+      dockerfile: docker-forge-admin/Dockerfile.flow
+      args:
+        BUILDKIT_CACHE_MOUNT_NS: ${COMPOSE_PROJECT_NAME}
+    restart: unless-stopped
+    env_file:
+      - ${SHARED_SERVICES_ENV_FILE:?SHARED_SERVICES_ENV_FILE is required}
+    environment:
+      MYSQL_DB: ${MYSQL_DATABASE:-forge_admin}
+      REDIS_DATABASE: ${REDIS_DATABASE:?REDIS_DATABASE is required}
+      JAVA_OPTS: ${FLOW_JAVA_OPTS:--Xms256m -Xmx768m}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ../workspace/docker-forge-admin/application-datasource.yml:/app/application-prod.yml:ro
+      - ../workspace/forge-server/db/migration:/app/db/migration:ro
+    expose: ["8081"]
+    networks: [application]
+    pids_limit: 512
+    logging: *default-logging
+
+  forge-admin:
+    image: ${FORGE_ADMIN_IMAGE:-${COMPOSE_PROJECT_NAME}/forge-admin:${FORGE_ADMIN_REF}}
+    build:
+      context: ../workspace
+      dockerfile: docker-forge-admin/Dockerfile.admin
+      args:
+        BUILDKIT_CACHE_MOUNT_NS: ${COMPOSE_PROJECT_NAME}
+    restart: unless-stopped
+    depends_on:
+      forge-flow:
+        condition: service_started
+    env_file:
+      - ${SHARED_SERVICES_ENV_FILE:?SHARED_SERVICES_ENV_FILE is required}
+    environment:
+      MYSQL_DB: ${MYSQL_DATABASE:-forge_admin}
+      REDIS_DATABASE: ${REDIS_DATABASE:?REDIS_DATABASE is required}
+      FLOW_CLIENT_URL: http://forge-flow:8081
+      FORGE_CRYPTO_BOOTSTRAP_ENABLED: "true"
+      FORGE_CRYPTO_BOOTSTRAP_FILE: /var/lib/forge/secrets/crypto.properties
+      FORGE_AUTH_LEGACY_CLIENT_SECRET_READ_ENABLED: "true"
+      JAVA_OPTS: ${ADMIN_JAVA_OPTS:--Xms256m -Xmx1024m}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - crypto-secrets:/var/lib/forge/secrets
+      - ../workspace/docker-forge-admin/application-datasource.yml:/app/application-prod.yml:ro
+      - ../workspace/forge-server/db/migration:/app/db/migration:ro
+    expose: ["8580"]
+    networks: [application]
+    pids_limit: 512
+    logging: *default-logging
+
+  forge-app:
+    image: ${FORGE_APP_IMAGE:-${COMPOSE_PROJECT_NAME}/forge-app:${FORGE_ADMIN_REF}}
+    build:
+      context: ../workspace
+      dockerfile: docker-forge-admin/Dockerfile.app
+      args:
+        BUILDKIT_CACHE_MOUNT_NS: ${COMPOSE_PROJECT_NAME}
+    restart: unless-stopped
+    depends_on:
+      forge-flow:
+        condition: service_started
+    env_file:
+      - ${SHARED_SERVICES_ENV_FILE:?SHARED_SERVICES_ENV_FILE is required}
+    environment:
+      MYSQL_DB: ${MYSQL_DATABASE:-forge_admin}
+      REDIS_DATABASE: ${REDIS_DATABASE:?REDIS_DATABASE is required}
+      FLOW_CLIENT_URL: http://forge-flow:8081
+      FORGE_CRYPTO_BOOTSTRAP_ENABLED: "true"
+      FORGE_CRYPTO_BOOTSTRAP_FILE: /var/lib/forge/secrets/crypto.properties
+      FORGE_AUTH_LEGACY_CLIENT_SECRET_READ_ENABLED: "true"
+      JAVA_OPTS: ${APP_JAVA_OPTS:--Xms256m -Xmx768m}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - crypto-secrets:/var/lib/forge/secrets
+      - ../workspace/docker-forge-admin/application-datasource.yml:/app/application-prod.yml:ro
+      - ../workspace/forge-server/db/migration:/app/db/migration:ro
+    expose: ["8583"]
+    networks: [application]
+    pids_limit: 512
+    logging: *default-logging
+
+  forge-ui:
+    image: ${FORGE_UI_IMAGE:-${COMPOSE_PROJECT_NAME}/forge-ui:${FORGE_ADMIN_REF}}
+    build:
+      context: ../workspace
+      dockerfile: docker-forge-admin/Dockerfile.ui
+      args:
+        BUILDKIT_CACHE_MOUNT_NS: ${COMPOSE_PROJECT_NAME}
+    restart: unless-stopped
+    depends_on:
+      - forge-admin
+      - forge-app
+      - forge-flow
+    ports:
+      - "${FORGE_BIND_ADDRESS:-127.0.0.1}:${FORGE_UI_PORT:?FORGE_UI_PORT is required}:80"
+    networks: [application]
+    pids_limit: 256
+    logging: *default-logging
+
+  harness:
+    profiles: ["legacy-shared-harness"]
+    image: ${HARNESS_IMAGE:?HARNESS_IMAGE is required}
+    restart: unless-stopped
+    working_dir: /workspace
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    environment:
+      HOME: /home/node
+      DSH_HOME: /home/node/.dsh
+      DSH_TELEMETRY_DISABLED: "1"
+      # DSH enforces loopback. A container-local HTTP/WebSocket compatibility
+      # proxy exposes it to Docker on the exact host VPN address below.
+      HARNESS_BIND_ADDRESS: 127.0.0.1
+      HARNESS_PROXY_ADDRESS: 0.0.0.0
+      HARNESS_INTERNAL_PORT: 3080
+      HARNESS_TRUSTED_HOST: ${FORGE_BIND_ADDRESS:-127.0.0.1}:${HARNESS_PORT:?HARNESS_PORT is required}
+      # loopback-only is the upstream-safe default. This VPN-only platform
+      # explicitly selects trusted-host in project.env after risk review.
+      HARNESS_PRIVILEGED_API_MODE: ${HARNESS_PRIVILEGED_API_MODE:-loopback-only}
+      # Load the newest message boundary first. Upstream beforeSeq/hasMore
+      # pagination supplies older history without re-downloading the whole log.
+      HARNESS_HISTORY_PAGE_MESSAGES: ${HARNESS_HISTORY_PAGE_MESSAGES:-5}
+      HARNESS_UPLOAD_HOST: harness-upload
+      HARNESS_UPLOAD_PORT: "3090"
+      HARNESS_UPLOAD_TOKEN: ${HARNESS_UPLOAD_TOKEN:?HARNESS_UPLOAD_TOKEN is required}
+      HARNESS_PORT: ${HARNESS_PORT:?HARNESS_PORT is required}
+      HARNESS_DOCUMENT_INPUT_ROOT: /project-shared-inputs
+      HARNESS_DOCUMENT_MAX_SOURCE_BYTES: ${HARNESS_DOCUMENT_MAX_SOURCE_BYTES:-26214400}
+      HARNESS_DOCUMENT_MAX_OUTPUT_BYTES: ${HARNESS_DOCUMENT_MAX_OUTPUT_BYTES:-1048576}
+      HARNESS_DOCUMENT_MAX_PDF_PAGES: ${HARNESS_DOCUMENT_MAX_PDF_PAGES:-200}
+      HARNESS_DOCUMENT_MAX_SPREADSHEET_ROWS: ${HARNESS_DOCUMENT_MAX_SPREADSHEET_ROWS:-2000}
+      HARNESS_DOCUMENT_MAX_SPREADSHEET_COLUMNS: ${HARNESS_DOCUMENT_MAX_SPREADSHEET_COLUMNS:-100}
+      TZ: ${TZ:-Asia/Shanghai}
+    secrets:
+      - deepseek-api-key
+      - kimi-api-key
+      - glm-api-key
+    ports:
+      - "${FORGE_BIND_ADDRESS:-127.0.0.1}:${HARNESS_PORT:?HARNESS_PORT is required}:${HARNESS_PORT:?HARNESS_PORT is required}"
+    volumes:
+      # The former project-wide Harness is retained only as an opt-in,
+      # read-only migration aid. Normal work runs in isolated TaskSpaces.
+      - ../workspace:/workspace:ro
+      - ../dsh-home:/home/node/.dsh
+      # The retired shared Harness can read only administrator-approved project
+      # material. Raw intake remains outside every Harness container.
+      - ${PROJECT_SHARED_INPUT_ROOT:?PROJECT_SHARED_INPUT_ROOT is required}:/project-shared-inputs:ro
+      - harness-m2:/home/node/.m2
+      - harness-npm:/home/node/.npm
+      - harness-pnpm:/home/node/.local/share/pnpm
+      - harness-cache:/home/node/.cache
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=1g
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 1024
+    stop_grace_period: 30s
+    logging: *default-logging
+    depends_on:
+      harness-upload:
+        condition: service_healthy
+    networks: [application, uploads]
+
+  harness-upload:
+    profiles: ["legacy-shared-harness"]
+    image: ${HARNESS_IMAGE:?HARNESS_IMAGE is required}
+    restart: unless-stopped
+    command: ["node", "/usr/local/lib/harness-upload-server.mjs"]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    environment:
+      HARNESS_UPLOAD_ADDRESS: 0.0.0.0
+      HARNESS_UPLOAD_PORT: "3090"
+      HARNESS_UPLOAD_ROOT: /project-uploads
+      HARNESS_UPLOAD_PUBLIC_PATH: /project-intake
+      HARNESS_UPLOAD_TOKEN: ${HARNESS_UPLOAD_TOKEN:?HARNESS_UPLOAD_TOKEN is required}
+      HARNESS_UPLOAD_SCOPE_TYPE: project-intake
+      HARNESS_UPLOAD_PROJECT_SLUG: ${PROJECT_SLUG:?PROJECT_SLUG is required}
+      HARNESS_UPLOAD_MAX_FILE_BYTES: ${HARNESS_UPLOAD_MAX_FILE_BYTES:-52428800}
+      HARNESS_UPLOAD_MAX_BATCH_FILES: ${HARNESS_UPLOAD_MAX_BATCH_FILES:-20}
+      HARNESS_UPLOAD_MAX_BATCH_BYTES: ${HARNESS_UPLOAD_MAX_BATCH_BYTES:-209715200}
+      HARNESS_UPLOAD_MAX_PROJECT_BYTES: ${HARNESS_UPLOAD_MAX_PROJECT_BYTES:-10737418240}
+      HARNESS_DOCUMENT_MAX_SOURCE_BYTES: ${HARNESS_DOCUMENT_MAX_SOURCE_BYTES:-26214400}
+      HARNESS_DOCUMENT_MAX_OUTPUT_BYTES: ${HARNESS_DOCUMENT_MAX_OUTPUT_BYTES:-1048576}
+      HARNESS_DOCUMENT_MAX_PDF_PAGES: ${HARNESS_DOCUMENT_MAX_PDF_PAGES:-200}
+      HARNESS_DOCUMENT_MAX_SPREADSHEET_ROWS: ${HARNESS_DOCUMENT_MAX_SPREADSHEET_ROWS:-2000}
+      HARNESS_DOCUMENT_MAX_SPREADSHEET_COLUMNS: ${HARNESS_DOCUMENT_MAX_SPREADSHEET_COLUMNS:-100}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      # This sidecar is the only process with write access to project inputs.
+      # It receives no workspace, DSH state, model secret, platform path or socket.
+      - ${PROJECT_UPLOAD_ROOT:?PROJECT_UPLOAD_ROOT is required}:/project-uploads
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 768m
+    cpus: "1.0"
+    logging: *default-logging
+    networks: [uploads]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3090/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+
+  conversation-manager:
+    image: ${CONVERSATION_MANAGER_IMAGE:-${HARNESS_IMAGE:?HARNESS_IMAGE is required}}
+    restart: unless-stopped
+    command: ["node", "/usr/local/lib/conversation-manager.mjs"]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    group_add:
+      - "${DOCKER_GID:?DOCKER_GID is required for the conversation manager}"
+    environment:
+      CONVERSATION_PROJECT_ROOT: ${PROJECT_ROOT:?PROJECT_ROOT is required}
+      CONVERSATION_PROJECT_SLUG: ${PROJECT_SLUG:?PROJECT_SLUG is required}
+      CONVERSATION_PHASE_CATALOG_FILE: ${FORGE_SKILL_BUNDLE_ROOT:?FORGE_SKILL_BUNDLE_ROOT is required}/current/skills/forge-task-router/references/phase-profiles.json
+      CONVERSATION_PROJECT_INTAKE_ROOT: /project-intake
+      CONVERSATION_PROJECT_MATERIAL_ACCESS_MODE: ${PROJECT_MATERIAL_ACCESS_MODE:-reviewed}
+      CONVERSATION_TASKSPACE_CONTROL: ${PLATFORM_ROOT:?PLATFORM_ROOT is required}/scripts/taskspacectl.sh
+      CONVERSATION_MANAGER_TOKEN_FILE: /run/forge-manager-token
+      CONVERSATION_MANAGER_SOCKET: /run/forge-manager/manager.sock
+      FORGE_CONVERSATION_GATEWAY_AUTHORITY_SOCKET_FILE: /run/forge-conversation-auth/authorize.sock
+      CONVERSATION_MANAGER_AUDIT_PATH: ${PROJECT_ROOT:?PROJECT_ROOT is required}/ops/conversation-manager-audit.jsonl
+      PROTECTED_ACCEPTANCE_CONTROL_SOCKET: /run/forge-acceptance-control/control.sock
+      VERIFICATION_SOURCE_SOCKET: /run/forge-verify-source/source.sock
+      TASKSPACE_SKIP_SOCKET_SCAN: "true"
+      # The Manager receives only the non-secret values needed by taskspacectl;
+      # host-wide platform.env remains unreadable and unmounted as a credential boundary.
+      TASKSPACE_CONTROL_CONFIG_MODE: project
+      TASKSPACE_CONTROL_DELIVERY_ROOT: ${DELIVERY_ROOT:?DELIVERY_ROOT is required}
+      TASKSPACE_CONTROL_DELIVERY_OWNER: ${DELIVERY_OWNER:?DELIVERY_OWNER is required}
+      TASKSPACE_CONTROL_DELIVERY_GROUP: ${DELIVERY_GROUP:?DELIVERY_GROUP is required}
+      TASKSPACE_CONTROL_DELIVERY_UID: ${HOST_UID:?HOST_UID is required}
+      TASKSPACE_CONTROL_DELIVERY_GID: ${HOST_GID:?HOST_GID is required}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      # This bounded control plane can create/start/stop only TaskSpaces in the
+      # current project. Harness and the public gateway never receive Docker.
+      - ${PLATFORM_ROOT:?PLATFORM_ROOT is required}:${PLATFORM_ROOT:?PLATFORM_ROOT is required}:ro
+      - ${PROJECT_ROOT:?PROJECT_ROOT is required}:${PROJECT_ROOT:?PROJECT_ROOT is required}
+      # taskspacectl validates the externally versioned Skills authority before
+      # creating or starting a current-generation TaskSpace. Keep it read-only;
+      # activation remains an operator-only host action.
+      - ${FORGE_SKILL_BUNDLE_ROOT:?FORGE_SKILL_BUNDLE_ROOT is required}:${FORGE_SKILL_BUNDLE_ROOT:?FORGE_SKILL_BUNDLE_ROOT is required}:ro
+      # The Manager needs the project tree for TaskSpace lifecycle operations,
+      # but this later bind masks the entire acceptance tree (keys, state and
+      # other IPC capabilities) with an empty read-only project-owned directory.
+      - ${PROJECT_ACCEPTANCE_ROOT:?PROJECT_ACCEPTANCE_ROOT is required}/empty-secret-mask:${PROJECT_ACCEPTANCE_ROOT:?PROJECT_ACCEPTANCE_ROOT is required}:ro
+      # The same broad project mount is masked at the verification root so the
+      # Manager receives only the dedicated source-observer socket below.
+      - ${PROJECT_VERIFY_ROOT:?PROJECT_VERIFY_ROOT is required}/empty-manager-mask:${PROJECT_VERIFY_ROOT:?PROJECT_VERIFY_ROOT is required}:ro
+      - ${PROJECT_UPLOAD_ROOT:?PROJECT_UPLOAD_ROOT is required}:/project-intake:ro
+      - ${TASKSPACE_PORT_REGISTRY_FILE:?TASKSPACE_PORT_REGISTRY_FILE is required}:${TASKSPACE_PORT_REGISTRY_FILE:?TASKSPACE_PORT_REGISTRY_FILE is required}
+      - ${TASKSPACE_LOCK_FILE:?TASKSPACE_LOCK_FILE is required}:${TASKSPACE_LOCK_FILE:?TASKSPACE_LOCK_FILE is required}
+      - ${PLATFORM_PROJECT_REGISTRY_FILE:?PLATFORM_PROJECT_REGISTRY_FILE is required}:${PLATFORM_PROJECT_REGISTRY_FILE:?PLATFORM_PROJECT_REGISTRY_FILE is required}:ro
+      - ${CONVERSATION_MANAGER_TOKEN_FILE:?CONVERSATION_MANAGER_TOKEN_FILE is required}:/run/forge-manager-token:ro
+      - ${PLATFORM_CONVERSATION_PROJECT_ROOT:?PLATFORM_CONVERSATION_PROJECT_ROOT is required}/ipc:/run/forge-manager
+      - ${PLATFORM_CONVERSATION_AUTH_ROOT:?PLATFORM_CONVERSATION_AUTH_ROOT is required}:/run/forge-conversation-auth:ro
+      - ${PROJECT_ACCEPTANCE_CONTROL_IPC_ROOT:?PROJECT_ACCEPTANCE_CONTROL_IPC_ROOT is required}:/run/forge-acceptance-control:ro
+      - ${PROJECT_VERIFY_SOURCE_IPC_ROOT:?PROJECT_VERIFY_SOURCE_IPC_ROOT is required}:/run/forge-verify-source:ro
+      - ${DEEPSEEK_KEY_FILE:?DEEPSEEK_KEY_FILE is required}:${DEEPSEEK_KEY_FILE:?DEEPSEEK_KEY_FILE is required}:ro
+      - ${KIMI_KEY_FILE:?KIMI_KEY_FILE is required}:${KIMI_KEY_FILE:?KIMI_KEY_FILE is required}:ro
+      - ${GLM_KEY_FILE:?GLM_KEY_FILE is required}:${GLM_KEY_FILE:?GLM_KEY_FILE is required}:ro
+      - /usr/bin/docker:/usr/bin/docker:ro
+      - /usr/libexec/docker/cli-plugins:/usr/libexec/docker/cli-plugins:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=512m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    mem_limit: 1g
+    cpus: "2.0"
+    logging: *default-logging
+    depends_on:
+      taskspace-broker:
+        condition: service_healthy
+    network_mode: none
+    healthcheck:
+      test: ["CMD", "node", "-e", "const h=require('node:http');const q=h.request({socketPath:'/run/forge-manager/manager.sock',path:'/healthz'},r=>process.exit(r.statusCode===200?0:1));q.on('error',()=>process.exit(1));q.end()"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+
+  release-runner:
+    image: ${RELEASE_RUNNER_IMAGE:-${HARNESS_IMAGE:?HARNESS_IMAGE is required}}
+    restart: unless-stopped
+    command: ["node", "/usr/local/lib/release-runner.mjs"]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    group_add:
+      - "${DOCKER_GID:?DOCKER_GID is required for the controlled release runner}"
+    environment:
+      RELEASE_RUNNER_SOCKET: /run/forge-release/runner.sock
+      RELEASE_RUNNER_PROJECT_ROOT: ${PROJECT_ROOT:?PROJECT_ROOT is required}
+      RELEASE_RUNNER_CONTRACT: ${PROJECT_ROOT:?PROJECT_ROOT is required}/ops/runtime-contract.json
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      # The runner is the only project process with Docker access. Its API has
+      # no arbitrary command/argument surface and accepts only the fixed project
+      # contract, Compose file and application-service allowlist.
+      - ${PROJECT_ROOT:?PROJECT_ROOT is required}/workspace:${PROJECT_ROOT:?PROJECT_ROOT is required}/workspace:ro
+      - ${PROJECT_ROOT:?PROJECT_ROOT is required}/ops:${PROJECT_ROOT:?PROJECT_ROOT is required}/ops
+      # Test-schema snapshots are written only by the bounded database operator.
+      # Harness has no mount for this directory and cannot inspect or alter them.
+      - ${PROJECT_ROOT:?PROJECT_ROOT is required}/backups:${PROJECT_ROOT:?PROJECT_ROOT is required}/backups
+      - ${PROJECT_RELEASE_IPC_ROOT:?PROJECT_RELEASE_IPC_ROOT is required}:/run/forge-release
+      - ${SHARED_SERVICES_ENV_FILE:?SHARED_SERVICES_ENV_FILE is required}:${SHARED_SERVICES_ENV_FILE:?SHARED_SERVICES_ENV_FILE is required}:ro
+      - /usr/bin/docker:/usr/bin/docker:ro
+      - /usr/libexec/docker/cli-plugins:/usr/libexec/docker/cli-plugins:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=512m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    mem_limit: 1g
+    cpus: "2.0"
+    logging: *default-logging
+    networks: [application]
+    healthcheck:
+      test: ["CMD", "node", "-e", "const h=require('node:http');const q=h.request({socketPath:'/run/forge-release/runner.sock',path:'/healthz'},r=>process.exit(r.statusCode===200?0:1));q.on('error',()=>process.exit(1));q.end()"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+
+  protected-acceptance:
+    image: ${PROTECTED_ACCEPTANCE_IMAGE:-${HARNESS_IMAGE:?HARNESS_IMAGE is required}}
+    restart: unless-stopped
+    command: ["node", "/usr/local/lib/forge-protected-acceptance-service.mjs"]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    environment:
+      ACCEPTANCE_SERVICE_CONFIG: /etc/forge-acceptance/service.json
+      ACCEPTANCE_CONTROL_SOCKET: /run/forge-acceptance-control/control.sock
+      ACCEPTANCE_ISSUER_SOCKET: /run/forge-acceptance-issuer/issuer.sock
+      ACCEPTANCE_RESOLVER_SOCKET: /run/forge-acceptance-resolver/resolver.sock
+      ACCEPTANCE_SCOPE_SOCKET: /run/forge-acceptance-scope/scope.sock
+      FORGE_MANAGED_FILE_TARGETS_FILE: ${PROJECT_MANAGED_FILE_TARGETS_FILE:+/etc/forge-managed-files/targets.json}
+      FORGE_CONVERSATION_MANAGER_SOCKET_FILE: /run/forge-conversation-manager/manager.sock
+      ACCEPTANCE_PLATFORM_KEY_FILE: /run/secrets/forge-acceptance-platform-key
+      ACCEPTANCE_GOVERNANCE_KEY_FILE: /run/secrets/forge-acceptance-governance-key
+      ACCEPTANCE_VERIFICATION_KEY_FILE: /run/secrets/forge-acceptance-verification-key
+      ACCEPTANCE_SEMANTIC_KEY_FILE: /run/secrets/forge-acceptance-semantic-key
+      ACCEPTANCE_VERDICT_KEY_FILE: /run/secrets/forge-acceptance-verdict-key
+      TZ: ${TZ:-Asia/Shanghai}
+    secrets:
+      - forge-acceptance-platform-key
+      - forge-acceptance-governance-key
+      - forge-acceptance-verification-key
+      - forge-acceptance-semantic-key
+      - forge-acceptance-verdict-key
+    volumes:
+      # Only this sidecar receives the project acceptance keys and writable
+      # acceptance state. It has no Docker socket, network, model secret,
+      # release credential, database credential, Harness, or TaskSpace mount.
+      - ${PROJECT_ACCEPTANCE_CONFIG:?PROJECT_ACCEPTANCE_CONFIG is required}:/etc/forge-acceptance/service.json:ro
+      - type: bind
+        source: ${PROJECT_MANAGED_FILE_TARGETS_FILE:-/dev/null}
+        target: /etc/forge-managed-files/targets.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - ${PROJECT_ACCEPTANCE_STATE_ROOT:?PROJECT_ACCEPTANCE_STATE_ROOT is required}:/var/lib/forge-acceptance
+      - ${PROJECT_ACCEPTANCE_CONTROL_IPC_ROOT:?PROJECT_ACCEPTANCE_CONTROL_IPC_ROOT is required}:/run/forge-acceptance-control
+      - ${PROJECT_ACCEPTANCE_ISSUER_IPC_ROOT:?PROJECT_ACCEPTANCE_ISSUER_IPC_ROOT is required}:/run/forge-acceptance-issuer
+      - ${PROJECT_ACCEPTANCE_RESOLVER_IPC_ROOT:?PROJECT_ACCEPTANCE_RESOLVER_IPC_ROOT is required}:/run/forge-acceptance-resolver
+      - ${PROJECT_ACCEPTANCE_ROOT:?PROJECT_ACCEPTANCE_ROOT is required}/ipc-scope:/run/forge-acceptance-scope
+      - ${PLATFORM_CONVERSATION_PROJECT_ROOT:?PLATFORM_CONVERSATION_PROJECT_ROOT is required}/ipc:/run/forge-conversation-manager:ro
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 256m
+    cpus: "0.5"
+    logging: *default-logging
+    network_mode: none
+    healthcheck:
+      test: ["CMD", "node", "-e", "const h=require('node:http');const q=h.request({socketPath:'/run/forge-acceptance-resolver/resolver.sock',path:'/healthz'},r=>process.exit(r.statusCode===200?0:1));q.on('error',()=>process.exit(1));q.end()"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+
+  verification-runner:
+    image: ${VERIFICATION_RUNNER_IMAGE:-${HARNESS_IMAGE:?HARNESS_IMAGE is required}}
+    restart: unless-stopped
+    command: ["node", "/usr/local/lib/verification-runner.mjs"]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    group_add:
+      - "${DOCKER_GID:?DOCKER_GID is required for the controlled verification runner}"
+    environment:
+      VERIFICATION_PROJECT_SLUG: ${PROJECT_SLUG:?PROJECT_SLUG is required}
+      VERIFICATION_TASKSPACES_ROOT: ${PROJECT_ROOT:?PROJECT_ROOT is required}/taskspaces
+      VERIFICATION_CONTRACT: ${PROJECT_VERIFY_ROOT:?PROJECT_VERIFY_ROOT is required}/contract.json
+      VERIFICATION_RUNNER_SOCKET: /run/forge-verify/runner.sock
+      VERIFICATION_SOURCE_SOCKET: /run/forge-verify-source/source.sock
+      PROTECTED_ACCEPTANCE_ISSUER_SOCKET: /run/forge-acceptance-issuer/issuer.sock
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      # Verification is isolated from the active TaskSpace. The runner snapshots
+      # a read-only source tree and starts only contract-selected, networkless
+      # toolchain containers. It receives no Git, model, database, or release
+      # credentials and exposes no arbitrary command or image selector.
+      - ${PROJECT_ROOT:?PROJECT_ROOT is required}/taskspaces:${PROJECT_ROOT:?PROJECT_ROOT is required}/taskspaces:ro
+      - ${PROJECT_VERIFY_ROOT:?PROJECT_VERIFY_ROOT is required}:${PROJECT_VERIFY_ROOT:?PROJECT_VERIFY_ROOT is required}
+      - ${PROJECT_VERIFY_IPC_ROOT:?PROJECT_VERIFY_IPC_ROOT is required}:/run/forge-verify
+      - ${PROJECT_VERIFY_SOURCE_IPC_ROOT:?PROJECT_VERIFY_SOURCE_IPC_ROOT is required}:/run/forge-verify-source
+      - ${PROJECT_ACCEPTANCE_ISSUER_IPC_ROOT:?PROJECT_ACCEPTANCE_ISSUER_IPC_ROOT is required}:/run/forge-acceptance-issuer:ro
+      - /usr/bin/docker:/usr/bin/docker:ro
+      - /usr/libexec/docker/cli-plugins:/usr/libexec/docker/cli-plugins:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 768m
+    cpus: "1.5"
+    logging: *default-logging
+    network_mode: none
+    depends_on:
+      protected-acceptance:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "const h=require('node:http');const q=h.request({socketPath:'/run/forge-verify/runner.sock',path:'/healthz'},r=>process.exit(r.statusCode===200?0:1));q.on('error',()=>process.exit(1));q.end()"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+
+  taskspace-broker:
+    # A Broker-only compatibility image can be rolled out without replacing the
+    # Runner, Manager, Harness, or application containers.
+    image: ${TASKSPACE_BROKER_IMAGE:-${RELEASE_RUNNER_IMAGE:-${HARNESS_IMAGE:?HARNESS_IMAGE is required}}}
+    restart: unless-stopped
+    command: ["/usr/local/bin/node", "/usr/local/lib/taskspace-broker.mjs"]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    environment:
+      TASKSPACE_PROJECT_ROOT: ${PROJECT_ROOT:?PROJECT_ROOT is required}
+      TASKSPACE_PROJECT_SLUG: ${PROJECT_SLUG:?PROJECT_SLUG is required}
+      TASKSPACE_BROKER_ADDRESS: 0.0.0.0
+      TASKSPACE_BROKER_PORT: "3100"
+      RELEASE_RUNNER_SOCKET: /run/forge-release/runner.sock
+      CONVERSATION_PHASE_CATALOG_FILE: /etc/forge-phase-catalog/phase-profiles.json
+      VERIFICATION_RUNNER_SOCKET: /run/forge-verify/runner.sock
+      TASKSPACE_VERIFICATION_MODE: ${PROJECT_VERIFICATION_MODE:?PROJECT_VERIFICATION_MODE is required}
+      TASKSPACE_VERIFICATION_CONTRACT: /etc/forge-verification/inventory-contract.json
+      PROTECTED_ACCEPTANCE_RESOLVER_SOCKET: /run/forge-acceptance-resolver/resolver.sock
+      PROTECTED_ACCEPTANCE_SCOPE_SOCKET: /run/forge-acceptance-scope/scope.sock
+      # Optional protected data consumer. Empty configuration leaves it disabled.
+      FORGE_BUSINESS_DATA_CONSUMER_URL: ${PROJECT_BUSINESS_DATA_CONSUMER_URL:-}
+      FORGE_BUSINESS_DATA_CONSUMER_ALLOWED_HOST: ${PROJECT_BUSINESS_DATA_CONSUMER_ALLOWED_HOST:-}
+      FORGE_BUSINESS_DATA_CONSUMER_TOKEN_FILE: ${PROJECT_BUSINESS_DATA_CONSUMER_TOKEN_FILE:+/run/forge-business-data/consumer-token}
+      FORGE_MANAGED_FILE_TARGETS_FILE: ${PROJECT_MANAGED_FILE_TARGETS_FILE:+/etc/forge-managed-files/targets.json}
+      TASKSPACE_GIT_REMOTE_REQUIRED: ${PROJECT_GIT_REMOTE_REQUIRED:-false}
+      TASKSPACE_GIT_REMOTE_READY: ${PROJECT_GIT_REMOTE_READY:-false}
+      TASKSPACE_GIT_REMOTE_NAME: ${PROJECT_GIT_REMOTE_NAME:-origin}
+      TASKSPACE_GIT_REMOTE_BRANCH: ${PROJECT_GIT_REMOTE_BRANCH:-}
+      TASKSPACE_GIT_SSH_COMMAND: ssh -i /run/forge-git/id_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/run/forge-git/known_hosts
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      # Broker alone promotes validated, clean TaskSpace commits into the
+      # platform-managed integration workspace. It has no Docker socket,
+      # database credential, shared-service env file, or application secrets.
+      - type: bind
+        source: ${FORGE_SKILL_BUNDLE_ROOT:?FORGE_SKILL_BUNDLE_ROOT is required}/current/skills/forge-task-router/references/phase-profiles.json
+        target: /etc/forge-phase-catalog/phase-profiles.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - ${PROJECT_ROOT:?PROJECT_ROOT is required}/workspace:${PROJECT_ROOT:?PROJECT_ROOT is required}/workspace
+      - ${PROJECT_ROOT:?PROJECT_ROOT is required}/taskspaces:${PROJECT_ROOT:?PROJECT_ROOT is required}/taskspaces
+      - ${PROJECT_RELEASE_IPC_ROOT:?PROJECT_RELEASE_IPC_ROOT is required}:/run/forge-release:ro
+      - ${PROJECT_VERIFY_IPC_ROOT:?PROJECT_VERIFY_IPC_ROOT is required}:/run/forge-verify:ro
+      - type: bind
+        source: ${PROJECT_VERIFICATION_CONTRACT:?PROJECT_VERIFICATION_CONTRACT is required}
+        target: /etc/forge-verification/inventory-contract.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - ${PROJECT_ACCEPTANCE_RESOLVER_IPC_ROOT:?PROJECT_ACCEPTANCE_RESOLVER_IPC_ROOT is required}:/run/forge-acceptance-resolver:ro
+      - ${PROJECT_ACCEPTANCE_ROOT:?PROJECT_ACCEPTANCE_ROOT is required}/ipc-scope:/run/forge-acceptance-scope:ro
+      - ${PROJECT_GIT_SSH_ROOT:?PROJECT_GIT_SSH_ROOT is required}:/run/forge-git:ro
+      # No credential or directory is generated by Docker. Enabling this feature
+      # requires an existing operator-provided token file outside the workspace.
+      - type: bind
+        source: ${PROJECT_BUSINESS_DATA_CONSUMER_TOKEN_FILE:-/dev/null}
+        target: /run/forge-business-data/consumer-token
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${PROJECT_MANAGED_FILE_TARGETS_FILE:-/dev/null}
+        target: /etc/forge-managed-files/targets.json
+        read_only: true
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=512m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 768m
+    cpus: "1.0"
+    logging: *default-logging
+    depends_on:
+      release-runner:
+        condition: service_healthy
+      protected-acceptance:
+        condition: service_healthy
+    networks: [taskspaces, git-remote]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3100/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+
+networks:
+  application:
+    driver: bridge
+    internal: false
+  uploads:
+    driver: bridge
+    internal: true
+  taskspaces:
+    driver: bridge
+    internal: true
+  git-remote:
+    driver: bridge
+    internal: false
+volumes:
+  crypto-secrets:
+  harness-m2:
+  harness-npm:
+  harness-pnpm:
+  harness-cache:
+
+secrets:
+  deepseek-api-key:
+    file: ${DEEPSEEK_KEY_FILE:?DEEPSEEK_KEY_FILE is required}
+  kimi-api-key:
+    file: ${KIMI_KEY_FILE:?KIMI_KEY_FILE is required}
+  glm-api-key:
+    file: ${GLM_KEY_FILE:?GLM_KEY_FILE is required}
+  forge-acceptance-platform-key:
+    file: ${PROJECT_ACCEPTANCE_SECRET_ROOT:?PROJECT_ACCEPTANCE_SECRET_ROOT is required}/platform.pem
+  forge-acceptance-governance-key:
+    file: ${PROJECT_ACCEPTANCE_SECRET_ROOT:?PROJECT_ACCEPTANCE_SECRET_ROOT is required}/governance.pem
+  forge-acceptance-verification-key:
+    file: ${PROJECT_ACCEPTANCE_SECRET_ROOT:?PROJECT_ACCEPTANCE_SECRET_ROOT is required}/verification.pem
+  forge-acceptance-semantic-key:
+    file: ${PROJECT_ACCEPTANCE_SECRET_ROOT:?PROJECT_ACCEPTANCE_SECRET_ROOT is required}/semantic.pem
+  forge-acceptance-verdict-key:
+    file: ${PROJECT_ACCEPTANCE_SECRET_ROOT:?PROJECT_ACCEPTANCE_SECRET_ROOT is required}/verdict.pem

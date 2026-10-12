@@ -1,0 +1,9 @@
+# Reuse the verified runtime, Skills and dependency seed; update proposal scope only.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 docker/harness/forge-conversation-task-proposal.mjs /usr/local/lib/forge-conversation-task-proposal.mjs
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.task-proposal-scope /usr/local/share/forge-image-build/Dockerfile.task-proposal-scope
+RUN --network=none node --check /usr/local/lib/forge-conversation-task-proposal.mjs
+USER 1000:1000

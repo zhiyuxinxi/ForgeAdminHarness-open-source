@@ -1,0 +1,4 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY --chmod=0444 docker/harness/forge-protected-acceptance-service.mjs /usr/local/lib/forge-protected-acceptance-service.mjs
+LABEL com.forge-delivery.conversation-confirmation.version="2026.09.18.2"

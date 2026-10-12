@@ -1,0 +1,22 @@
+# Retain current release-continuation fixes, Skills and installed dependency layers.
+# Base: sha256:21f3f8f5c0b9e0888d18f8cdc8df4ea5933f8f731ac97fc52ece4bf9ef63e2dd
+ARG BASE_IMAGE=forge-delivery/deepseek-harness:0.1.1-rc.2-toolchain-cache-reuse-20260923-1
+FROM ${BASE_IMAGE}
+USER 0:0
+ARG HOST_RUNNER_MANIFEST_SHA256
+COPY --chmod=0644 docker/harness/forge-governance.mjs docker/harness/host-verify-policy.mjs /usr/local/lib/
+COPY host-runner-bundle/ /opt/forge-host-runner-bundle/
+COPY --chmod=0644 config/versions.env docker/harness/Dockerfile.no-change-governance /usr/local/share/forge-image-build/
+RUN --network=none node --input-type=module -e '\
+  import fs from "node:fs"; import crypto from "node:crypto"; \
+  import {validateHostRunnerBundle} from "/opt/forge-host-runner-bundle/bin/forge-host-runner-bundle.mjs"; \
+  const root="/opt/forge-host-runner-bundle"; \
+  const sha=p=>crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex"); \
+  if(sha(root+"/runner.manifest.json")!==process.argv[1])throw Error("Host manifest mismatch"); \
+  const bundle=await validateHostRunnerBundle(root,{profileCatalogVersion:"2026.09.03.22",nodeMajor:24}); \
+  if(bundle.manifest.bundleVersion!=="2026.09.23.4-no-change-governance")throw Error("Host version mismatch"); \
+  for(const name of ["forge-governance","host-verify-policy"]){ \
+    if(sha(root+"/lib/"+name+".mjs")!==sha("/usr/local/lib/"+name+".mjs"))throw Error("Host/image module mismatch: "+name); \
+  }' "${HOST_RUNNER_MANIFEST_SHA256}"
+LABEL com.forge-delivery.no-change-governance.version="2026.09.23.4"
+USER 1000:1000

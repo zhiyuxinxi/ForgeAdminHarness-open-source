@@ -1,0 +1,27 @@
+# Reuse all installed dependency layers; align the Host and acceptance consumers.
+# Reviewed base ID: sha256:45c345c68d5c4b5084c8748724d799dba48b6f645b63742e8a32dd9a0e0d6302
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+ARG ACCEPTANCE_SOURCE_SHA256
+ARG HOST_RUNNER_MANIFEST_SHA256
+COPY --chmod=0644 docker/harness/forge-protected-acceptance-service.mjs docker/harness/host-verification-runner.mjs docker/harness/forge-conversation-task-proposal.mjs docker/harness/forge-phase-budget-guard.mjs docker/harness/forge-completion-claim-guard.mjs /usr/local/lib/
+COPY host-runner-bundle/ /opt/forge-host-runner-bundle/
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.preinstalled-receipts /usr/local/share/forge-image-build/Dockerfile.preinstalled-receipts
+RUN --network=none node --input-type=module -e '\
+  import fs from "node:fs"; import crypto from "node:crypto"; \
+  import {validateHostRunnerBundle} from "/opt/forge-host-runner-bundle/bin/forge-host-runner-bundle.mjs"; \
+  const sha=b=>crypto.createHash("sha256").update(b).digest("hex"); \
+  const file="/usr/local/lib/forge-protected-acceptance-service.mjs"; \
+  if(sha(fs.readFileSync(file))!==process.argv[1])throw Error("Acceptance source mismatch"); \
+  const root="/opt/forge-host-runner-bundle"; \
+  if(sha(fs.readFileSync(root+"/runner.manifest.json"))!==process.argv[2])throw Error("Host manifest mismatch"); \
+  const host=await validateHostRunnerBundle(root,{profileCatalogVersion:"2026.09.03.22"}); \
+  if(host.manifest.bundleVersion!=="2026.09.21.4-preinstalled-receipts")throw Error("Host version mismatch"); \
+  if(sha(fs.readFileSync(root+"/lib/host-verification-runner.mjs"))!==sha(fs.readFileSync("/usr/local/lib/host-verification-runner.mjs")))throw Error("Host consumer mismatch"); \
+  await import(file); \
+  await import("/usr/local/lib/host-verification-runner.mjs"); \
+  ' "${ACCEPTANCE_SOURCE_SHA256}" "${HOST_RUNNER_MANIFEST_SHA256}"
+LABEL com.forge-delivery.preinstalled-receipts.version="2026.09.21.2"
+USER 1000:1000

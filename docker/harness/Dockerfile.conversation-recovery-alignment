@@ -1,0 +1,9 @@
+# Reuse the verified runtime and dependencies for scoped conversation recovery fixes.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 docker/harness/conversation-gateway.mjs docker/harness/conversation-manager.mjs docker/harness/forge-execution-context.mjs docker/harness/forge-task-execution-contract.mjs docker/harness/forge-protected-acceptance-service.mjs docker/harness/taskspace-broker.mjs /usr/local/lib/
+COPY --chmod=0644 docker/harness/Dockerfile.conversation-recovery-alignment /usr/local/share/forge-image-build/
+RUN --network=none node --check /usr/local/lib/conversation-gateway.mjs && node --check /usr/local/lib/conversation-manager.mjs && node --check /usr/local/lib/forge-execution-context.mjs && node --check /usr/local/lib/forge-task-execution-contract.mjs && node --check /usr/local/lib/forge-protected-acceptance-service.mjs && node --check /usr/local/lib/taskspace-broker.mjs
+LABEL com.forge-delivery.conversation-recovery-alignment.version="2026.09.22.1"
+USER 1000:1000

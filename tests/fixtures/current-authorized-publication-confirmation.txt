@@ -1,0 +1,9 @@
+确认发布当前已准备范围。请在本原 Harness 对话中，沿已授权的正常受控流程发布示例客户 forge-base 当前全部 PC 非事故双语候选，显式服务 forge-ui。Owner 已授本轮唯一串行 UI 发布窗口，以及保存本舱全部实际累计 dirty 成果、合入最新 canonical、验证复用和这一次受控发布的权限。其他会话保持等待，其他业务服务保持其当前运行版本。
+
+先正常读取 status/preflight 的真实源与当前保护合同。最新 canonical 已确认为 d74b6ba7fb2c67198658b59562d5f45eae86dca8，当前任务 HEAD d66248fc936385dff63bbe95cb563218d6d3496e，完整草稿包含前各批领导力/工作台、provider/base-info、hw/sw/waste、security/guard、plan/sampleco-app、明确login/system/台账/external尾项及共享tab修复和原四记录。通过正常 dirty integrate 保存全部实际已授权改动并合入该最新 canonical；已知旧基 checkpoint 要求 includesCanonical，因此按正确 integrate 顺序处理，保留所有候选与来源。运行时参数依实际 status 的精确绑定，真实漂移或冲突保留原错误并沿正常支持路径处理。
+
+共享tab当前稳定 source 0d6afb1d5f45ac22af39c72021a38ce2f661595c689ccc8cf2f039cd22fd90ff 已有同源 governance f4ca7d15-e5a3-42d9-9c18-7ea31dab4a4c、限定 lint a9933add-680b-44e2-bf81-6e399265dd62、实际组件测试37951486-b25b-4a04-a86d-f24bb767d5f6（1/1）首过；此前各批19/19、8/8、6/6、7/7及最新plan/app/tail8/8和相应检查继续保留。通过已有正式机制复用仍有效证据，仅对正常当前验收明确缺失且直接必要的项补验，避免重复旧各批全检查、后台/H5检查、无关全量测试和反复改记录。不要仅为补写回执编号刷新已经定稿的文档而再次改变source。
+
+在实际当前候选和准入满足后，一次正常 forge-ui release，沿同一个真实作业完成原受控制品准备、必要恢复保障、晋升和部署，并持续观察到真实终态。沿既有镜像/构建缓存和成功制品复用路径；保持其他业务服务、数据、历史和旧失败证据。只使用实际支持的工具动作，不跳过正常验收、不手动改回执或锁；若工具要求正常确认，沿当前已完整授权方案的确认语义处理。
+
+报告真实 operation/job、运行提交、canonical、实际UI服务镜像/容器及发布终态。业务修改和发布均由本 Harness 执行，不能停在检查通过、提交完成或后台作业已启动；真实失败保留原作业及具体诊断，避免盲目重发同一发布。

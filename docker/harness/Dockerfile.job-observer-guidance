@@ -1,0 +1,28 @@
+# Retain F26, the Host digest cache fix and all installed dependency layers.
+# Base sha256:46398fca174792d3e891b6d604a433ef3789caab7ce1d1cc9eb2aa945d219ff5.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+ARG SKILL_BUNDLE_MANIFEST_SHA256
+COPY --chmod=0755 docker/harness/forge-verify /usr/local/bin/forge-verify
+COPY skill-bundle/ /opt/forge-skill-bundles/versions/2026.09.22.1/
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.job-observer-guidance docker/harness/Dockerfile.overlay /usr/local/share/forge-image-build/
+RUN --network=none node --check /usr/local/bin/forge-verify && node --input-type=module -e '\
+  import fs from "node:fs"; import crypto from "node:crypto"; \
+  import {validateSkillBundle} from "/usr/local/lib/validate-skill-bundle.mjs"; \
+  const root="/opt/forge-skill-bundles/versions/2026.09.22.1"; \
+  const digest=(p)=>crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex"); \
+  if(digest(root+"/bundle.manifest.json")!==process.argv[1])throw Error("Skill manifest mismatch"); \
+  const manifest=JSON.parse(fs.readFileSync(root+"/bundle.manifest.json")); \
+  if(manifest.bundleVersion!=="2026.09.22.1")throw Error("Skill version mismatch"); \
+  for(const entry of manifest.files){const p=root+"/"+entry.path;if(fs.statSync(p).size!==entry.bytes||digest(p)!==entry.sha256)throw Error("Skill payload mismatch");} \
+  await validateSkillBundle({skillsRoot:root+"/skills",catalogPath:root+"/catalog.json",strict:true}); \
+  const current="/opt/forge-skill-bundles/current"; \
+  if(fs.lstatSync(current,{throwIfNoEntry:false})){if(!fs.lstatSync(current).isSymbolicLink())throw Error("Skill current is not a symlink");fs.unlinkSync(current);} \
+  fs.symlinkSync("versions/2026.09.22.1",current); \
+  ' "${SKILL_BUNDLE_MANIFEST_SHA256}"
+ENV FORGE_HARNESS_SKILL_BUNDLE_VERSION=2026.09.22.1
+LABEL com.forge-delivery.harness-skill-bundle="2026.09.22.1"
+LABEL com.forge-delivery.job-observer-guidance.version="2026.09.22.1"
+USER 1000:1000

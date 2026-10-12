@@ -1,0 +1,214 @@
+{
+  "schemaVersion": 1,
+  "bundleVersion": "2026.10.10.94",
+  "cases": [
+    {
+      "id": "read-taskspace-upload",
+      "prompt": "请读取我在当前对话上传的 PDF 和 Excel，只总结内容，不修改项目文件。",
+      "actorRole": "product",
+      "maximumAuthorizedSideEffect": "bounded-derived-write",
+      "expectedSkills": ["project-document-reader"],
+      "forbiddenSkills": ["forge-task-contract"]
+    },
+    {
+      "id": "checkpoint-tested-milestone",
+      "prompt": "这批修改已经测试通过，请只建立一个精确路径的 Git checkpoint，不要部署。",
+      "actorRole": "developer",
+      "maximumAuthorizedSideEffect": "git-write",
+      "expectedSkills": ["forge-git-checkpoint"],
+      "forbiddenSkills": ["forge-controlled-release"]
+    },
+    {
+      "id": "release-approved-candidate",
+      "prompt": "当前干净候选已经批准，请通过项目受控 Runner 发布，不要读取上传资料。",
+      "actorRole": "release-operator",
+      "maximumAuthorizedSideEffect": "controlled-release",
+      "expectedSkills": ["forge-controlled-release"],
+      "forbiddenSkills": ["project-document-reader"]
+    },
+    {
+      "id": "single-owner-taskspace-start",
+      "prompt": "我正在一个 Forge TaskSpace 中开始单人后端修复，请先核对当前 clone 和协作边界；不需要多 Agent。",
+      "actorRole": "developer",
+      "maximumAuthorizedSideEffect": "workspace-write",
+      "expectedSkills": ["forge-taskspace-collaboration"],
+      "forbiddenSkills": ["forge-delivery-orchestrator"]
+    },
+    {
+      "id": "scope-one-bounded-task",
+      "prompt": "开始这个单负责人多步骤任务，先固定当前阶段、允许动作和停止条件；需求合同已经确定。",
+      "actorRole": "developer",
+      "maximumAuthorizedSideEffect": "read-only",
+      "expectedSkills": ["forge-task-contract"],
+      "forbiddenSkills": ["forge-change-design"]
+    },
+    {
+      "id": "design-cross-layer-change",
+      "prompt": "先设计一个跨数据库、API、权限、PC 与 H5 的新业务能力，输出可实施合同，目前没有完成声明需要审计。",
+      "actorRole": "business-analyst",
+      "maximumAuthorizedSideEffect": "bounded-derived-write",
+      "expectedSkills": ["forge-change-design"],
+      "forbiddenSkills": ["forge-evidence-truth"]
+    },
+    {
+      "id": "coordinate-parallel-workstreams",
+      "prompt": "这个 Forge 需求要拆成后端、前端和验证三个独立工作流，请用多 Agent 并行编排并在最后汇合；现在还没有提交或发布。",
+      "actorRole": "developer",
+      "maximumAuthorizedSideEffect": "bounded-derived-write",
+      "expectedSkills": ["forge-delivery-orchestrator"],
+      "forbiddenSkills": ["forge-git-checkpoint", "forge-release-acceptance"]
+    },
+    {
+      "id": "review-requirement-coverage",
+      "prompt": "只读审查已批准需求是否覆盖页面、菜单、接口、表、权限、字典、Excel 和测试，不要修复或发布。",
+      "actorRole": "reviewer",
+      "maximumAuthorizedSideEffect": "read-only",
+      "expectedSkills": ["forge-requirement-coverage"],
+      "forbiddenSkills": ["forge-controlled-release"]
+    },
+    {
+      "id": "review-cross-layer-dictionary",
+      "prompt": "检查订单状态 code 在 Flyway、后端校验、前端回显和 Excel 往返中是否一致；这不是页面布局评审。",
+      "actorRole": "reviewer",
+      "maximumAuthorizedSideEffect": "read-only",
+      "expectedSkills": ["forge-dictionary-contract"],
+      "forbiddenSkills": ["forge-ui-consistency-review", "project-document-reader"]
+    },
+    {
+      "id": "review-ui-consistency",
+      "prompt": "审查新增编辑弹窗与同模块 canonical 表单的布局、回填、busy 和窄屏行为；不涉及枚举或状态码。",
+      "actorRole": "reviewer",
+      "maximumAuthorizedSideEffect": "read-only",
+      "expectedSkills": ["forge-ui-consistency-review"],
+      "forbiddenSkills": ["forge-dictionary-contract"]
+    },
+    {
+      "id": "accept-released-business-flow",
+      "prompt": "版本已经发布，请用真实登录、菜单、CRUD、权限负例和代表性数据做业务验收；不要再次部署。",
+      "actorRole": "product",
+      "maximumAuthorizedSideEffect": "bounded-derived-write",
+      "expectedSkills": ["forge-release-acceptance"],
+      "forbiddenSkills": ["forge-controlled-release"]
+    },
+    {
+      "id": "audit-completion-evidence",
+      "prompt": "有人声称实现、测试、迁移和发布都完成了，请核对提交、命令退出码、报告哈希、镜像与运行版本是否一致；这不是需求覆盖审查。",
+      "actorRole": "reviewer",
+      "maximumAuthorizedSideEffect": "bounded-derived-write",
+      "expectedSkills": ["forge-evidence-truth"],
+      "forbiddenSkills": ["forge-requirement-coverage"]
+    },
+    {
+      "id": "route-current-forge-code-task",
+      "prompt": "在当前 Forge Admin 仓库开始代码任务前，只识别任务档案、风险等级、应加载的领域 Skill 和验证矩阵；本步不要实现、提交或发布。",
+      "actorRole": "developer",
+      "maximumAuthorizedSideEffect": "read-only",
+      "expectedSkills": ["forge-task-router"],
+      "forbiddenSkills": ["forge-controlled-release", "forge-testing-observability"]
+    },
+    {
+      "id": "archive-one-forge-delivery-phase",
+      "prompt": "只执行当前 Forge Admin 的 database 阶段，并按固定阶段卡生成可检查、可归档的 input、result、process、verification、handoff 与 Memory candidate 工作包；不能自行推进阶段或宣称测试通过。",
+      "actorRole": "developer",
+      "maximumAuthorizedSideEffect": "bounded-derived-write",
+      "expectedSkills": ["forge-phase-work-package"],
+      "forbiddenSkills": ["forge-controlled-release"]
+    },
+    {
+      "id": "implement-tenant-table-migration",
+      "prompt": "在当前 Forge Admin v1.1.2 中新增一个普通租户业务表及下一版 Flyway，设计 TenantEntity、审计字段、tombstone 逻辑删除、业务唯一键和升级测试；允许修改工作区，不要发布。",
+      "actorRole": "developer",
+      "maximumAuthorizedSideEffect": "workspace-write",
+      "expectedSkills": ["forge-task-router", "forge-database-migration"],
+      "forbiddenSkills": ["forge-workflow-production"]
+    },
+    {
+      "id": "implement-backend-pagination-boundary",
+      "prompt": "修复当前 Forge 后端某个分页接口的 Controller-Service-Mapper 分层、DTO/VO、PageQuery 上限、稳定排序和错误合同；不改表结构或前端，允许修改工作区。",
+      "actorRole": "developer",
+      "maximumAuthorizedSideEffect": "workspace-write",
+      "expectedSkills": ["forge-task-router", "forge-backend-architecture"],
+      "forbiddenSkills": ["forge-crud-production", "forge-frontend-admin"]
+    },
+    {
+      "id": "implement-production-crud-slice",
+      "prompt": "为当前 Forge Admin 增加一个完整生产 CRUD 垂直切片，覆盖 Flyway、Entity/DTO/VO、Mapper XML、Service、POST-safe Controller、菜单权限、字典、Excel、AiCrudPage 和测试；允许修改工作区但不提交发布。",
+      "actorRole": "developer",
+      "maximumAuthorizedSideEffect": "workspace-write",
+      "expectedSkills": ["forge-task-router", "forge-crud-production"],
+      "forbiddenSkills": ["forge-workflow-production"]
+    },
+    {
+      "id": "implement-admin-ui-state-contract",
+      "prompt": "修改当前 forge-admin-ui 的业务管理页，复用 AiCrudPage、DictSelect、AuthImage 和 canonical layout，修复 Long ID、权限加载、busy/error/empty、窄屏与键盘行为并补 Vitest；只改前端工作区。",
+      "actorRole": "developer",
+      "maximumAuthorizedSideEffect": "workspace-write",
+      "expectedSkills": ["forge-task-router", "forge-frontend-admin"],
+      "forbiddenSkills": ["forge-database-migration", "forge-backend-architecture"]
+    },
+    {
+      "id": "implement-tenant-permission-hardening",
+      "prompt": "加固当前 Forge Admin 的一个受保护 API：补 exact method+path resource、后端权限、租户与数据范围，修复资源缺失和权限未加载时的 fail-open，并增加错误角色、错误租户和直接调用负例；允许修改工作区。",
+      "actorRole": "developer",
+      "maximumAuthorizedSideEffect": "workspace-write",
+      "expectedSkills": ["forge-task-router", "forge-security-tenancy-permission"],
+      "forbiddenSkills": ["forge-workflow-production"]
+    },
+    {
+      "id": "implement-flowable-approval-workflow",
+      "prompt": "在当前 Forge Admin v1.1.2 实现真实 Flowable 审批，定义 code-first binding、BPMN 节点字段权限、DRAFT/IN_PROCESS/NEED_MODIFY 状态、幂等 callback、驳回重提和在途版本测试；禁止用普通 status 字段冒充流程。",
+      "actorRole": "developer",
+      "maximumAuthorizedSideEffect": "workspace-write",
+      "expectedSkills": ["forge-task-router", "forge-workflow-production"],
+      "forbiddenSkills": ["forge-crud-production"]
+    },
+    {
+      "id": "implement-test-observability-evidence",
+      "prompt": "为当前 Forge 后端改动补上真正启用的 Maven 测试、API 负例、结构化脱敏日志、低基数指标、readiness 与告警合同，并生成绑定 diff hash 和退出码的 fresh verification receipt；允许修改测试与观测代码。",
+      "actorRole": "developer",
+      "maximumAuthorizedSideEffect": "workspace-write",
+      "expectedSkills": ["forge-task-router", "forge-testing-observability"],
+      "forbiddenSkills": ["forge-controlled-release"]
+    },
+    {
+      "id": "generic-database-normalization-theory",
+      "prompt": "请一般性解释数据库第三范式，不针对当前 Forge 仓库、迁移、实体或任何交付任务。",
+      "actorRole": "product",
+      "maximumAuthorizedSideEffect": "read-only",
+      "expectedSkills": [],
+      "forbiddenSkills": ["forge-task-router", "forge-database-migration", "forge-phase-work-package"]
+    },
+    {
+      "id": "generic-java-layering-theory",
+      "prompt": "请一般性比较 Java 三层架构与六边形架构，不针对当前 Forge 项目，也不要求实现 CRUD。",
+      "actorRole": "product",
+      "maximumAuthorizedSideEffect": "read-only",
+      "expectedSkills": [],
+      "forbiddenSkills": ["forge-backend-architecture", "forge-crud-production"]
+    },
+    {
+      "id": "generic-vue-rbac-theory",
+      "prompt": "请一般性解释 Vue 组件复用和 RBAC 概念，不针对 forge-admin-ui、租户、权限资源或任何代码修改。",
+      "actorRole": "product",
+      "maximumAuthorizedSideEffect": "read-only",
+      "expectedSkills": [],
+      "forbiddenSkills": ["forge-frontend-admin", "forge-security-tenancy-permission"]
+    },
+    {
+      "id": "generic-bpmn-observability-theory",
+      "prompt": "请一般性解释 BPMN 和可观测性三个支柱，不针对当前 Forge、Flowable、测试或生产交付。",
+      "actorRole": "product",
+      "maximumAuthorizedSideEffect": "read-only",
+      "expectedSkills": [],
+      "forbiddenSkills": ["forge-workflow-production", "forge-testing-observability"]
+    },
+    {
+      "id": "general-rbac-explanation",
+      "prompt": "请一般性解释 RBAC 是什么，不针对当前 Forge 项目、TaskSpace 或交付任务。",
+      "actorRole": "product",
+      "maximumAuthorizedSideEffect": "read-only",
+      "expectedSkills": [],
+      "forbiddenSkills": ["forge-taskspace-collaboration"]
+    }
+  ]
+}

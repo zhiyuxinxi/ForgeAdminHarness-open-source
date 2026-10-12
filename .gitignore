@@ -1,0 +1,50 @@
+.env
+*.local
+*.log
+*.key
+* Key.txt
+服务器账号密码.txt
+git账号密码.txt
+数据库服务器账号密码.txt
+数据库账号密码.txt
+文件网关初始账号.txt
+secrets/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Generated runtime material and secrets
+runtime/
+dist/
+node_modules/
+**/node_modules/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+backups/
+output/playwright/
+output/
+outputs/
+tmp/
+.playwright-cli/
+*.lock.local
+
+# Local Codex design/preflight artifacts are workspace evidence, not source.
+.codex-work/
+premium-audit.json
+
+# Local operator credentials and task runtime state
+harness账号密码.txt
+.local-runtime/
+*账号密码*.txt
+
+# Keep local credentials and runtime evidence private.
+.env.local
+.env.*.local
+application-dev.yml
+application-prod.yml
+**/secrets/
+*.pem
+*.key
+private-audit/

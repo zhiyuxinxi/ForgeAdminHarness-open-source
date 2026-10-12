@@ -1,0 +1,153 @@
+{
+  "sourceEvidence": {
+    "successBaseline": "form-label-publish-01-success-baseline-readonly-01.remote.result.json",
+    "sha256": "5f02a299c0891842a748fa2c7af2a233b8f16b7378c3957e282394cf404ce1c0",
+    "scope": "Recorded safe projections preserve the complete identities, images, failure and paths consumed by this regression."
+  },
+  "failed": {
+    "schemaVersion": 1,
+    "jobId": "4d66ade7-eabb-41f0-a365-e907ea7258fe",
+    "status": "failed",
+    "stage": "failed",
+    "services": [
+      "forge-admin",
+      "forge-ui"
+    ],
+    "startedAt": "2026-10-09T15:24:30.365Z",
+    "updatedAt": "2026-10-09T15:38:29.391Z",
+    "commit": "5ca42d28cc755cacfe8ebcbcbc0b4e96784d4a81",
+    "version": "release-20261009t152514z-5ca42d28cc75",
+    "failedStage": "test-database-snapshot",
+    "completedAt": "2026-10-09T15:38:29.391Z",
+    "provenance": {
+      "taskId": "c-c7ba1f99ab71b692f464657e",
+      "conversationId": "5f3f83c4-5495-41e4-933e-4e7c2f751855",
+      "candidateCommit": "5ca42d28cc755cacfe8ebcbcbc0b4e96784d4a81"
+    },
+    "error": {
+      "code": "TEST_DATABASE_SNAPSHOT_FAILED",
+      "message": "The controlled test-database snapshot step failed.",
+      "stage": "test-database-snapshot",
+      "retryable": false
+    },
+    "testDatabaseSandbox": {
+      "mode": "snapshot-restore-on-failure",
+      "restoreRequired": false
+    }
+  },
+  "error": {
+    "code": "TEST_DATABASE_SNAPSHOT_FAILED",
+    "message": "The controlled test-database snapshot step failed.",
+    "stage": "test-database-snapshot",
+    "retryable": false,
+    "recommendedAction": "Inspect forge-release diagnose and the project-scoped audit evidence before retrying; the main database was not changed by this step.",
+    "diagnosticExcerpt": "docker failed with exit 143."
+  },
+  "cleanupPending": {
+    "containerId": "f0cc0237fb1eea1852a69af7a864fa2561c098856220b66f63ffb2afecc1d773",
+    "error": {
+      "code": "RELEASE_REJECTED",
+      "message": "docker failed with exit 143.",
+      "diagnosticExcerpt": "docker failed with exit 143."
+    }
+  },
+  "released": {
+    "type": "controlled-release",
+    "status": "success",
+    "jobId": "f34ba122-5977-4a03-9fee-d8c67208ddf9",
+    "version": "release-20261009t143934z-ec1f50e417ac",
+    "commit": "ec1f50e417ac418d4b599f3830f75adeae0ad511",
+    "services": [
+      "forge-admin",
+      "forge-ui"
+    ],
+    "startedAt": "2026-10-09T14:46:38.484Z",
+    "completedAt": "2026-10-09T14:47:24.239Z",
+    "provenance": {
+      "taskId": "c-c7ba1f99ab71b692f464657e",
+      "conversationId": "5f3f83c4-5495-41e4-933e-4e7c2f751855",
+      "candidateCommit": "ec1f50e417ac418d4b599f3830f75adeae0ad511"
+    },
+    "testDatabaseSandbox": {
+      "mode": "snapshot-restore-on-failure",
+      "restoreRequired": false,
+      "backup": {
+        "verified": true
+      }
+    },
+    "images": {
+      "forge-admin": {
+        "image": "sha256:ea260ee151beca52e3ff5d04cc1775c29049a78f58217d56ae54a2726cb39fb6",
+        "id": "sha256:ea260ee151beca52e3ff5d04cc1775c29049a78f58217d56ae54a2726cb39fb6"
+      },
+      "forge-ui": {
+        "image": "sha256:ce0d705eca79edd9ee769a2a4025246a1034f4066fb40d1165c8e22e92f645e0",
+        "id": "sha256:ce0d705eca79edd9ee769a2a4025246a1034f4066fb40d1165c8e22e92f645e0"
+      }
+    }
+  },
+  "prepared": {
+    "schemaVersion": 1,
+    "jobId": "4ca61db3-a5bf-4874-8385-5e2b87bd5f8c",
+    "status": "prepared",
+    "commit": "ec1f50e417ac418d4b599f3830f75adeae0ad511",
+    "version": "release-20261009t143934z-ec1f50e417ac",
+    "services": [
+      "forge-admin",
+      "forge-ui"
+    ],
+    "startedAt": "2026-10-09T14:38:51.137Z",
+    "completedAt": "2026-10-09T14:46:32.887Z",
+    "provenance": {
+      "taskId": "c-c7ba1f99ab71b692f464657e",
+      "conversationId": "5f3f83c4-5495-41e4-933e-4e7c2f751855",
+      "candidateCommit": "ec1f50e417ac418d4b599f3830f75adeae0ad511"
+    },
+    "testDatabaseSandbox": {
+      "mode": "snapshot-restore-on-failure",
+      "restoreRequired": false,
+      "backup": {
+        "verified": true
+      }
+    },
+    "images": {
+      "forge-admin": {
+        "image": "forge-forge-base/forge-admin:release-20261009t143934z-ec1f50e417ac",
+        "id": "sha256:ea260ee151beca52e3ff5d04cc1775c29049a78f58217d56ae54a2726cb39fb6"
+      },
+      "forge-ui": {
+        "image": "forge-forge-base/forge-ui:release-20261009t143934z-ec1f50e417ac",
+        "id": "sha256:ce0d705eca79edd9ee769a2a4025246a1034f4066fb40d1165c8e22e92f645e0"
+      }
+    }
+  },
+  "currentPins": {
+    "FORGE_ADMIN_COMMIT": "ec1f50e417ac418d4b599f3830f75adeae0ad511",
+    "FORGE_ADMIN_IMAGE": "sha256:ea260ee151beca52e3ff5d04cc1775c29049a78f58217d56ae54a2726cb39fb6",
+    "FORGE_UI_IMAGE": "sha256:ce0d705eca79edd9ee769a2a4025246a1034f4066fb40d1165c8e22e92f645e0"
+  },
+  "containers": [
+    {
+      "id": "80479cc9c8d5f053777af57b2cddb7efa2e8a15296fbc4828f5edaf9c4b5ae87",
+      "name": "/forge-forge-base-forge-admin-1",
+      "image": "sha256:ea260ee151beca52e3ff5d04cc1775c29049a78f58217d56ae54a2726cb39fb6",
+      "status": "running",
+      "project": "forge-forge-base",
+      "service": "forge-admin"
+    },
+    {
+      "id": "0fe640f01493d0348b760ebace4bfcfe8b0a8ae1f68fe58346bae469caea70af",
+      "name": "/forge-forge-base-forge-ui-1",
+      "image": "sha256:ce0d705eca79edd9ee769a2a4025246a1034f4066fb40d1165c8e22e92f645e0",
+      "status": "running",
+      "project": "forge-forge-base",
+      "service": "forge-ui"
+    }
+  ],
+  "changedPaths": [
+    "forge-admin-ui/src/views/accident/__tests__/accident-report-designer-contract.test.js",
+    "forge-admin-ui/src/views/accident/__tests__/accident-report-form-contract.test.js",
+    "forge-admin-ui/src/views/accident/accident-report-form-contract.js",
+    "forge-admin-ui/src/views/accident/report-form/[type].vue"
+  ]
+}

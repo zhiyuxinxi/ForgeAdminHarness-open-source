@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登录 · 交付隔离台</title>
+  <link rel="stylesheet" href="/forge-gateway/assets/gateway.css">
+</head>
+<body class="auth-page">
+  <main class="auth-shell">
+    <section class="auth-context" aria-labelledby="product-title">
+      <p class="eyebrow">FORGE DELIVERY</p>
+      <h1 id="product-title">一个入口，每个人一组独立对话工作舱</h1>
+      <p class="lede">登录身份、对话归属、代码工作区和 Harness 状态一起隔离。其他人员即使知道端口，也不能进入你的对话。</p>
+      <ol class="isolation-path compact" aria-label="隔离链路">
+        <li><span>01</span><strong>人员身份</strong><small>账号与角色</small></li>
+        <li><span>02</span><strong>我的对话</strong><small>归属实时校验</small></li>
+        <li><span>03</span><strong>独立工作舱</strong><small>代码与状态分开</small></li>
+      </ol>
+    </section>
+    <section class="auth-card" aria-labelledby="login-title">
+      <div>
+        <p class="section-kicker">安全入口</p>
+        <h2 id="login-title">登录交付隔离台</h2>
+        <p class="muted">请使用管理员分配给你的项目账号。</p>
+      </div>
+      <form id="login-form" novalidate>
+        <label for="username">用户名</label>
+        <input id="username" name="username" autocomplete="username" required maxlength="64" spellcheck="false">
+        <label for="password">密码</label>
+        <div class="password-field">
+          <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256">
+          <button class="text-button" type="button" data-password-toggle="password" aria-pressed="false" disabled>显示</button>
+        </div>
+        <p id="form-error" class="form-message error" role="alert" hidden></p>
+        <button id="login-submit" class="primary-button full-width" type="submit">登录</button>
+      </form>
+      <p class="auth-note">首次登录会要求更换临时密码。连续失败过多时，入口会暂时限制尝试。</p>
+    </section>
+  </main>
+  <script type="module" src="/forge-gateway/assets/login.js"></script>
+</body>
+</html>

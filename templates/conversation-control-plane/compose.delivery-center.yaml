@@ -1,0 +1,53 @@
+# Optional, explicitly installed extension. Reuses the existing external MySQL.
+# The Gateway receives only a read-service socket, never database credentials.
+services:
+  conversation-gateway:
+    image: ${DELIVERY_CENTER_GATEWAY_IMAGE:-${DELIVERY_CENTER_IMAGE:-${HARNESS_IMAGE:?HARNESS_IMAGE is required}}}
+    environment:
+      DELIVERY_CENTER_SOCKET: /run/forge-delivery-center/read.sock
+    volumes:
+      - ${DELIVERY_CENTER_ROOT:?DELIVERY_CENTER_ROOT is required}/ipc:/run/forge-delivery-center:ro
+
+  delivery-center-reader:
+    image: ${DELIVERY_CENTER_READER_IMAGE:-${DELIVERY_CENTER_IMAGE:-${HARNESS_IMAGE:?HARNESS_IMAGE is required}}}
+    restart: unless-stopped
+    command: ["node", "/usr/local/lib/delivery-center-service.mjs"]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    environment:
+      DELIVERY_CENTER_SOCKET: /run/forge-delivery-center/read.sock
+      DELIVERY_CENTER_DATABASE_CONFIG_FILE: /run/forge-delivery-center-reader/database.json
+      DELIVERY_CENTER_PROJECT: ${DELIVERY_CENTER_PROJECT:-forge-base}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ${DELIVERY_CENTER_ROOT:?DELIVERY_CENTER_ROOT is required}/ipc:/run/forge-delivery-center
+      - ${DELIVERY_CENTER_ROOT:?DELIVERY_CENTER_ROOT is required}/reader.json:/run/forge-delivery-center-reader/database.json:ro
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=32m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    mem_limit: 256m
+    network_mode: bridge
+
+  delivery-center-importer:
+    image: ${DELIVERY_CENTER_IMAGE:-${HARNESS_IMAGE:?HARNESS_IMAGE is required}}
+    restart: unless-stopped
+    command: ["node", "/usr/local/lib/delivery-center-import.mjs", "--config", "/run/forge-delivery-center-writer/database.json", "--sources", "/run/forge-delivery-center-history/sources.json", "--project", "${DELIVERY_CENTER_PROJECT:-forge-base}", "--watch", "--interval-seconds", "60"]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    volumes:
+      - ${DELIVERY_CENTER_ROOT:?DELIVERY_CENTER_ROOT is required}/writer.json:/run/forge-delivery-center-writer/database.json:ro
+      # Mount the directory so atomic replacement of a packet refreshes its inode.
+      - ${DELIVERY_CENTER_ROOT:?DELIVERY_CENTER_ROOT is required}/history:/run/forge-delivery-center-history:ro
+      # Only committed, explicitly marked process records under code-copilot/changes are collected.
+      - ${DELIVERY_CENTER_DOCUMENT_ROOT:?DELIVERY_CENTER_DOCUMENT_ROOT is required}:/delivery-document-repository:ro
+      # Only the admitted project's phase artifacts and two audit files are mounted.
+      - ${DELIVERY_CENTER_PHASE_ROOT:?DELIVERY_CENTER_PHASE_ROOT is required}:/delivery-projects/${DELIVERY_CENTER_PROJECT:-forge-base}/taskspaces/.broker/delivery-phases:ro
+      - ${DELIVERY_CENTER_RELEASE_AUDIT_PATH:?DELIVERY_CENTER_RELEASE_AUDIT_PATH is required}:/delivery-projects/${DELIVERY_CENTER_PROJECT:-forge-base}/ops/release-audit.jsonl:ro
+      - ${DELIVERY_CENTER_BROKER_AUDIT_PATH:?DELIVERY_CENTER_BROKER_AUDIT_PATH is required}:/delivery-projects/${DELIVERY_CENTER_PROJECT:-forge-base}/taskspaces/.broker/audit.jsonl:ro
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=32m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    mem_limit: 512m
+    network_mode: bridge

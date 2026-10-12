@@ -1,0 +1,53 @@
+name: ${FILE_GATEWAY_COMPOSE_PROJECT_NAME:-forge-file-gateway}
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 20m
+    max-file: "5"
+
+services:
+  sftpgo:
+    image: ${SFTPGO_RUNTIME_IMAGE:?SFTPGO_RUNTIME_IMAGE is required}
+    restart: unless-stopped
+    user: "${FILE_GATEWAY_UID:?FILE_GATEWAY_UID is required}:${FILE_GATEWAY_GID:?FILE_GATEWAY_GID is required}"
+    environment:
+      SFTPGO_LOG_FILE_PATH: ""
+      SFTPGO_DATA_PROVIDER__CREATE_DEFAULT_ADMIN: "true"
+      SFTPGO_DEFAULT_ADMIN_USERNAME: ${SFTPGO_DEFAULT_ADMIN_USERNAME:?SFTPGO_DEFAULT_ADMIN_USERNAME is required}
+      SFTPGO_DEFAULT_ADMIN_PASSWORD: ${SFTPGO_DEFAULT_ADMIN_PASSWORD:?SFTPGO_DEFAULT_ADMIN_PASSWORD is required}
+      SFTPGO_HTTPD__BINDINGS__0__ADDRESS: 0.0.0.0
+      SFTPGO_HTTPD__BINDINGS__0__PORT: "8080"
+      SFTPGO_HTTPD__BINDINGS__0__ENABLE_WEB_ADMIN: "true"
+      SFTPGO_HTTPD__BINDINGS__0__ENABLE_WEB_CLIENT: "true"
+      SFTPGO_HTTPD__BINDINGS__0__ENABLE_REST_API: "true"
+      SFTPGO_SFTPD__BINDINGS__0__ADDRESS: 0.0.0.0
+      SFTPGO_SFTPD__BINDINGS__0__PORT: "2022"
+      TZ: ${TZ:-Asia/Shanghai}
+    ports:
+      - "${FILE_GATEWAY_BIND_ADDRESS:?FILE_GATEWAY_BIND_ADDRESS is required}:${FILE_GATEWAY_HTTP_PORT:?FILE_GATEWAY_HTTP_PORT is required}:8080"
+      - "${FILE_GATEWAY_BIND_ADDRESS:?FILE_GATEWAY_BIND_ADDRESS is required}:${FILE_GATEWAY_SFTP_PORT:?FILE_GATEWAY_SFTP_PORT is required}:2022"
+    volumes:
+      - ${FILE_GATEWAY_DATA_ROOT:?FILE_GATEWAY_DATA_ROOT is required}:/srv/sftpgo/data
+      - ${FILE_GATEWAY_STATE_ROOT:?FILE_GATEWAY_STATE_ROOT is required}:/var/lib/sftpgo
+      - ${FILE_GATEWAY_BACKUP_ROOT:?FILE_GATEWAY_BACKUP_ROOT is required}:/srv/sftpgo/backups
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "sftpgo", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+    logging: *default-logging
+    networks: [gateway]
+
+networks:
+  gateway:
+    driver: bridge

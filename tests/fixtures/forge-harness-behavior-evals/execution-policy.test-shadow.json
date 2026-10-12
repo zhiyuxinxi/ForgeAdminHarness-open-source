@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "policyMode": "test-shadow",
+  "policyVersion": "forge-protected-execution/test-shadow-forge-admin-v1.1.2",
+  "defaultActionCeiling": "read-only",
+  "writerRoutes": [
+    {
+      "routeId": "forge-admin-v1.1.2-crud-complete",
+      "profile": "test-shadow",
+      "sourceCommit": "908e13bdc08ec2cbb071d355a2c33a77c970bdd3",
+      "caseFamily": "crud-complete",
+      "workflowId": "crud-production",
+      "actionCeiling": "workspace-write",
+      "ownedPaths": ["forge-server", "forge-admin-ui"],
+      "taskProfiles": ["requirements", "domain-contract", "migration", "database", "backend", "crud", "dictionary", "frontend-admin", "security", "ui-design", "cross-layer-acceptance"],
+      "requiredProfiles": ["governance", "backend-module-test", "frontend-admin-lint", "frontend-admin-test", "frontend-admin-typecheck", "frontend-admin-build", "changed-safe", "full-regression"]
+    },
+    {
+      "routeId": "forge-admin-v1.1.2-edge-pagination",
+      "profile": "test-shadow",
+      "sourceCommit": "908e13bdc08ec2cbb071d355a2c33a77c970bdd3",
+      "caseFamily": "edge-pagination-shared-owner",
+      "actionCeiling": "workspace-write",
+      "ownedPaths": ["forge-server"],
+      "taskProfiles": ["database", "backend", "shared-owner"],
+      "requiredProfiles": ["governance", "backend-module-test", "full-regression"]
+    },
+    {
+      "routeId": "forge-admin-v1.1.2-frontend-aicrudpage-api-contract",
+      "profile": "test-shadow",
+      "sourceCommit": "908e13bdc08ec2cbb071d355a2c33a77c970bdd3",
+      "caseFamily": "frontend-aicrudpage-api-contract",
+      "actionCeiling": "workspace-write",
+      "ownedPaths": ["forge-admin-ui"],
+      "taskProfiles": ["frontend-admin", "security"],
+      "requiredProfiles": ["governance", "frontend-admin-lint", "frontend-admin-test", "frontend-admin-typecheck", "frontend-admin-build", "changed-safe", "full-regression"]
+    },
+    {
+      "routeId": "forge-admin-v1.1.2-adversarial-shortcuts",
+      "profile": "test-shadow",
+      "sourceCommit": "908e13bdc08ec2cbb071d355a2c33a77c970bdd3",
+      "caseFamily": "adversarial-shortcuts",
+      "workflowId": "crud-production",
+      "actionCeiling": "workspace-write",
+      "ownedPaths": ["forge-server", "forge-admin-ui"],
+      "taskProfiles": ["requirements", "domain-contract", "migration", "database", "backend", "crud", "dictionary", "frontend-admin", "security", "ui-design", "cross-layer-acceptance"],
+      "requiredProfiles": ["governance", "backend-module-test", "frontend-admin-lint", "frontend-admin-test", "frontend-admin-typecheck", "frontend-admin-build", "changed-safe", "full-regression"]
+    }
+  ]
+}

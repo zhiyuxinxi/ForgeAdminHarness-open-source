@@ -1,0 +1,48 @@
+{
+  "sessionId": "session-4877e266-9407-4c8a-a0d0-6469a660a784",
+  "failedSeqs": [
+    82381,
+    82674
+  ],
+  "proposals": [
+    {
+      "goal": "修复管理端用户创建、编辑、重置密码与登录页的输入长度不一致：按现有 sys_user 用户名容量将用户名统一限制为50字符，并将创建、重置与登录密码统一为不降低安全要求的64字符上限，确保正常界面已接受的完整账号与密码不会在登录时被截断；增加聚焦前端合同测试。仅改输入约束，不修改测试账号、数据库、认证流程、首次改密默认或 user_client 默认。",
+      "ownedPaths": [
+        "forge-admin-ui/src/views/login/index.vue",
+        "forge-admin-ui/src/views/system/user.vue",
+        "forge-admin-ui/src/views/system/__tests__/system-management-ui-contract.spec.js"
+      ],
+      "taskProfiles": [
+        "frontend-admin",
+        "security"
+      ],
+      "references": [
+        "forge-admin-ui/src/views/login/index.vue",
+        "forge-admin-ui/src/views/system/user.vue",
+        "forge-admin-ui/src/views/system/__tests__/system-management-ui-contract.spec.js",
+        "forge-server/forge-framework/forge-plugin-parent/forge-plugin-system/src/main/java/com/mdframe/forge/plugin/system/dto/SysUserDTO.java",
+        "forge-server/forge-framework/forge-plugin-parent/forge-plugin-system/src/main/java/com/mdframe/forge/plugin/system/service/impl/SysUserServiceImpl.java",
+        "forge-server/forge-framework/forge-starter-parent/forge-starter-auth/src/main/java/com/mdframe/forge/starter/auth/util/PasswordUtil.java"
+      ]
+    },
+    {
+      "goal": "修复管理端用户创建、编辑、重置密码与登录页的输入长度不一致：将用户名统一限制为50字符，将创建、重置与登录密码统一为64字符上限，确保正常界面接受的完整账号与密码不会在登录时被截断；增加聚焦前端合同测试。仅改输入约束，不修改测试账号、数据库、认证流程、首次改密默认或 user_client 默认。",
+      "ownedPaths": [
+        "forge-admin-ui/src/views/login/index.vue",
+        "forge-admin-ui/src/views/system/user.vue",
+        "forge-admin-ui/src/views/system/__tests__/system-management-ui-contract.spec.js"
+      ],
+      "taskProfiles": [
+        "frontend-admin"
+      ],
+      "references": [
+        "forge-admin-ui/src/views/login/index.vue",
+        "forge-admin-ui/src/views/system/user.vue",
+        "forge-admin-ui/src/views/system/__tests__/system-management-ui-contract.spec.js",
+        "forge-server/forge-framework/forge-plugin-parent/forge-plugin-system/src/main/java/com/mdframe/forge/plugin/system/dto/SysUserDTO.java",
+        "forge-server/forge-framework/forge-plugin-parent/forge-plugin-system/src/main/java/com/mdframe/forge/plugin/system/service/impl/SysUserServiceImpl.java",
+        "forge-server/forge-framework/forge-starter-parent/forge-starter-auth/src/main/java/com/mdframe/forge/starter/auth/util/PasswordUtil.java"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "provenance": "Recorded GPT-5.6 prepare_task request, 2026-09-21; synthetic reference digest for isolated platform tests.",
+  "promptText": "事故事件调查页面，将事故事件上报页面中已通过的事故事件自动流转到故事件调查页面列表，触发时机是上报单\"审批通过\"那一刻自动生成调查任务吗，二是流转后的取值，调查任务里的调查方式、部门/装置、等级、调查期限、负责人是直接取上报单里的值\n\n都生成：所有最终审批通过的上报单，无论是否团队调查，都生成调查任务。调查方式按“是否需要团队调查”映射，是→团队调查、否→单人调查；部门/装置、等级直接取上报单值。调查期限和负责人留空，由委任书流程填写。单人调查也要有负责人/期限的话，需要另定规则，本次不做。\n\n确认执行",
+  "proposal": {
+    "goal": "在事故事件上报单最终审批通过的同一事务中自动生成且仅生成一条事故调查任务；“是否需要团队调查”映射为团队调查/单人，部门/装置和等级直接取上报单，调查期限和负责人保持空值，并补充聚焦回归测试。",
+    "ownedPaths": [
+      "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/accident/report/service/impl/AccidentReportServiceImpl.java",
+      "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/accident/report/mapper/AccidentReportMapper.java",
+      "forge-server/forge-business/forge-business-core/src/main/resources/mapper/business/AccidentReportMapper.xml",
+      "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/accident/investigate/service/impl/AccidentInvestigateServiceImpl.java",
+      "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/accident/investigate/mapper/AccidentInvestigateMapper.java",
+      "forge-server/forge-business/forge-business-core/src/main/resources/mapper/business/AccidentInvestigateMapper.xml",
+      "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/accident/investigate/manager/AccidentInvestigationTaskManager.java",
+      "forge-server/forge-business/forge-business-core/src/test/java/com/mdframe/forge/business/core/accident/report/service/impl/AccidentReportServiceImplApprovalTest.java",
+      "forge-server/forge-business/forge-business-core/src/test/java/com/mdframe/forge/business/core/accident/investigate/manager/AccidentInvestigationTaskManagerTest.java"
+    ],
+    "taskProfiles": [
+      "backend"
+    ],
+    "references": [
+      {
+        "path": "PROJECT_CONTEXT.md",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    ]
+  },
+  "writerScopes": [
+    {
+      "taskProfile": "backend",
+      "ownedPaths": [
+        "forge-server/forge-business"
+      ]
+    },
+    {
+      "taskProfile": "frontend-admin",
+      "ownedPaths": [
+        "forge-admin-ui/src"
+      ]
+    }
+  ]
+}

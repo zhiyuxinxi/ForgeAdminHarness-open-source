@@ -1,0 +1,22 @@
+# Inherit F32 dependencies, Skills and all preceding blocking-chain fixes.
+# Base: sha256:b19bb608688819c4222b8685b8e71930d0fe48b8d764b77864c70963d8b9ab43
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+ARG HOST_RUNNER_MANIFEST_SHA256
+COPY --chmod=0644 docker/harness/forge-protected-acceptance-service.mjs docker/harness/taskspace-broker.mjs docker/harness/verify-policy.mjs /usr/local/lib/
+COPY host-runner-bundle/ /opt/forge-host-runner-bundle/
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.acceptance-recovery /usr/local/share/forge-image-build/Dockerfile.acceptance-recovery
+RUN --network=none node --input-type=module -e '\
+  import fs from "node:fs"; import crypto from "node:crypto"; \
+  import {validateHostRunnerBundle} from "/opt/forge-host-runner-bundle/bin/forge-host-runner-bundle.mjs"; \
+  const root="/opt/forge-host-runner-bundle"; \
+  if(crypto.createHash("sha256").update(fs.readFileSync(root+"/runner.manifest.json")).digest("hex")!==process.argv[1])throw Error("Host manifest mismatch"); \
+  const host=await validateHostRunnerBundle(root,{profileCatalogVersion:"2026.09.03.22"}); \
+  if(host.manifest.bundleVersion!=="2026.09.22.4-acceptance-recovery")throw Error("Host version mismatch"); \
+  await import("/usr/local/lib/forge-protected-acceptance-service.mjs"); \
+  await import("/usr/local/lib/taskspace-broker.mjs"); \
+  ' "${HOST_RUNNER_MANIFEST_SHA256}"
+LABEL com.forge-delivery.acceptance-recovery.version="2026.09.22.1"
+USER 1000:1000

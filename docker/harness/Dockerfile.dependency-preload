@@ -1,0 +1,62 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+USER 0:0
+ARG DEPENDENCY_SEED_MANIFEST_SHA256
+ARG HOST_RUNNER_MANIFEST_SHA256
+ARG PNPM_TOOLCHAIN_RECEIPT_SHA256
+COPY dependency-seed/ /opt/forge-dependency-seed/
+COPY --chmod=0644 docker/harness/host-dependency-seed.mjs /usr/local/lib/host-dependency-seed.mjs
+COPY --chmod=0644 docker/harness/host-verify-policy.mjs /usr/local/lib/host-verify-policy.mjs
+COPY host-runner-bundle/ /opt/forge-host-runner-bundle/
+COPY toolchains/versions/pnpm-10.34.5/ /opt/forge-host-toolchains/versions/pnpm-10.34.5/
+COPY --chmod=0444 toolchains/pnpm-10.34.5.receipt.json /opt/forge-host-toolchains/pnpm-10.34.5.receipt.json
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.dependency-preload /usr/local/share/forge-image-build/Dockerfile.dependency-preload
+COPY --chmod=0644 templates/project/host-verification-contract.json.tpl /usr/local/share/forge-image-build/templates/project/host-verification-contract.json.tpl
+# COPY creates destination roots independently of the source root mode. Preserve
+# the seed subtree permissions and fix only its newly created enclosing directory.
+RUN --network=none chmod 0555 /opt/forge-dependency-seed \
+    && node --input-type=module -e '\
+  import fs from "node:fs"; \
+  import crypto from "node:crypto"; \
+  const root="/opt/forge-dependency-seed"; \
+  const expected=process.argv[1]; \
+  if(!/^[0-9a-f]{64}$/.test(expected)) throw Error("Pinned seed manifest digest required"); \
+  const raw=fs.readFileSync(root+"/manifest.json"); \
+  if(crypto.createHash("sha256").update(raw).digest("hex")!==expected) throw Error("Seed manifest digest mismatch"); \
+  const manifest=JSON.parse(raw); const actual=[]; \
+  const visit=p=>{const s=fs.lstatSync(p);if(s.isSymbolicLink()||(!s.isFile()&&!s.isDirectory())||(s.isFile()&&s.nlink!==1)||(s.mode&0o222))throw Error("Seed must contain only immutable ordinary entries");if(s.isDirectory()){for(const n of fs.readdirSync(p).sort())visit(p+"/"+n);}else if(p!==root+"/manifest.json"){actual.push({path:p.slice(root.length+1),bytes:s.size,sha256:crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")});}}; \
+  visit(root); \
+  actual.sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0); \
+  if(JSON.stringify(actual)!==JSON.stringify(manifest.files)||crypto.createHash("sha256").update(JSON.stringify(actual)).digest("hex")!==manifest.packDigest)throw Error("Seed payload mismatch"); \
+  ' "${DEPENDENCY_SEED_MANIFEST_SHA256}"
+RUN --network=none chmod 0555 /opt/forge-host-toolchains/versions/pnpm-10.34.5 \
+    && node --input-type=module -e '\
+  import fs from "node:fs"; \
+  import path from "node:path"; \
+  import crypto from "node:crypto"; \
+  import {execFileSync} from "node:child_process"; \
+  import {validateHostRunnerBundle} from "/opt/forge-host-runner-bundle/bin/forge-host-runner-bundle.mjs"; \
+  const sha=b=>crypto.createHash("sha256").update(b).digest("hex"); \
+  const pin=(file,expected)=>{if(!/^[0-9a-f]{64}$/.test(expected)||sha(fs.readFileSync(file))!==expected)throw Error("Embedded artifact digest mismatch");}; \
+  const versions=Object.fromEntries(fs.readFileSync("/usr/local/share/forge-image-build/versions.env","utf8").split(/\r?\n/).filter(l=>l&&!l.startsWith("#")).map(l=>{const i=l.indexOf("=");if(i<1)throw Error("Invalid versions input");return[l.slice(0,i),l.slice(i+1)];})); \
+  if(versions.HARNESS_SKILL_BUNDLE_VERSION!=="2026.09.20.2"||versions.FORGE_EXTERNAL_SKILL_BUNDLE_VERSION!=="2026.09.20.2")throw Error("Unchanged Skills version required"); \
+  pin("/opt/forge-host-runner-bundle/runner.manifest.json",process.argv[1]); \
+  const host=await validateHostRunnerBundle("/opt/forge-host-runner-bundle",{profileCatalogVersion:versions.FORGE_PHASE_PROFILE_CATALOG_VERSION}); \
+  if(host.manifest.schemaVersion!=="forge-host-runner-bundle/v7"||host.manifest.bundleVersion!==versions.FORGE_HOST_RUNNER_BUNDLE_VERSION)throw Error("Host bundle version mismatch"); \
+  for(const name of ["host-dependency-seed.mjs","host-verify-policy.mjs"]){if(sha(fs.readFileSync("/usr/local/lib/"+name))!==sha(fs.readFileSync(host.root+"/lib/"+name)))throw Error("Embedded Host consumer mismatch");} \
+  const template=JSON.parse(fs.readFileSync("/usr/local/share/forge-image-build/templates/project/host-verification-contract.json.tpl","utf8")); \
+  if(template.schemaVersion!==2||template.executionMode!=="host-toolchain"||template.dependencySeed!==null)throw Error("Host contract template mismatch"); \
+  const root="/opt/forge-host-toolchains/versions/pnpm-10.34.5"; \
+  const receiptPath="/opt/forge-host-toolchains/pnpm-10.34.5.receipt.json";pin(receiptPath,process.argv[2]); \
+  const receipt=JSON.parse(fs.readFileSync(receiptPath,"utf8")); \
+  if(receipt.schemaVersion!==1||receipt.package!=="pnpm"||receipt.version!=="10.34.5"||!Array.isArray(receipt.files))throw Error("pnpm receipt identity mismatch"); \
+  if(typeof receipt.entrypoint!=="string"||!receipt.entrypoint.startsWith("lib/node_modules/pnpm/")||receipt.entrypoint.includes("\\")||receipt.entrypoint.split("/").some(p=>!p||p==="."||p===".."))throw Error("pnpm receipt entrypoint unsafe"); \
+  const files=[];const visit=(directory,relative="")=>{const info=fs.lstatSync(directory);if(!info.isDirectory()||info.isSymbolicLink()||(info.mode&0o222))throw Error("pnpm directory unsafe");for(const name of fs.readdirSync(directory).sort()){const file=path.join(directory,name),child=relative?relative+"/"+name:name,s=fs.lstatSync(file);if(s.isDirectory()&&!s.isSymbolicLink())visit(file,child);else{if(!s.isFile()||s.isSymbolicLink()||s.nlink!==1||(s.mode&0o222))throw Error("pnpm file unsafe");files.push({path:child,bytes:s.size,sha256:sha(fs.readFileSync(file)),executable:Boolean(s.mode&0o111)});}}};visit(root); \
+  files.sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);const tree=crypto.createHash("sha256");for(const f of files)tree.update(f.path+"\0"+f.sha256+"\0"+f.bytes+"\0"); \
+  if(JSON.stringify(files)!==JSON.stringify(receipt.files)||tree.digest("hex")!==receipt.treeSha256)throw Error("pnpm toolchain payload mismatch"); \
+  const pkg=JSON.parse(fs.readFileSync(root+"/lib/node_modules/pnpm/package.json","utf8"));if(pkg.name!=="pnpm"||pkg.version!=="10.34.5"||"lib/node_modules/pnpm/"+pkg.bin.pnpm!==receipt.entrypoint)throw Error("pnpm package entrypoint mismatch"); \
+  if(execFileSync(process.execPath,[path.join(root,receipt.entrypoint),"--version"],{cwd:"/tmp",env:{PATH:process.env.PATH,HOME:"/tmp",CI:"true"},encoding:"utf8"}).trim()!=="10.34.5")throw Error("Image pnpm version probe failed"); \
+  ' "${HOST_RUNNER_MANIFEST_SHA256}" "${PNPM_TOOLCHAIN_RECEIPT_SHA256}"
+USER 1000:1000

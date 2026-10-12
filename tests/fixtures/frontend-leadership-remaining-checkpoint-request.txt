@@ -1,0 +1,10 @@
+继续原领导引领力24页前端标准化的受控保存。这是原任务范围内剩余四个已完成文件，不是新增业务或扩大Owner目标：
+
+- forge-admin-ui/src/views/leadership/action-plan.vue
+- forge-admin-ui/src/views/leadership/fee-accrual.vue
+- forge-admin-ui/src/views/leadership/resp-book.vue
+- forge-admin-ui/src/views/leadership/target-task.vue
+
+保留已建立的checkpoint 6783e81fb3247030c16b2eaa05b43256027819cb以及这四个未提交改动。在本次新请求的正常 prepare_task 中申报上述真实范围，并执行受控 checkpoint 保存它们，不在上一请求内强改已绑定提案，不绕过CONVERSATION_TASK_PROPOSAL_CONFLICT。
+
+这些文件和相应检查始终在原业务授权内，无需再次询问Owner。复用候选原c658e988的有效检查，并让正常工具核对保存后绑定；只补确实缺少的必要治理证据，不重跑已经通过的21项或重写页面。当前不集成、不推送、不发布、不跨端协调。若本次正常新请求仍被平台拒绝，则保留精确原错误和四文件，不换词重试，报告实际保存边界。

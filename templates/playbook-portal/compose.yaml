@@ -1,0 +1,35 @@
+name: ${PLAYBOOK_COMPOSE_PROJECT_NAME:-forge-playbook-portal}
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 20m
+    max-file: "5"
+
+services:
+  portal:
+    image: ${PLAYBOOK_RUNTIME_IMAGE:?PLAYBOOK_RUNTIME_IMAGE is required}
+    restart: unless-stopped
+    user: "101:101"
+    ports:
+      - "${PLAYBOOK_BIND_ADDRESS:?PLAYBOOK_BIND_ADDRESS is required}:${PLAYBOOK_HTTP_PORT:?PLAYBOOK_HTTP_PORT is required}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    stop_grace_period: 15s
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 4s
+      retries: 6
+      start_period: 5s
+    logging: *default-logging
+    networks: [portal]
+
+networks:
+  portal:
+    driver: bridge

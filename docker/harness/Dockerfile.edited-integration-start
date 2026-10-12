@@ -1,0 +1,9 @@
+# Reuse the validated runtime and dependencies; align integration with the edited candidate.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 docker/harness/forge-phase-budget-guard.mjs docker/harness/taskspace-broker.mjs /usr/local/lib/
+COPY --chmod=0644 docker/harness/Dockerfile.edited-integration-start /usr/local/share/forge-image-build/
+RUN --network=none node --check /usr/local/lib/forge-phase-budget-guard.mjs && node --check /usr/local/lib/taskspace-broker.mjs
+LABEL com.forge-delivery.edited-integration-start.version="2026.09.22.1"
+USER 1000:1000

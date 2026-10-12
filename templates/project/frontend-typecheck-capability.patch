@@ -1,0 +1,190 @@
+diff --git a/forge-admin-ui/package.json b/forge-admin-ui/package.json
+index 0fcb905..f2fe694 100644
+--- a/forge-admin-ui/package.json
++++ b/forge-admin-ui/package.json
+@@ -14,7 +14,8 @@
+     "test:ui": "vitest --ui",
+     "up": "taze major -I",
+     "build:stage": "node --max_old_space_size=4096 ./node_modules/vite/bin/vite.js build && npm run deploy:stage",
+-    "deploy:stage": "esno deploy/index.js"
++    "deploy:stage": "esno deploy/index.js",
++    "typecheck": "vue-tsc --noEmit --project jsconfig.json"
+   },
+   "dependencies": {
+     "@arco-design/color": "^0.4.0",
+@@ -93,6 +94,7 @@
+     "sass": "^1.93.2",
+     "ssh2-sftp-client": "^12.1.1",
+     "taze": "^19.3.0",
++    "typescript": "5.9.3",
+     "unocss": "^66.4.2",
+     "unplugin-auto-import": "^20.0.0",
+     "unplugin-vue-components": "^29.0.0",
+@@ -101,6 +103,7 @@
+     "vite-plugin-vue-devtools": "^8.0.1",
+     "vitepress": "2.0.0-alpha.12",
+     "vitest": "^2.1.9",
++    "vue-tsc": "3.3.11",
+     "vue3-intro-step": "^1.0.5"
+   }
+ }
+diff --git a/forge-admin-ui/pnpm-lock.yaml b/forge-admin-ui/pnpm-lock.yaml
+index 5a8c8ea..28666ab 100644
+--- a/forge-admin-ui/pnpm-lock.yaml
++++ b/forge-admin-ui/pnpm-lock.yaml
+@@ -231,6 +231,9 @@ importers:
+       taze:
+         specifier: ^19.3.0
+         version: 19.10.0
++      typescript:
++        specifier: 5.9.3
++        version: 5.9.3
+       unocss:
+         specifier: ^66.4.2
+         version: 66.6.6(vite@8.2.1(esbuild@0.27.4)(jiti@2.6.1)(sass@1.98.0)(tsx@4.21.0)(yaml@2.8.2))
+@@ -255,6 +258,9 @@ importers:
+       vitest:
+         specifier: ^2.1.9
+         version: 2.1.9(@vitest/ui@2.1.9)(jsdom@25.0.1)(lightningcss@1.33.0)(sass@1.98.0)
++      vue-tsc:
++        specifier: 3.3.11
++        version: 3.3.11(typescript@5.9.3)
+       vue3-intro-step:
+         specifier: ^1.0.5
+         version: 1.0.5(vue@3.5.30(typescript@5.9.3))
+@@ -2416,6 +2422,9 @@ packages:
+   '@volar/source-map@2.4.28':
+     resolution: {integrity: sha512-yX2BDBqJkRXfKw8my8VarTyjv48QwxdJtvRgUpNE5erCsgEUdI2DsLbpa+rOQVAJYshY99szEcRDmyHbF10ggQ==}
+ 
++  '@volar/typescript@2.4.28':
++    resolution: {integrity: sha512-Ja6yvWrbis2QtN4ClAKreeUZPVYMARDYZl9LMEv1iQ1QdepB6wn0jTRxA9MftYmYa4DQ4k/DaSZpFPUfxl8giw==}
++
+   '@vue-macros/common@3.1.2':
+     resolution: {integrity: sha512-h9t4ArDdniO9ekYHAD95t9AZcAbb19lEGK+26iAjUODOIJKmObDNBSe4+6ELQAA3vtYiFPPBtHh7+cQCKi3Dng==}
+     engines: {node: '>=20.19.0'}
+@@ -2498,6 +2507,9 @@ packages:
+   '@vue/language-core@3.2.6':
+     resolution: {integrity: sha512-xYYYX3/aVup576tP/23sEUpgiEnujrENaoNRbaozC1/MA9I6EGFQRJb4xrt/MmUCAGlxTKL2RmT8JLTPqagCkg==}
+ 
++  '@vue/language-core@3.3.11':
++    resolution: {integrity: sha512-QJmpliwAVpC/OxubIByPAhNzsQPRc8/gxlN2qnVzVfIMjMDz/9RnXRFoetjz5yEgXVXyp4LqhXq3V53PjmNzFw==}
++
+   '@vue/reactivity@3.5.30':
+     resolution: {integrity: sha512-179YNgKATuwj9gB+66snskRDOitDiuOZqkYia7mHKJaidOMo/WJxHKF8DuGc4V4XbYTJANlfEKb0yxTQotnx4Q==}
+ 
+@@ -2729,6 +2741,9 @@ packages:
+   alien-signals@3.1.2:
+     resolution: {integrity: sha512-d9dYqZTS90WLiU0I5c6DHj/HcKkF8ZyGN3G5x8wSbslulz70KOxaqCT0hQCo9KOyhVqzqGojvNdJXoTumZOtcw==}
+ 
++  alien-signals@3.2.1:
++    resolution: {integrity: sha512-I8FjmltrfnDFoZedi5CG8DghVYNhzb/Ijluz7tCSJH0xpd0484Kowhbb1XDYOxfJpU1p5wnM2X54dA+IfGyD1g==}
++
+   ansi-regex@5.0.1:
+     resolution: {integrity: sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==}
+     engines: {node: '>=8'}
+@@ -6374,6 +6389,9 @@ packages:
+     peerDependencies:
+       vue: ^3.0.0
+ 
++  vscode-uri@3.2.0:
++    resolution: {integrity: sha512-m2gXo3bn0G1kT9InzMf07fTbqMbGtyckj3bH5ktLO+1Ssv+yiATZ4dhwaQv9UZWxJh6E9IFGnQyjgWVDWVBDrg==}
++
+   vue-component-type-helpers@3.3.1:
+     resolution: {integrity: sha512-pu58kqxmVyEH6VfNYW1UyEfR3XAnJ27ZXT3yzXxxpjLxVzAbyC35Zk/nm/RMs7ijWnJNSd9fWkeex2OhUsx3MA==}
+ 
+@@ -6409,6 +6427,12 @@ packages:
+     peerDependencies:
+       vue: ^3.5.0
+ 
++  vue-tsc@3.3.11:
++    resolution: {integrity: sha512-gOb0B9rtU2+f1dszwPqSH5kAieIF9ReeLhD3kSRNHv5WZZUQz/JdVXW0RTdqhNTMlQkqKzrTTviqKr/4FYZraQ==}
++    hasBin: true
++    peerDependencies:
++      typescript: '>=5.0.0'
++
+   vue3-intro-step@1.0.5:
+     resolution: {integrity: sha512-MV+Y2VZCRVWGFgmwxaAFq0opANe7Yj/xEyL5Zox2z+8JNbU1Y6vkbGivT+yKbqc4o+Q/ui0z45zizI7GCouDmw==}
+     engines: {node: '>=12'}
+@@ -8887,6 +8911,12 @@ snapshots:
+ 
+   '@volar/source-map@2.4.28': {}
+ 
++  '@volar/typescript@2.4.28':
++    dependencies:
++      '@volar/language-core': 2.4.28
++      path-browserify: 1.0.1
++      vscode-uri: 3.2.0
++
+   '@vue-macros/common@3.1.2(vue@3.5.30(typescript@5.9.3))':
+     dependencies:
+       '@vue/compiler-sfc': 3.5.30
+@@ -9034,6 +9064,16 @@ snapshots:
+       path-browserify: 1.0.1
+       picomatch: 4.0.3
+ 
++  '@vue/language-core@3.3.11':
++    dependencies:
++      '@volar/language-core': 2.4.28
++      '@vue/compiler-dom': 3.5.30
++      '@vue/shared': 3.5.30
++      alien-signals: 3.2.1
++      muggle-string: 0.4.1
++      path-browserify: 1.0.1
++      picomatch: 4.0.5
++
+   '@vue/reactivity@3.5.30':
+     dependencies:
+       '@vue/shared': 3.5.30
+@@ -9279,6 +9319,8 @@ snapshots:
+ 
+   alien-signals@3.1.2: {}
+ 
++  alien-signals@3.2.1: {}
++
+   ansi-regex@5.0.1: {}
+ 
+   ansi-regex@6.2.2: {}
+@@ -13468,6 +13510,8 @@ snapshots:
+       evtd: 0.2.4
+       vue: 3.5.30(typescript@5.9.3)
+ 
++  vscode-uri@3.2.0: {}
++
+   vue-component-type-helpers@3.3.1: {}
+ 
+   vue-demi@0.13.11(vue@3.5.30(typescript@5.9.3)):
+@@ -13501,6 +13545,12 @@ snapshots:
+       '@vue/devtools-api': 6.6.4
+       vue: 3.5.30(typescript@5.9.3)
+ 
++  vue-tsc@3.3.11(typescript@5.9.3):
++    dependencies:
++      '@volar/typescript': 2.4.28
++      '@vue/language-core': 3.3.11
++      typescript: 5.9.3
++
+   vue3-intro-step@1.0.5(vue@3.5.30(typescript@5.9.3)):
+     dependencies:
+       vue: 3.5.30(typescript@5.9.3)
+diff --git a/forge-admin-ui/jsconfig.json b/forge-admin-ui/jsconfig.json
+index cb67dbf..e23aaeb 100644
+--- a/forge-admin-ui/jsconfig.json
++++ b/forge-admin-ui/jsconfig.json
+@@ -1,6 +1,7 @@
+ {
+   "compilerOptions": {
+     "target": "ESNext",
+     "jsx": "preserve",
+     "baseUrl": "./",
++    "module": "ESNext",
+     "moduleResolution": "node",
+@@ -8,7 +9,8 @@
+       "@/*": ["src/*"],
+       "~/*": ["./*"]
+     },
+-    "allowJs": true
++    "allowJs": true,
++    "esModuleInterop": true
+   },
+   "exclude": ["node_modules", "dist"]
+ }

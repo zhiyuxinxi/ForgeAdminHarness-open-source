@@ -1,0 +1,164 @@
+# Frozen compatibility contract for schema-v1 TaskSpaces created before the
+# external Skills, actor UUID, GLM and governance-context mounts
+# became mandatory. Lifecycle code selects this file only for preserved v1
+# metadata; all new TaskSpaces use compose.yaml.
+name: ${TASKSPACE_COMPOSE_PROJECT_NAME:?TASKSPACE_COMPOSE_PROJECT_NAME is required}
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 20m
+    max-file: "5"
+
+services:
+  harness:
+    image: ${HARNESS_IMAGE:?HARNESS_IMAGE is required}
+    restart: unless-stopped
+    working_dir: /workspace
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    environment:
+      HOME: /home/node
+      DSH_HOME: /home/node/.dsh
+      # Existing schema-v1 workpods use the same explicit proxy opt-in as v2.
+      NODE_USE_ENV_PROXY: ${TASKSPACE_HTTPS_PROXY:+1}
+      HTTPS_PROXY: ${TASKSPACE_HTTPS_PROXY:-}
+      NO_PROXY: localhost,127.0.0.1,::1,taskspace-broker,harness-upload${TASKSPACE_NO_PROXY:+,}${TASKSPACE_NO_PROXY:-}
+      MAVEN_CONFIG: /workspace/.forge-cache/m2
+      MAVEN_OPTS: -Dmaven.repo.local=/workspace/.forge-cache/m2/repository -Djansi.tmpdir=/workspace/.forge-cache/general/jansi
+      NPM_CONFIG_CACHE: /workspace/.forge-cache/npm
+      XDG_CACHE_HOME: /workspace/.forge-cache/general
+      XDG_DATA_HOME: /workspace/.forge-cache/pnpm/data
+      XDG_STATE_HOME: /workspace/.forge-cache/general/state
+      PNPM_HOME: /workspace/.forge-cache/pnpm/home
+      DSH_TELEMETRY_DISABLED: "1"
+      HARNESS_DEFAULT_WORKSPACE: /workspace
+      HARNESS_DEFAULT_WORKSPACE_TITLE: "Forge Admin · ${PROJECT_SLUG:?PROJECT_SLUG is required}"
+      HARNESS_BIND_ADDRESS: 127.0.0.1
+      HARNESS_PROXY_ADDRESS: 0.0.0.0
+      HARNESS_INTERNAL_PORT: 3080
+      HARNESS_TRUSTED_HOST: ${FORGE_BIND_ADDRESS:?FORGE_BIND_ADDRESS is required}:${TASKSPACE_HARNESS_PORT:?TASKSPACE_HARNESS_PORT is required}
+      HARNESS_PRIVILEGED_API_MODE: ${HARNESS_PRIVILEGED_API_MODE:-trusted-host}
+      HARNESS_HISTORY_PAGE_MESSAGES: ${HARNESS_HISTORY_PAGE_MESSAGES:-5}
+      HARNESS_ACCESS_MODE: ${TASKSPACE_ACCESS_MODE:-token}
+      HARNESS_ACCESS_TOKEN_FILE: /run/forge-taskspace/browser-access-token
+      HARNESS_ACCESS_AUTHZ_SOCKET: /run/forge-conversation-auth/authorize.sock
+      HARNESS_LOGIN_URL: ${CONVERSATION_GATEWAY_LOGIN_URL:-}
+      HARNESS_MAINTENANCE_FENCE_FILE: /run/forge-taskspace-maintenance/proxy-fence.json
+      HARNESS_UPLOAD_HOST: harness-upload
+      HARNESS_UPLOAD_PORT: "3090"
+      HARNESS_UPLOAD_TOKEN: ${HARNESS_UPLOAD_TOKEN:?HARNESS_UPLOAD_TOKEN is required}
+      HARNESS_PORT: ${TASKSPACE_HARNESS_PORT:?TASKSPACE_HARNESS_PORT is required}
+      HARNESS_DOCUMENT_INPUT_ROOT: /project-inputs
+      HARNESS_DOCUMENT_INPUT_ROOTS: /project-inputs:/project-ftp-inputs:/project-shared-inputs
+      HARNESS_DOCUMENT_MAX_SOURCE_BYTES: ${HARNESS_DOCUMENT_MAX_SOURCE_BYTES:-26214400}
+      HARNESS_DOCUMENT_MAX_OUTPUT_BYTES: ${HARNESS_DOCUMENT_MAX_OUTPUT_BYTES:-1048576}
+      HARNESS_DOCUMENT_MAX_PDF_PAGES: ${HARNESS_DOCUMENT_MAX_PDF_PAGES:-200}
+      HARNESS_DOCUMENT_MAX_SPREADSHEET_ROWS: ${HARNESS_DOCUMENT_MAX_SPREADSHEET_ROWS:-2000}
+      HARNESS_DOCUMENT_MAX_SPREADSHEET_COLUMNS: ${HARNESS_DOCUMENT_MAX_SPREADSHEET_COLUMNS:-100}
+      HARNESS_PROTOTYPE_DIRECTORY_STABILITY_MS: ${HARNESS_PROTOTYPE_DIRECTORY_STABILITY_MS:-2000}
+      FORGE_TASKSPACE_BROKER_URL: http://taskspace-broker:3100
+      FORGE_TASKSPACE_TOKEN_FILE: /run/forge-taskspace/broker-token
+      PROJECT_SLUG: ${PROJECT_SLUG:?PROJECT_SLUG is required}
+      FORGE_TASKSPACE_ID: ${TASKSPACE_ID:?TASKSPACE_ID is required}
+      FORGE_TASKSPACE_ACTOR_ID: ${TASKSPACE_ACTOR_ID:?TASKSPACE_ACTOR_ID is required}
+      FORGE_TASKSPACE_CONVERSATION_ID: ${TASKSPACE_CONVERSATION_ID:?TASKSPACE_CONVERSATION_ID is required}
+      TZ: ${TZ:-Asia/Shanghai}
+    secrets:
+      - deepseek-api-key
+      - kimi-api-key
+    ports:
+      - "${FORGE_BIND_ADDRESS:?FORGE_BIND_ADDRESS is required}:${TASKSPACE_HARNESS_PORT:?TASKSPACE_HARNESS_PORT is required}:${TASKSPACE_HARNESS_PORT:?TASKSPACE_HARNESS_PORT is required}"
+    volumes:
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/workspace:/workspace
+      - ${PROJECT_ROOT:?PROJECT_ROOT is required}/workspace:/integration:ro
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/dsh-home:/home/node/.dsh
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/uploads:/project-inputs:ro
+      - ${PROJECT_FTP_INPUT_ROOT:?PROJECT_FTP_INPUT_ROOT is required}:/project-ftp-inputs:ro
+      - ${PROJECT_SHARED_INPUT_ROOT:?PROJECT_SHARED_INPUT_ROOT is required}:/project-shared-inputs:ro
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/tokens/browser:/run/forge-taskspace/browser-access-token:ro
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/tokens/broker:/run/forge-taskspace/broker-token:ro
+      - ${PLATFORM_CONVERSATION_AUTH_ROOT:?PLATFORM_CONVERSATION_AUTH_ROOT is required}:/run/forge-conversation-auth:ro
+      - type: bind
+        source: ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/maintenance
+        target: /run/forge-taskspace-maintenance
+        read_only: true
+        bind:
+          create_host_path: false
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/cache/m2:/workspace/.forge-cache/m2
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/cache/npm:/workspace/.forge-cache/npm
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/cache/pnpm:/workspace/.forge-cache/pnpm
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/cache/general:/workspace/.forge-cache/general
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=1g
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 1024
+    stop_grace_period: 30s
+    logging: *default-logging
+    depends_on:
+      harness-upload:
+        condition: service_healthy
+    networks: [project-application, project-taskspaces, uploads]
+
+  harness-upload:
+    image: ${HARNESS_IMAGE:?HARNESS_IMAGE is required}
+    restart: unless-stopped
+    command: ["node", "/usr/local/lib/harness-upload-server.mjs"]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    environment:
+      HARNESS_UPLOAD_ADDRESS: 0.0.0.0
+      HARNESS_UPLOAD_PORT: "3090"
+      HARNESS_UPLOAD_ROOT: /project-uploads
+      HARNESS_UPLOAD_PUBLIC_PATH: /project-inputs
+      HARNESS_UPLOAD_TOKEN: ${HARNESS_UPLOAD_TOKEN:?HARNESS_UPLOAD_TOKEN is required}
+      HARNESS_UPLOAD_SCOPE_TYPE: taskspace-private
+      HARNESS_UPLOAD_PROJECT_SLUG: ${PROJECT_SLUG:?PROJECT_SLUG is required}
+      HARNESS_UPLOAD_TASKSPACE_ID: ${TASKSPACE_ID:?TASKSPACE_ID is required}
+      HARNESS_UPLOAD_ACTOR_ID: ${TASKSPACE_ACTOR_ID:?TASKSPACE_ACTOR_ID is required}
+      HARNESS_UPLOAD_CONVERSATION_ID: ${TASKSPACE_CONVERSATION_ID:?TASKSPACE_CONVERSATION_ID is required}
+      HARNESS_UPLOAD_MAX_FILE_BYTES: ${HARNESS_UPLOAD_MAX_FILE_BYTES:-52428800}
+      HARNESS_UPLOAD_MAX_BATCH_FILES: ${HARNESS_UPLOAD_MAX_BATCH_FILES:-20}
+      HARNESS_UPLOAD_MAX_BATCH_BYTES: ${HARNESS_UPLOAD_MAX_BATCH_BYTES:-209715200}
+      HARNESS_UPLOAD_MAX_PROJECT_BYTES: ${HARNESS_UPLOAD_MAX_PROJECT_BYTES:-10737418240}
+      HARNESS_DOCUMENT_MAX_SOURCE_BYTES: ${HARNESS_DOCUMENT_MAX_SOURCE_BYTES:-26214400}
+      HARNESS_DOCUMENT_MAX_OUTPUT_BYTES: ${HARNESS_DOCUMENT_MAX_OUTPUT_BYTES:-1048576}
+      HARNESS_DOCUMENT_MAX_PDF_PAGES: ${HARNESS_DOCUMENT_MAX_PDF_PAGES:-200}
+      HARNESS_DOCUMENT_MAX_SPREADSHEET_ROWS: ${HARNESS_DOCUMENT_MAX_SPREADSHEET_ROWS:-2000}
+      HARNESS_DOCUMENT_MAX_SPREADSHEET_COLUMNS: ${HARNESS_DOCUMENT_MAX_SPREADSHEET_COLUMNS:-100}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/uploads:/project-uploads
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 768m
+    cpus: "1.0"
+    logging: *default-logging
+    networks: [uploads]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3090/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+
+networks:
+  project-application:
+    external: true
+    name: ${PROJECT_COMPOSE_NAME:?PROJECT_COMPOSE_NAME is required}_application
+  project-taskspaces:
+    external: true
+    name: ${PROJECT_COMPOSE_NAME:?PROJECT_COMPOSE_NAME is required}_taskspaces
+  uploads:
+    driver: bridge
+    internal: true
+
+secrets:
+  deepseek-api-key:
+    file: ${DEEPSEEK_KEY_FILE:?DEEPSEEK_KEY_FILE is required}
+  kimi-api-key:
+    file: ${KIMI_KEY_FILE:?KIMI_KEY_FILE is required}

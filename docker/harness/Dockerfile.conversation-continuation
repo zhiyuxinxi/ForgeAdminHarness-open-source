@@ -1,0 +1,22 @@
+# Reuse the published dependency layers and update the conversation consumers.
+# Reviewed base ID: sha256:328dae51b9d634e13e87c13d96d0bf0baed1adf26622e5631fc33c3f67330422
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+ARG HOST_RUNNER_MANIFEST_SHA256
+COPY --chmod=0644 docker/harness/forge-protected-acceptance-service.mjs docker/harness/forge-conversation-task-proposal.mjs docker/harness/forge-conversation-task-preparation.mjs docker/harness/forge-phase-budget-guard.mjs docker/harness/forge-production-task-grant.mjs docker/harness/forge-execution-context.mjs docker/harness/forge-execution-state.mjs docker/harness/forge-task-execution-contract.mjs docker/harness/conversation-gateway.mjs docker/harness/conversation-manager.mjs docker/harness/taskspace-broker.mjs /usr/local/lib/
+COPY host-runner-bundle/ /opt/forge-host-runner-bundle/
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.conversation-continuation /usr/local/share/forge-image-build/Dockerfile.conversation-continuation
+RUN --network=none node --input-type=module -e '\
+  import fs from "node:fs"; import crypto from "node:crypto"; \
+  import {validateHostRunnerBundle} from "/opt/forge-host-runner-bundle/bin/forge-host-runner-bundle.mjs"; \
+  const root="/opt/forge-host-runner-bundle"; \
+  if(crypto.createHash("sha256").update(fs.readFileSync(root+"/runner.manifest.json")).digest("hex")!==process.argv[1])throw Error("Host manifest mismatch"); \
+  const host=await validateHostRunnerBundle(root,{profileCatalogVersion:"2026.09.03.22"}); \
+  if(host.manifest.bundleVersion!=="2026.09.21.5-conversation-continuation")throw Error("Host bundle version mismatch"); \
+  for (const name of ["forge-protected-acceptance-service", "forge-conversation-task-proposal", "forge-conversation-task-preparation", "forge-production-task-grant", "forge-execution-context", "conversation-gateway", "conversation-manager"]) \
+    await import("/usr/local/lib/" + name + ".mjs"); \
+  ' "${HOST_RUNNER_MANIFEST_SHA256}" && node --check /usr/local/lib/forge-phase-budget-guard.mjs
+LABEL com.forge-delivery.conversation-continuation.version="2026.09.21.1"
+USER 1000:1000

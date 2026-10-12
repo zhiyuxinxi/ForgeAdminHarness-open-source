@@ -1,0 +1,30 @@
+{
+  "request": {
+    "schemaVersion": 1,
+    "requestType": "forge-business-data/approval-request",
+    "requestId": "123e4567-e89b-42d3-a456-426614174001",
+    "projectSlug": "forge-admin",
+    "action": "supplier-status-update",
+    "objects": [
+      { "objectType": "supplier", "objectId": "supplier-9", "beforeSha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "afterSha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "fields": ["status", "remark"] },
+      { "objectType": "supplier", "objectId": "supplier-3", "beforeSha256": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "afterSha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "fields": ["status"] }
+    ],
+    "scope": { "tenantId": "tenant-7", "purpose": "reviewed-supplier-transition", "maximumObjects": 2 },
+    "actor": { "actorUserId": "123e4567-e89b-42d3-a456-426614174000" },
+    "source": { "head": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "fingerprint": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" },
+    "requestedAt": "2026-09-01T00:00:00.000Z",
+    "expiresAt": "2026-09-01T00:15:00.000Z"
+  },
+  "attestation": {
+    "schemaVersion": 1,
+    "attestationType": "forge-business-data/protected-approval",
+    "approvalId": "123e4567-e89b-42d3-a456-426614174002",
+    "requestDigest": "$REQUEST_DIGEST",
+    "decision": "approved",
+    "approvedAt": "2026-09-01T00:01:00.000Z",
+    "expiresAt": "2026-09-01T00:14:00.000Z",
+    "authorizedActorUserId": "123e4567-e89b-42d3-a456-426614174000",
+    "issuer": { "subjectId": "owner-approver", "keyId": "approval-key-1", "role": "business-data-approver" },
+    "signature": "protected-signature-envelope"
+  }
+}

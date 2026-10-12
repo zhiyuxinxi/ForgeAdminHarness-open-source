@@ -1,0 +1,5 @@
+{
+  "prompt": "继续第五批实际审批验收。5e71d3ec/e06bc62c于09:52:23实际发布；普通76现在catalog/options能读到全局目录、stock/page不再返回org6库存，且通过正常UI成功登记org25库存2103422702735212546，初始0.0000kg。保留这次已验证的组织边界和目录修复。\n现在正常入库提交POST /business/security/chemical/drug/ledger/submit返回code500“数据访问异常”。实际输入stockId=2103422702735212546，quantity=12.3456，cumulativeQuantity=12.3456，registerDate=2026-09-25，attachmentIds=197ce36b0d2f47569a31d5c9d27b14c1。真实17:57:32后端日志：SQLSyntaxErrorException Unknown column 'inventory_applied' in 'field list'，来源SecurityChemicalMapper.xml的selectScopedRecord，经SecurityChemicalServiceImpl.requireEntity:157和submitLedger:94调用，SQL同时选择inventory_applied和inventory_applied_at。请核实际实体/迁移/现有表映射，修复这个新查询的真实列错误及直接相关读取，不能凭SQL字符串测试算可用。不要关闭组织或租户校验，不回退刚修好的范围。完成必要有效测试、受控提交、集成、发布和终态回收。\n正常浏览器台账提交前记录数为0，Root没有制造台账/流程数据；这次失败是否原子回滚请依据已有事务和源码核对，不能自动删除或改写测试数据。之后我会从同一库存记录正常UI继续审批。\n前一轮密码接口修复仍被平台提案路径分类阻塞，Root已复现真实拒绝项是ChangePasswordRequest.java和ClientCredentialSurfaceContractTest.java等源文件名含敏感词，不是已证明两个控制器未授权。该平台问题由Root另行最小修复；你现在先完成这个可以推进的入库查询修复，密码接口候选保持未实施，不要改名绕过路径校验、不要重复发送前一轮提案。无需全仓检查，不读取凭据，不创建用户或伪造库存/审批结果。",
+  "sessionId": "session-4877e266-9407-4c8a-a0d0-6469a660a784",
+  "failedSeq": 99498
+}

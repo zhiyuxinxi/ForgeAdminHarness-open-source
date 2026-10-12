@@ -1,0 +1,9 @@
+# Preserve the validated runtime and dependencies; update only request recognition.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 docker/harness/forge-protected-acceptance-service.mjs /usr/local/lib/forge-protected-acceptance-service.mjs
+COPY --chmod=0644 docker/harness/Dockerfile.edit-release-intent /usr/local/share/forge-image-build/
+RUN --network=none node --check /usr/local/lib/forge-protected-acceptance-service.mjs
+LABEL com.forge-delivery.edit-release-intent.version="2026.09.22.1"
+USER 1000:1000

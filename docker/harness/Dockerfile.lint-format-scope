@@ -1,0 +1,24 @@
+# Preserve the verified candidate renewal, Skills and dependency layers.
+# Base: sha256:d80baaa2d64aa258aa2abc5d1b0f4d10c157b1db0d6a30eeeed53bb5235e378e
+ARG BASE_IMAGE=forge-delivery/deepseek-harness:0.1.1-rc.2-candidate-validity-renewal-20260922-1
+FROM ${BASE_IMAGE}
+USER 0:0
+ARG HOST_RUNNER_MANIFEST_SHA256
+COPY --chmod=0644 docker/harness/verify-policy.mjs docker/harness/host-verify-policy.mjs docker/harness/host-verification-runner.mjs /usr/local/lib/
+COPY --chmod=0644 docker/harness/forge-job-completion-wakeup-patch.mjs /usr/local/lib/forge-job-completion-wakeup-patch.mjs
+RUN --network=none node /usr/local/lib/forge-job-completion-wakeup-patch.mjs /opt/forge-harness-runtime/node_modules
+COPY host-runner-bundle/ /opt/forge-host-runner-bundle/
+COPY --chmod=0644 config/versions.env docker/harness/Dockerfile.lint-format-scope docker/harness/Dockerfile docker/harness/Dockerfile.overlay docker/harness/image-build-inputs.json /usr/local/share/forge-image-build/
+RUN --network=none node --input-type=module -e '\
+  import fs from "node:fs"; import crypto from "node:crypto"; \
+  import {validateHostRunnerBundle} from "/opt/forge-host-runner-bundle/bin/forge-host-runner-bundle.mjs"; \
+  const root="/opt/forge-host-runner-bundle"; \
+  const sha=p=>crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex"); \
+  if(sha(root+"/runner.manifest.json")!==process.argv[1])throw Error("Host manifest mismatch"); \
+  const bundle=await validateHostRunnerBundle(root,{profileCatalogVersion:"2026.09.03.22",nodeMajor:24}); \
+  if(bundle.manifest.bundleVersion!=="2026.09.22.6-lint-format-scope")throw Error("Host version mismatch"); \
+  for(const name of ["verify-policy","host-verify-policy","host-verification-runner"]){ \
+    if(sha(root+"/lib/"+name+".mjs")!==sha("/usr/local/lib/"+name+".mjs"))throw Error("Host/image module mismatch: "+name); \
+  }' "${HOST_RUNNER_MANIFEST_SHA256}"
+LABEL com.forge-delivery.lint-format-scope.version="2026.09.22.6"
+USER 1000:1000

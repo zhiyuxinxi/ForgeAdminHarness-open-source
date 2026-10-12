@@ -1,0 +1,473 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-10-10",
+  "updates": [
+    {
+      "id": "20261010-workpod-create",
+      "date": "2026-10-10",
+      "type": "fixed",
+      "title": "修复一类工作舱一直打不开的问题",
+      "before": "新建或重新打开工作舱时，页面可能一直等待。用户不知道还要等多久，也担心重新创建会丢掉原来的工作。",
+      "after": "修复了本次查明的卡住原因。一个此前打开失败的工作舱，已经通过原来的打开按钮恢复，原对话也保留下来。",
+      "benefit": "遇到这类故障时，少做重新建舱、搬代码、重新解释需求的工作。",
+      "scope": "已在当前平台修复，并验证一个原失败工作舱恢复。其他存储或网络问题仍可能造成等待。",
+      "status": "released",
+      "roles": [
+        "developer",
+        "delivery",
+        "ops"
+      ],
+      "featureIds": [
+        "personal-workspace",
+        "project-bootstrap"
+      ]
+    },
+    {
+      "id": "20261010-preserving-stop",
+      "date": "2026-10-10",
+      "type": "improved",
+      "title": "暂时不用的工作舱可以停下来，工作成果留下来",
+      "before": "点击停止后，有时会卡在清理运行环境这一步。用户还要找人确认代码、对话和上传资料是否保住了。",
+      "after": "符合当前配置的工作舱停止时，只停运行服务，保留代码、对话和资料。旧配置的工作舱按其兼容方式处理。",
+      "benefit": "不用一直开着暂时不做的任务来保留成果，减少闲置资源占用，也方便以后接着做。",
+      "scope": "已在当前平台使用，并验证指定旧舱停止后资料仍在。停止不等于删除或销毁。",
+      "status": "released",
+      "roles": [
+        "owner",
+        "developer",
+        "ops",
+        "delivery"
+      ],
+      "featureIds": [
+        "personal-workspace",
+        "project-backup-recovery"
+      ]
+    },
+    {
+      "id": "20261010-submit-feedback",
+      "date": "2026-10-10",
+      "type": "improved",
+      "title": "点发送后，能看到正在等什么、已经等了多久",
+      "before": "点发送后没有明显反馈；等待超时后，输入框有时还不能用。用户容易反复点击，也容易误以为 AI 已经开始工作。",
+      "after": "显示等待状态和已等待时间；任务还没发出去时可以取消。确认发送失败后恢复输入；如果还不能确定是否已发送，会先防止重复提交。",
+      "benefit": "少猜测、少重复点击。等待或发送失败时，更容易判断下一步该做什么。",
+      "scope": "已更新平台入口、指定工作舱及普通和双语项目的新舱配置。旧页面需刷新，其他旧舱未批量重启更新。",
+      "status": "released",
+      "roles": [
+        "owner",
+        "product",
+        "developer",
+        "tester",
+        "delivery"
+      ],
+      "featureIds": [
+        "visible-outcomes",
+        "conversation-resume"
+      ]
+    },
+    {
+      "id": "20261010-independent-prepare",
+      "date": "2026-10-10",
+      "type": "fixed",
+      "title": "别人开关工作舱时，减少对你发送任务的影响",
+      "before": "别人创建或停止工作舱比较慢时，你发送的任务也可能跟着排队，迟迟交不到 AI 手里。",
+      "after": "不同工作舱分别准备任务，开关工作舱的慢操作不再占着大家共用的任务准备队列。同一个工作舱里的操作仍按顺序处理。",
+      "benefit": "多人同时工作时，少等别人的环境操作，自己的任务可以更独立地推进。",
+      "scope": "普通和双语项目已更新，原受影响对话已正常收到消息并完成回复。具体等待时间仍取决于当时的任务和环境。",
+      "status": "released",
+      "roles": [
+        "owner",
+        "product",
+        "developer",
+        "tester",
+        "delivery"
+      ],
+      "featureIds": [
+        "personal-workspace",
+        "parallel-integration"
+      ]
+    },
+    {
+      "id": "20261010-scope-compatibility",
+      "date": "2026-10-10",
+      "type": "fixed",
+      "title": "平台更新后，旧工作舱可以继续识别项目权限",
+      "before": "平台更新项目权限信息后，部分旧工作舱看不懂新信息，连查看当前任务允许做什么都会报错。",
+      "after": "补齐旧工作舱对新权限信息的支持，新建工作舱也使用修正后的版本。原有的项目权限限制继续保留。",
+      "benefit": "不用因为平台版本不一致重新建舱、搬资料，可以留在原对话里继续工作。",
+      "scope": "本次覆盖29个工作舱和6个项目的新舱配置；原已停止的舱保持停止。原舱、新舱都已通过真实对话验证。",
+      "status": "released",
+      "roles": [
+        "developer",
+        "tester",
+        "ops",
+        "delivery"
+      ],
+      "featureIds": [
+        "scope-control",
+        "upgrade-existing-projects"
+      ]
+    },
+    {
+      "id": "20261010-standard-pages",
+      "date": "2026-10-10",
+      "type": "improved",
+      "title": "让 AI 做出的列表页，查询、表格和按钮有共同摆法",
+      "before": "每次让 AI 做台账，查询条件、按钮、表格设置和翻页的位置都可能变。使用者要重新找，产品和测试要反复纠正。",
+      "after": "常见台账共用一套查询区、工具栏、表格设置、分页和主题。已用独立生成的页面检查这些规则是否真正用上。",
+      "benefit": "使用者少重新适应，开发少从头拼页面，产品和测试少为同一种布局问题来回返工。",
+      "scope": "公共规则和本次使用环境已更新，代表台账及分类页面已验证。旧业务页面仍按各自改造进度更新。",
+      "status": "released",
+      "roles": [
+        "product",
+        "developer",
+        "tester",
+        "delivery",
+        "sales",
+        "designer"
+      ],
+      "featureIds": [
+        "standard-page-layout"
+      ]
+    },
+    {
+      "id": "20261010-standard-forms",
+      "date": "2026-10-10",
+      "type": "improved",
+      "title": "新增、编辑、查看详情和提交失败，有共同处理方式",
+      "before": "有的页面提交失败就清空输入，有的编辑页面不能正确带回原来的值，按钮顺序也不一样。这些细节需要逐页提醒 AI。",
+      "after": "统一常见表单和详情的做法：编辑时带回原值，失败时保留输入，提示需要修改的内容，并支持重试、防止重复提交。",
+      "benefit": "使用者少重复填写、少误操作；产品、开发和测试少逐页补相同的交互要求。",
+      "scope": "公共规则、代表样本和本次指定页面已验证。复杂业务页面仍需单独设计和验收。",
+      "status": "released",
+      "roles": [
+        "product",
+        "developer",
+        "tester",
+        "delivery",
+        "designer"
+      ],
+      "featureIds": [
+        "standard-form-feedback"
+      ]
+    },
+    {
+      "id": "20261010-bulk-actions",
+      "date": "2026-10-10",
+      "type": "improved",
+      "title": "批量删除部分失败时，留下失败项继续处理",
+      "before": "选中多条记录删除后，如果只有一部分失败，用户可能不知道哪些已删、哪些没删，只能重新逐条核对。",
+      "after": "普通台账统一显示已选数量和删除确认。部分删除成功后刷新结果，保留失败项，并允许只重试这些失败项。",
+      "benefit": "少逐条删除、少重新核对；开发和测试也不用在每个列表重复制作这套处理方式。",
+      "scope": "公共功能和代表页面已验证，未为验证删除生产业务数据。各页面是否开放批删，仍按业务需求和权限决定。",
+      "status": "released",
+      "roles": [
+        "product",
+        "developer",
+        "tester",
+        "delivery"
+      ],
+      "featureIds": [
+        "safe-batch-actions"
+      ]
+    },
+    {
+      "id": "20261010-designer-maintenance",
+      "date": "2026-10-10",
+      "type": "fixed",
+      "title": "在设计器里改过的名称，页面能正确显示出来",
+      "before": "在设计器里改了名称并保存，实际列表或表单却可能没变；再次保存时，还可能漏掉原有字段。",
+      "after": "修正名称保存和页面读取的问题。已按修改、保存、重新打开、查看实际页面的顺序验证，并核对原有字段没有丢失。",
+      "benefit": "产品和交付人员调整已开放的显示名称时，少找开发人员定位代码、修改后再发布。",
+      "scope": "已验证代表页面。只适用于已经接入设计器的配置，不能用它接管任意手写页面或复杂业务。",
+      "status": "released",
+      "roles": [
+        "product",
+        "developer",
+        "tester",
+        "delivery",
+        "designer"
+      ],
+      "featureIds": [
+        "lowcode-designers"
+      ]
+    },
+    {
+      "id": "20261009-generation-guidance",
+      "date": "2026-10-09",
+      "type": "improved",
+      "title": "以后让 AI 做页面，不用每次重讲同一套规范",
+      "before": "团队已经定好页面规范，但换一个 AI 或新开一段对话，仍可能重新生成另一套布局和操作方式。",
+      "after": "把常见页面、新增编辑删除、布局和反馈要求放进 AI 实际使用的开发指导，并与现有公共组件一起维护。",
+      "benefit": "开发少重复写基础要求，产品和测试少反复纠正查询区、表单和按钮的常见问题。",
+      "scope": "本次涉及的三处 AI 工作环境已更新，Harness 已独立生成代表页面。复杂页面仍需明确需求并检查结果。",
+      "status": "released",
+      "roles": [
+        "owner",
+        "product",
+        "developer",
+        "tester",
+        "delivery",
+        "designer"
+      ],
+      "featureIds": [
+        "reusable-skills",
+        "standard-page-layout"
+      ]
+    },
+    {
+      "id": "20261009-i18n-resources",
+      "date": "2026-10-09",
+      "type": "fixed",
+      "title": "修复两条公共提示的中英文缺漏",
+      "before": "公共提示只补了英文、漏了中文，双语项目可能读取异常。只在一个项目里补好，新项目还可能再遇到同样问题。",
+      "after": "补齐两条提示的中英文，同时更新公共代码、新项目基础版本和本次涉及的使用环境。相关检查也会提示漏写、重复或空白的翻译。",
+      "benefit": "不同项目少重复修同一处翻译问题，测试和交付也更容易提前发现漏翻译。",
+      "scope": "两条公共提示及相关检查已更新，指定双语后端已上线。其他业务文案和导出内容仍需各自验收。",
+      "status": "released",
+      "roles": [
+        "product",
+        "developer",
+        "tester",
+        "delivery",
+        "sales"
+      ],
+      "featureIds": [
+        "bilingual-foundation"
+      ]
+    },
+    {
+      "id": "20261009-dependency-reuse",
+      "date": "2026-10-09",
+      "type": "fixed",
+      "title": "检查代码前，减少重复准备的等待",
+      "before": "让 AI 检查前端代码时，有时检查还没开始，就在准备开发需要的组件这一步等很久，即使这些组件之前已经准备好。",
+      "after": "本次输入和需要的组件没有变化时，沿用上次核对结果；只有发生变化或发现异常，才重新完整核对。",
+      "benefit": "开发和测试少等一遍重复准备，运维少排查由反复读取相同文件引起的卡顿。",
+      "scope": "已更新实际准备流程和原工作舱，并验证后续成功复用。不同任务的节省时间不同，未给出统一提速比例。",
+      "status": "released",
+      "roles": [
+        "owner",
+        "developer",
+        "tester",
+        "ops",
+        "delivery"
+      ],
+      "featureIds": [
+        "dependency-reuse"
+      ]
+    },
+    {
+      "id": "20261009-parallel-save",
+      "date": "2026-10-09",
+      "type": "fixed",
+      "title": "同事正在发布时，你仍可以保存自己的修改",
+      "before": "同一项目里，只要另一个工作舱正在发布，你有时连保存自己已经做好的修改都要等。",
+      "after": "允许一个工作舱发布、另一个工作舱保存各自修改。同一个工作舱里会相互冲突的操作仍按顺序进行。",
+      "benefit": "不用等同事发布完才能保存成果，少互相阻塞，也减少长时间未保存的风险。",
+      "scope": "本次涉及的普通、双语项目及新项目配置已更新。原来保存失败的任务仍需继续处理，不能算作已保存或已发布。",
+      "status": "released",
+      "roles": [
+        "developer",
+        "tester",
+        "ops",
+        "delivery"
+      ],
+      "featureIds": [
+        "checkpoint-save",
+        "parallel-integration"
+      ]
+    },
+    {
+      "id": "20261009-release-cleanup",
+      "date": "2026-10-09",
+      "type": "fixed",
+      "title": "发布准备做成功了，不会因后续清理慢被报成失败",
+      "before": "发布前的数据更新计划已经处理成功，但清理临时环境花得太久，页面却把整件事报成失败，大家又回头查已经完成的步骤。",
+      "after": "把计划处理结果和临时环境清理情况分开记录。计划成功就保留成功结果；计划本身失败仍如实报错。",
+      "benefit": "开发和运维能直接处理真正没完成的步骤，少重复准备、少查错方向。",
+      "scope": "已更新本次受影响的普通项目发布服务和新项目配置。没有该故障的其他旧服务未一并升级。",
+      "status": "released",
+      "roles": [
+        "developer",
+        "tester",
+        "ops",
+        "delivery"
+      ],
+      "featureIds": [
+        "controlled-release",
+        "release-health"
+      ]
+    },
+    {
+      "id": "20261009-check-scope",
+      "date": "2026-10-09",
+      "type": "fixed",
+      "title": "说“这次不改数据库”，不再因此多出一项数据库检查",
+      "before": "只想改界面，并特意说明不要当作数据库变更，平台却可能反过来要求数据库检查，让简单修改卡住。",
+      "after": "修正本次出现的否定表达误判。真正要改数据库的任务，仍保留应做的检查。",
+      "benefit": "少反复解释自己没要做什么，也少等与这次修改无关的检查。",
+      "scope": "已更新并用原请求及相关表达验证。只解决本次查明的误判，不代表所有说法都已识别正确。",
+      "status": "released",
+      "roles": [
+        "product",
+        "developer",
+        "tester",
+        "delivery"
+      ],
+      "featureIds": [
+        "scope-control",
+        "standard-verification"
+      ]
+    },
+    {
+      "id": "20261009-new-project-defaults",
+      "date": "2026-10-09",
+      "type": "improved",
+      "title": "创建新项目时，用上已经修好的平台版本",
+      "before": "平台问题已经修好，新项目却还可能按旧配置创建，团队又遇到同一个问题，还得找人补更新。",
+      "after": "把项目创建时使用的版本配置和实际创建流程对齐，让之后的新项目使用本次已交付的版本。",
+      "benefit": "新项目少做一次补环境、查版本和重复排障，运维也少逐项目补救。",
+      "scope": "已核对实际创建入口使用的版本。既有项目和旧工作舱不会因此自动升级。",
+      "status": "released",
+      "roles": [
+        "owner",
+        "developer",
+        "ops",
+        "delivery"
+      ],
+      "featureIds": [
+        "project-bootstrap",
+        "public-improvement-reuse"
+      ]
+    },
+    {
+      "id": "20261009-delivery-materials",
+      "date": "2026-10-09",
+      "type": "improved",
+      "title": "需求中心能看到更完整的接口和数据说明",
+      "before": "已有资料里写了接口和数据字段，需求中心展示时却漏掉一部分。查看者还要翻原文、再找开发确认。",
+      "after": "补全阅读页面原先漏掉的接口、数据字段和来源说明，让已有资料展示得更完整。",
+      "benefit": "产品、开发、测试和交付少来回翻材料、问同一个问题，可以围绕同一份说明讨论。",
+      "scope": "本次展示修复已上线。页面展示的是项目已有资料，不会自动补齐尚未整理的内容。",
+      "status": "released",
+      "roles": [
+        "product",
+        "developer",
+        "tester",
+        "delivery",
+        "sales"
+      ],
+      "featureIds": [
+        "delivery-document-center",
+        "source-traceability"
+      ]
+    },
+    {
+      "id": "20261008-model-control",
+      "date": "2026-10-08",
+      "type": "fixed",
+      "title": "回到原对话后，可以继续选模型和输入消息",
+      "before": "离开页面后再回到原对话，模型按钮和输入框有时仍是锁住的，实际上会话已经可以继续工作。",
+      "after": "确认原会话恢复后，页面同步恢复可操作状态。真正已移除的会话仍不能继续操作。",
+      "benefit": "少刷新、少重建对话，也少找人手动解锁，可以接着原来的任务做。",
+      "scope": "指定工作舱及普通、双语项目的新舱配置已更新，并通过真实对话验证。其他未升级旧舱不在本次范围内。",
+      "status": "released",
+      "roles": [
+        "product",
+        "developer",
+        "tester",
+        "delivery"
+      ],
+      "featureIds": [
+        "managed-models",
+        "conversation-resume"
+      ]
+    },
+    {
+      "id": "20261008-real-progress",
+      "date": "2026-10-08",
+      "type": "improved",
+      "title": "AI 已停下时，任务清单不再一直让人等",
+      "before": "AI 已经停止，清单却还显示进行中；以前通过的检查，也可能被误说成现在仍能直接发布。",
+      "after": "按实际对话和连接情况显示正在执行、已停止或暂时无法确认；发布权限已过期时，也会纠正“已经可以发布”的旧提示。",
+      "benefit": "负责人、开发和测试更容易判断该继续等还是处理问题，少盯着已不再运行的任务，也少把旧结果当成新进度。",
+      "scope": "指定工作舱及新舱配置已更新，并通过真实对话验证。业务是否完成，仍看当前任务和本次发布结果。",
+      "status": "released",
+      "roles": [
+        "owner",
+        "product",
+        "developer",
+        "tester",
+        "delivery"
+      ],
+      "featureIds": [
+        "visible-outcomes",
+        "truthful-completion"
+      ]
+    },
+    {
+      "id": "20261005-bilingual-tabs",
+      "date": "2026-10-05",
+      "type": "fixed",
+      "title": "切换语言后，已打开页面的标签名称跟着切换",
+      "before": "切换中英文后，菜单名称变了，顶部已打开页面的标签却可能还是另一种语言，看起来对不上。",
+      "after": "页面标签使用与菜单、当前页面对应的语言名称，同时保留原有标签信息。",
+      "benefit": "使用者更容易认出自己打开的是哪一页，团队也少在每个双语项目重复修同一处显示问题。",
+      "scope": "公共代码和新项目基础版本已更新。既有项目未随本次发布自动升级，需使用更新后的版本才生效。",
+      "status": "partial",
+      "roles": [
+        "product",
+        "developer",
+        "tester",
+        "delivery"
+      ],
+      "featureIds": [
+        "bilingual-foundation"
+      ]
+    },
+    {
+      "id": "20261005-bilingual-user-labels",
+      "date": "2026-10-05",
+      "type": "fixed",
+      "title": "用户列表里的两处列名，补齐中英文显示",
+      "before": "切换语言后，用户列表里仍有部分列名混用另一种语言。",
+      "after": "修正两处列名，让它们使用对应的中英文名称，新项目也包含这项修复。",
+      "benefit": "查看用户资料时少遇到中英文混杂，交付团队少逐项目修改同样的列名。",
+      "scope": "公共代码和新项目基础版本已更新，既有客户系统未随本次升级。",
+      "status": "partial",
+      "roles": [
+        "product",
+        "developer",
+        "tester",
+        "delivery"
+      ],
+      "featureIds": [
+        "bilingual-foundation"
+      ]
+    },
+    {
+      "id": "20261004-bilingual-foundation",
+      "date": "2026-10-04",
+      "type": "new",
+      "title": "做中英双语项目，不用从头补一遍基础翻译能力",
+      "before": "每来一个双语项目，都要重新处理语言切换、公共提示、设计器和导出，容易一边做业务、一边补相同的基础问题。",
+      "after": "把已经完成的双语能力放进可复用的公共版本，供管理后台、移动网页、报表、服务提示、导出和页面生成等环节使用。",
+      "benefit": "团队少重复搭双语基础，把时间留给客户自己的业务词汇、页面和流程；售前也更容易说明哪些已有、哪些还要做。",
+      "scope": "公共版本已发布，新项目可以使用。旧项目需另外升级，具体业务页面仍需翻译检查和使用验收。",
+      "status": "partial",
+      "roles": [
+        "owner",
+        "product",
+        "developer",
+        "tester",
+        "delivery",
+        "sales"
+      ],
+      "featureIds": [
+        "bilingual-foundation",
+        "project-baseline"
+      ]
+    }
+  ]
+}

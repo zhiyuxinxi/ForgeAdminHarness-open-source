@@ -1,0 +1,34 @@
+{
+  "prompt": "继续同一 B06 候选，完成可追溯 checkpoint。平台现已修复这句正常请求的授权识别，并同步了实际接受授权与续接的运行服务。你原来的 23 个路径、准备结果和候选修改继续有效，不要重新 propose 覆盖已绑定任务，也不要缩成另一个范围。\n\n复用已通过的 14/14 测试回执 59e1aad2-3f48-4cd6-b2fb-9e82e171cbd9，以及最新 backend-source-quality 回执 9be95def-616a-4b55-9093-9c4b8441deee；本轮没有业务源码变化时不重跑。保留原失败扫描和结构发现，不把结构发现写成全绿。\n\n请沿现有受控 checkpoint 工具完成当前候选的本地提交，报告真实提交、回执与剩余未验证项。当前只授权此候选收尾，不集成 canonical、不发布应用、不执行真实数据迁移。业务身份和历史歧义处理仍由本会话负责，不让外部操作员代写或代提交。\n",
+  "ownedPaths": [
+    "forge-server/db/migration/V1.0.20261018__bind_leadership_and_accident_assignments_to_user_ids.sql",
+    "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/accident/investigate/domain/AccidentInvestigate.java",
+    "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/accident/investigate/mapper/AccidentInvestigateMapper.java",
+    "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/accident/investigate/service/impl/AccidentInvestigateServiceImpl.java",
+    "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/identity/StableUserAssignment.java",
+    "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/identity/StableUserAssignmentMapper.java",
+    "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/identity/StableUserAssignmentResolver.java",
+    "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/leadership/domain/CommitmentSigner.java",
+    "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/leadership/domain/LeadershipTodo.java",
+    "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/leadership/domain/RespBookSign.java",
+    "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/leadership/manager/AssessApprovalWorkflowManager.java",
+    "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/leadership/manager/LeadershipWorkbenchManager.java",
+    "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/leadership/mapper/LeadershipTodoMapper.java",
+    "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/leadership/service/impl/CommitmentServiceImpl.java",
+    "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/leadership/service/impl/LeadershipTodoServiceImpl.java",
+    "forge-server/forge-business/forge-business-core/src/main/resources/mapper/business/AccidentInvestigateMapper.xml",
+    "forge-server/forge-business/forge-business-core/src/main/resources/mapper/business/LeadershipTodoMapper.xml",
+    "forge-server/forge-business/forge-business-core/src/main/resources/mapper/business/StableUserAssignmentMapper.xml",
+    "forge-server/forge-business/forge-business-core/src/test/java/com/mdframe/forge/business/core/accident/investigate/service/impl/AccidentInvestigateServiceImplAutoCreateTest.java",
+    "forge-server/forge-business/forge-business-core/src/test/java/com/mdframe/forge/business/core/accident/investigate/service/impl/AccidentInvestigateServiceImplIdentityTest.java",
+    "forge-server/forge-business/forge-business-core/src/test/java/com/mdframe/forge/business/core/accident/investigate/service/impl/AccidentInvestigateServiceImplTenantBoundaryTest.java",
+    "forge-server/forge-business/forge-business-core/src/test/java/com/mdframe/forge/business/core/identity/StableUserAssignmentResolverTest.java",
+    "forge-server/forge-business/forge-business-core/src/test/java/com/mdframe/forge/business/core/leadership/service/LeadershipTodoServiceImplTest.java"
+  ],
+  "taskProfiles": [
+    "migration",
+    "database",
+    "backend",
+    "security"
+  ]
+}

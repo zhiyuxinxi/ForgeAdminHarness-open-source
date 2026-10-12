@@ -1,0 +1,27 @@
+# Retain the verified focused acceptance service and all installed dependency layers.
+# Base sha256:436d2e6bb16bf4a8291e713c56b581810338c09ca440c3cbbace5782c888296e.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+ARG SKILL_BUNDLE_MANIFEST_SHA256
+COPY skill-bundle/ /opt/forge-skill-bundles/versions/2026.09.22.3/
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.focused-acceptance docker/harness/Dockerfile.overlay /usr/local/share/forge-image-build/
+RUN --network=none node --check /usr/local/bin/forge-verify && node --input-type=module -e '\
+  import fs from "node:fs"; import crypto from "node:crypto"; \
+  import {validateSkillBundle} from "/usr/local/lib/validate-skill-bundle.mjs"; \
+  const root="/opt/forge-skill-bundles/versions/2026.09.22.3"; \
+  const digest=(p)=>crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex"); \
+  if(digest(root+"/bundle.manifest.json")!==process.argv[1])throw Error("Skill manifest mismatch"); \
+  const manifest=JSON.parse(fs.readFileSync(root+"/bundle.manifest.json")); \
+  if(manifest.bundleVersion!=="2026.09.22.3")throw Error("Skill version mismatch"); \
+  for(const entry of manifest.files){const p=root+"/"+entry.path;if(fs.statSync(p).size!==entry.bytes||digest(p)!==entry.sha256)throw Error("Skill payload mismatch");} \
+  await validateSkillBundle({skillsRoot:root+"/skills",catalogPath:root+"/catalog.json",strict:true}); \
+  const current="/opt/forge-skill-bundles/current"; \
+  if(fs.lstatSync(current,{throwIfNoEntry:false})){if(!fs.lstatSync(current).isSymbolicLink())throw Error("Skill current is not a symlink");fs.unlinkSync(current);} \
+  fs.symlinkSync("versions/2026.09.22.3",current); \
+  ' "${SKILL_BUNDLE_MANIFEST_SHA256}"
+ENV FORGE_HARNESS_SKILL_BUNDLE_VERSION=2026.09.22.3
+LABEL com.forge-delivery.harness-skill-bundle="2026.09.22.3"
+LABEL com.forge-delivery.focused-acceptance.version="2026.09.22.3"
+USER 1000:1000

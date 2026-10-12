@@ -1,0 +1,4 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY --chmod=0644 docker/harness/forge-phase-budget-guard.mjs /usr/local/lib/
+LABEL com.forge-delivery.workflow-friction-suspension.version="2026.09.19.1"

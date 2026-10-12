@@ -1,0 +1,14 @@
+.git
+.gitignore
+config/platform.env
+* Key.txt
+output/playwright/
+output/
+outputs/
+runtime
+backups
+**/project.env
+**/.env
+**/node_modules
+**/dist
+**/target

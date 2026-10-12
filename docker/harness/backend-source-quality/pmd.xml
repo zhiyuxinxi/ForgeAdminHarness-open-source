@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="Forge backend source review" xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.github.io/schema/ruleset_2_0_0.xsd">
+  <description>Bounded source checks. Design findings require review; they are not proof of a business defect.</description>
+  <rule ref="category/java/design.xml/CognitiveComplexity"><properties><property name="reportLevel" value="20"/></properties></rule>
+  <rule ref="category/java/design.xml/NcssCount"><properties><property name="methodReportLevel" value="80"/><property name="classReportLevel" value="800"/></properties></rule>
+  <rule ref="category/java/design.xml/GodClass"/>
+  <rule ref="category/java/design.xml/TooManyMethods"><properties><property name="maxmethods" value="50"/></properties></rule>
+  <rule ref="category/java/design.xml/CouplingBetweenObjects"><properties><property name="threshold" value="20"/></properties></rule>
+  <rule ref="category/java/errorprone.xml/EmptyCatchBlock"/>
+  <rule ref="category/java/errorprone.xml/CloseResource"/>
+  <rule ref="category/java/errorprone.xml/AvoidCatchingThrowable"/>
+</ruleset>

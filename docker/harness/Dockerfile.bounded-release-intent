@@ -1,0 +1,10 @@
+# Keep the verified UI-only release fix and all installed dependency layers.
+# Base: sha256:b2491572dcf237f17257f48e096ec0dde4dcafd2e433a1c2c8a1b69f737bc7c1
+ARG BASE_IMAGE=forge-delivery/deepseek-harness:0.1.1-rc.2-ui-only-db-scope-20260922-1
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 docker/harness/forge-protected-acceptance-service.mjs docker/harness/forge-task-execution-contract.mjs /usr/local/lib/
+COPY --chmod=0644 docker/harness/Dockerfile.bounded-release-intent /usr/local/share/forge-image-build/
+RUN --network=none node --check /usr/local/lib/forge-protected-acceptance-service.mjs && node --check /usr/local/lib/forge-task-execution-contract.mjs
+LABEL com.forge-delivery.bounded-release-intent.version="2026.09.22.1"
+USER 1000:1000

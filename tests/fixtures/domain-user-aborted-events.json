@@ -1,0 +1,66 @@
+[
+  {
+    "type": "assistant/chunk",
+    "seq": 54451,
+    "time": 1791211685972,
+    "data": {
+      "turn": 4,
+      "step": 12,
+      "chunk": {
+        "type": "finish",
+        "reason": {
+          "kind": "error",
+          "failure": {
+            "message": "pi-ai stream idle timeout after 300000ms",
+            "code": "TIMEOUT"
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "llm/retry",
+    "seq": 54452,
+    "time": 1791211685976,
+    "data": {
+      "retryId": "1e3beabb-3585-4e33-8f75-4127c34045a8",
+      "turn": 4,
+      "step": 12,
+      "provider": "openai-codex",
+      "mode": "normal",
+      "policyKey": "[\"normal\",5,[\"EMPTY_RESPONSE\",\"RATE_LIMIT\",\"SERVER\",\"TIMEOUT\",\"TRANSPORT\"],500,10000,0.1]",
+      "retry": 1,
+      "maxRetries": 5,
+      "delayMs": 489.4740487559146,
+      "failure": {
+        "message": "pi-ai stream idle timeout after 300000ms",
+        "code": "TIMEOUT"
+      }
+    }
+  },
+  {
+    "type": "llm/retry-started",
+    "seq": 54453,
+    "time": 1791211686466,
+    "data": {
+      "retryId": "1e3beabb-3585-4e33-8f75-4127c34045a8",
+      "turn": 4,
+      "step": 12,
+      "retry": 1
+    }
+  },
+  {
+    "type": "turn/end",
+    "seq": 61150,
+    "time": 1791212245160,
+    "data": {
+      "turn": 4,
+      "reason": {
+        "kind": "aborted",
+        "reason": {
+          "kind": "user"
+        }
+      }
+    }
+  }
+]

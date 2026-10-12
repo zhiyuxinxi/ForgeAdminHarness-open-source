@@ -1,0 +1,118 @@
+{
+  "source": "Original Health request and server-preserved proposal; UI-only task.",
+  "promptText": "请实现并提交、发布职业健康现有PC页面的前端标准化修复。\n\n优先修复真实入口阻塞：浏览器点击顶栏“职业健康管理”实际进入 /forge/404。当前菜单注册的“职业健康管理→接害岗位→接害岗位清单”使用 /occupational-health/hazard-post/list，组件指向 occupational-health/hazard-post/index；但现有文件自动路由只产生 /occupational-health/hazard-post，未注册 /list，表单和详情返回也使用该缺失地址。菜单注册源码在 V1.0.20261017__add_occupational_health_hazard_post.sql。请核实本舱当前源码和实际路由，对齐现行菜单、注册路由及返回路径，保留已有菜单权限和业务数据，验证正常顶栏/侧栏进入清单、刷新及关闭或返回不再404。不要隐藏菜单或要求用户手输地址绕过。\n\n当前明确范围：forge-admin-ui/src/views/occupational-health及该模块直接使用的业务组件/API/前端测试；以当前真实菜单和代码核实范围。\n原职业健康管理对话edd551ac-4de7-470d-a612-9be3d55b73e2 / task c-4c413d0339a598bab6a7f868，以及当前main接害岗位实现。本对话为Owner授权的关联前端修复，原会话及工作区保留。\n\n已有观察得到的页面候选（不是完成证明）：\n- 岗位完整流程：hazard-post/index、hazard-post/form.[id]、hazard-post/detail.[id]\n\n已发现的代表差距（原对话核实实际行为后修）：\n- forge-admin-ui/src/views/occupational-health/hazard-post/index.vue：已有selection列，但table投影未见受控选择/选中数/批删；新增和详情明确router.push独立页。普通新增编辑应迁公共浮层并保留查询上下文。\n- forge-admin-ui/src/views/occupational-health/hazard-post/form.[id].vue：独立页自写表单、人员子表、底栏和返回；保留业务子表，统一标准表单容器。\n- forge-admin-ui/src/views/occupational-health/hazard-post/detail.[id].vue：详情返回/编辑均独立导航；保留独立页须有真实业务依据，源码盘点未证该依据。\nOwner已确认：用平台原生用户管理和已交付的公共前端标准，优化五模块全部已生成PC业务页面。当前这轮仅负责本文指定的一个模块，从最新main保留其他AI成果继续。你负责业务代码、业务测试和正常受控提交发布；操作员负责公共底座和直接平台阻塞，不会替你代写业务。\n\n先读取实际forge-admin-ui/DESIGN.md、原版src/views/system/user.vue相关模式以及forge-frontend-admin Skill的references/page-patterns.md，核实当前AiCrudPage/AiSearch/AiTable/AiForm/ai-modal/MasterDetailWorkspace/SystemTableCell的真实接口。沿实际组件和主题实现，不每页重新发明查询、表格、分页、弹窗及样式。原有业务规则、状态、数据、权限、后端接口、已有导入导出/签字/附件和子表能力保持。\n\n完整标准同时覆盖：页面/打开方式、布局与信息层级、字体主题密度、按钮样式与位置顺序、查询区、列表默认能力、表格语义、新增编辑、分组长表单、可读详情及审批、弹窗抽屉浮层、完整提交过程、加载/空/错/无权限等状态、返回上下文、数据格式与业务文案、权限及状态、宽窄窗口与焦点、关联选择/附件等既有扩展、标准代码与API组织。这些是默认前端能力，不等待产品逐控件补需求。\n\n普通可维护台账默认多选/全选/选中数量/批删及确认；仅有单删接口时采用已有公共支持的真实逐条调用，正确保留失败项、刷新成功项，不用“无batch端点”隐藏能力。归档/审计、审批和库存流水的操作限制按现有业务语义核定，记录具体依据，不能机械加删除。普通新增编辑默认原生modal；已有独立路由、字段多、草稿按钮都不足以保留独立编辑页。原专用主从工作区、地图、流程/模板设计器按真实交互保留。\n\n按钮主次/尺寸/图标/顺序沿公共实现，查询为搜索→重置→适用的展开，底部取消在左、次操作居中、保存/提交主操作在右；行常用操作保持稳定顺序，低频用更多。字段使用语义控件、字典和关联选择；编辑真实回填；校验、防重、busy、失败保留、重试、重开复位、取消不写、未保存关闭遵循现有公共规则。详情用完整分组可读值，不用灰色disabled输入框或原始JSON。保留设计器已拥有的显示配置/字段，不因改版覆盖人工配置；这次不扩建低代码系统。\n\n完成本模块全部已生成页面的差距修复。你可按共享业务组件及页面类型分组处理；已达标的实现保留并说明，无需为了凑改动重写。API调用和转换进入本模块现有API层，复用公共状态/反馈，业务专用扩展维持明确边界。发现直接公共缺口给出最小证据和所需接口，由操作员处理底座；其余可推进页面继续完成。\n\n验证限定本次修改及明确直接影响：相关前端lint/组件交互/业务边界与正常受控发布检查，保留有效旧证据；源码检查和浏览器实际行为分别报告。避免重跑无关后端、全仓扫描或从需求阶段重启整个八阶段。业务数据验收优先测试适配/专用测试记录，不删除已有生产记录、不代审批。最后通过正常checkpoint/integrate/release完成main和本次必要UI运行版本；按现役Runner真实要求处理发布检查与备份，保留所有失败记录。发布共享锁按正常机制串行，不能清理他人的锁/源码/镜像。遇到阻塞报告直接工具原件和最小解除条件；操作员已授权优先解阻。不得用文档、静态检查或“建议下一步”替代尚可推进的实际修复。\n\n回报实际修改页面/共享业务组件、保留的业务例外、定向结果、未验边界和最终source/运行版本；遵守同根因两轮无推进或累计30活跃分钟换路径。任务是完整一轮本模块标准化，不止修一页示例。无需再次请求Owner授权。\n",
+  "promptTextSha256": "f27b13eda63688e182ee5ebceb285d4206ab0d1f3bf15d5f2cc41d9d69cab088",
+  "directTextDigest": "458677fc674ebe309cada5c851bde30ac3befc387dc14f57780f01920e27bd65",
+  "proposal": {
+    "goal": "修复职业健康接害岗位菜单真实入口 /occupational-health/hazard-post/list 的路由阻塞，并将该模块列表、新增编辑、详情统一到 AiCrudPage 原生列表与浮层交互，保留现有岗位危害因素、人员子表、权限、导入导出和业务接口；旧表单/详情路由兼容跳转到清单浮层，关闭后保留查询上下文。",
+    "ownedPaths": [
+      "forge-admin-ui/src/views/occupational-health/hazard-post/index.vue",
+      "forge-admin-ui/src/views/occupational-health/hazard-post/list.vue",
+      "forge-admin-ui/src/views/occupational-health/hazard-post/form.[id].vue",
+      "forge-admin-ui/src/views/occupational-health/hazard-post/detail.[id].vue",
+      "forge-admin-ui/src/views/occupational-health/hazard-post/components/HazardPostFormSections.vue",
+      "forge-admin-ui/src/views/occupational-health/hazard-post/__tests__/hazard-post-contract.test.js"
+    ],
+    "taskProfiles": [
+      "frontend-admin"
+    ],
+    "references": [
+      {
+        "path": "AGENTS.md",
+        "sha256": "a27fa9e6464870a2f7d2a7367d7e582e9abdf0825173a95a0e65d010e7c6b388"
+      },
+      {
+        "path": "PROJECT_CONTEXT.md",
+        "sha256": "1e41b95efd0b4690a06e9feb1856052226c8c59d52c7642378f281148c25bf8d"
+      },
+      {
+        "path": "forge-admin-ui/DESIGN.md",
+        "sha256": "93abfab7483609357a6fd82424a08e01139027104f825885ad1459ffb17c766e"
+      },
+      {
+        "path": "forge-admin-ui/src/views/system/user.vue",
+        "sha256": "e8f5aa7ee99642ecfde96f8d1e15911b159bf4289fc680ebd34646c213fe5b04"
+      },
+      {
+        "path": "forge-admin-ui/src/components/ai-form/AiCrudPage.vue",
+        "sha256": "4f41455a3946e313eb42048bae2d5f3e561b3390ed27ca90229529cb772fb251"
+      },
+      {
+        "path": "forge-admin-ui/src/components/ai-form/AiCrudPageProps.js",
+        "sha256": "97042d08b28d54138a5f2878e39c47f947acbd3db5e59166fed8af6b030780ce"
+      },
+      {
+        "path": "forge-admin-ui/src/components/ai-form/AiSearch.vue",
+        "sha256": "d8f9e8a371f58178da70ab57208c74c9130d18823b41f804302c7e548e8ac3bb"
+      },
+      {
+        "path": "forge-admin-ui/src/components/ai-form/AiTable.vue",
+        "sha256": "51a9606229d9a73fa7578cea0f954412e6f3e6f93b5674e84abc540885dd009a"
+      },
+      {
+        "path": "forge-admin-ui/src/components/ai-form/AiCrudRowExpand.vue",
+        "sha256": "8a2ed97ea249d062e36f533269a3b0e425f4cf8cc27568ba6c0b50f0c3e92991"
+      },
+      {
+        "path": "forge-admin-ui/src/components/ai-form/expand-utils.js",
+        "sha256": "87ca71b506e23b66a09eb0c8fff3d09203a1ee77d00e15db198f90e34ec2b142"
+      },
+      {
+        "path": "forge-admin-ui/src/components/ai-form/expand-renderers/ExpandDescriptionsPanel.vue",
+        "sha256": "432df779c9b9af0a73b3b16226127014e7ccd79705b3ddd08a3c81f60833ed5c"
+      },
+      {
+        "path": "forge-admin-ui/src/components/ai-form/expand-renderers/ExpandTablePanel.vue",
+        "sha256": "5d6f71285670fc76fd0cfb167af5b72cab400eaafa636665d12f10126654b587"
+      },
+      {
+        "path": "forge-admin-ui/src/components/ai-form/AiFormItem.vue",
+        "sha256": "141d441dfad0c546d00211469c233f50e12e223e755ba698a3af25ed18244818"
+      },
+      {
+        "path": "forge-admin-ui/src/router/index.js",
+        "sha256": "01a3787a31e21cd019129832c03b49d6983f6a987cbc268a74890248b9cb8fcd"
+      },
+      {
+        "path": "forge-admin-ui/src/router/guards/permission-guard.js",
+        "sha256": "7a7646957704d9ab78d35341facd8c1e20007782242b95771d5af739ac31e67a"
+      },
+      {
+        "path": "forge-admin-ui/src/api/occupational-health/hazard-post.js",
+        "sha256": "0d82a5b99abeb9a4e2041a396e0a08eea24b93c4420cc5061694ef562a42f62a"
+      },
+      {
+        "path": "forge-admin-ui/src/views/occupational-health/hazard-post/index.vue",
+        "sha256": "78eddfd13621824b55b4c27d5fbca5379874fc1514d42a768fbdf28a3b986bce"
+      },
+      {
+        "path": "forge-admin-ui/src/views/occupational-health/hazard-post/form.[id].vue",
+        "sha256": "2ae3526b0748181ed90857262fc1827ab5bb48ff9a669c508a20d2c4a1731651"
+      },
+      {
+        "path": "forge-admin-ui/src/views/occupational-health/hazard-post/detail.[id].vue",
+        "sha256": "fe5747972023d98799b3b374bf53dfb8688081ba2020727bf8ed557ca362296b"
+      },
+      {
+        "path": "forge-admin-ui/src/views/occupational-health/hazard-post/__tests__/hazard-post-contract.test.js",
+        "sha256": "6cde3cbc75133cf74587bf077f7e0b63c2f9ed0afe732f0135a350840579264d"
+      },
+      {
+        "path": "forge-server/db/migration/V1.0.20261017__add_occupational_health_hazard_post.sql",
+        "sha256": "9a3b90305ff1379f5fed0694259baa5d3f86943858096336ddf82eb39413febc"
+      },
+      {
+        "path": "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/occupationalhealth/controller/HazardPostController.java",
+        "sha256": "9d50c774f7da9055ce5f75ca99cc83b35a2c8dc20d726e31b4817101462e1e3b"
+      },
+      {
+        "path": "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/occupationalhealth/service/HazardPostService.java",
+        "sha256": "84d0e1667b7c78dbfa52c5bd0fcb5534c3670dae2a72ca24a98a12a0524afde2"
+      },
+      {
+        "path": "code-copilot/rules/coding-style.md",
+        "sha256": "f8a60cfb6ed9ca8e763ed1f9c54a83fdfd64286743e574b7b8c2b38c4e14f053"
+      }
+    ]
+  }
+}

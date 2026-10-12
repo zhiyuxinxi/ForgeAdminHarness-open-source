@@ -1,0 +1,64 @@
+{
+  "description": "Recorded leadership c440 prompt and model proposal event 29860. Reference hashes are synthetic test bindings, not runtime read evidence.",
+  "promptText": "请继续修复并提交、发布本对话的领导引领力 PC 前端标准化候选，完成尚缺的必要定向检查与集成。继续现有工作区和完整原业务范围，不重新生成模块，不回滚其他 AI 的前端或后端成果。\n\n公共附件代码已由操作员以e051d813正常合入项目canonical，后续还可能有他方合法增量；不要把该提交当作必须回退到的固定HEAD。保留当前全部业务修改，重新读取现役forge-taskspace-collaboration与forge-controlled-release Skill，并读取一次forge-release status。若尚未包含当前canonical且没有待续集成，沿受控integrate start保存完整dirty并合入最新canonical，不要先checkpoint；参数、完整路径列表只能取当前status。已有待续集成按其真实operation和状态正常处理。不要直接执行Git同步、全选ours/theirs或清理他人锁。集成成功只证明源码同步，随后才修本次业务接线，并补受影响的必要检查；不得把旧候选READY挪作新源码通过。\n\n你上一轮已经修复7项 lint 格式问题，随后因 VERIFY_QUEUE_BUSY 未能执行当前候选检查。操作员在21:52:25Z实测 Host activeJobs=0、acceptingJobs=true，之前的队列容量阻塞已解除；这个状态不是检查通过证明。请从当前已有候选继续，不再重做已完成实现。\n\n先读取当前实际安装的 forge-frontend-admin/references/page-patterns.md 中既有模块标准化要求，对照本对话的20类默认规范及真实原生页面模式。普通台账的多选/批删、查询、按钮位置、原生新增编辑浮层、可读详情和异常反馈都要落实；真正的主从工作区、审批及其他业务例外保留。仅有真实差距才改动已完成页面，共性继续使用现有公共组件。\n\n当前候选8个修改页面的源码审阅有4项直接缺口，请对照你此刻实际源码确认后修复：action-plan.vue打开编辑/详情时先设置目标ID，再异步loadDetail，但未校验响应归属，A慢/B快可能把A字段写入B编辑ID；fee-budget.vue新查看分支未保留编辑分支已有附件；fee-accrual.vue查看态计算区仍有禁用营业收入输入；personal-plan.vue当前上传按钮仅添加本地模拟PDF元数据并提示成功，没有真实选择文件/上传。前三者要按公共详情、状态与真实业务数据修齐；上传必须沿当前文件API和权限形成真实操作，不能保留装饰性成功。源码竞态不是已做浏览器复现，既有旧缺陷也不冒称本轮新引入。\n\n详情附件复用实际公共ExpandDescriptionsPanel的fileUpload只读renderer，先核当前工作区是否已经同步对应公共能力；如需承接canonical更新，只走已有受控同步入口并保留你的业务候选。不得自行伪造未安装的组件能力。普通表格选择列已由AiTable默认提供，已有批删/确认/失败项保留成果沿用，不重复重写。完整模块责任/配置、承诺签字、组织计划、考核、费用及其适用流程仍按原范围交付，不能只修这4项就略过原未完成项。\n\n正常获取当前 prepare_task/验收上下文，按修改范围逐项执行确实缺少有效证明的检查，复用本候选已有通过回执。前端任务不增加无关后端或数据库测试。若有后台 job，保留并查询同一 jobId，不因客户端等待超时重投。必要源码变化完成后再验证，不能验证在途又改同一输入。\n\n通过正常 checkpoint/integrate/release 完成 main 和必要 UI 运行版本；共享发布串行，不清理别人锁或候选。授权一直有效，无需重复向 Owner 确认。遇到直接平台错误给出当前实际工具证据并保留代码，不换提示反复撞错，不开展全仓治理。最终报告真实改动、检查、main、UI发布与未验边界；浏览器复验随后由操作员进行。\n\n在此前四项反馈之外，补审确认还有以下实际入口未承接标准：为 commitment-all、commitment-president 的可删草稿，以及 assess-plan、device-assess、duty-score 的真实可维护记录补默认选择、选中数和确认批删，保留实际状态与权限；将 device-assess、duty-score、resp-book 的查看及 target-task 的查看任务分支改为完整可读内容，保留人员名称、评分子表和已有附件。四个 ConfigAssetPage 包装页复用已改共享入口；组织图、模板/规则配置、档案/签订情况、考核审批/结果、统计和任务主从按真实类型统一查询、按钮及异常反馈，保留业务例外。不得仅因目录里存在 LeadershipPage 或少数入口已改就声明24页完成。原Harness完成业务代码和必要检查，操作员未代改。\n",
+  "promptTextSha256": "c440b5413c5d7de975e3e1544918d1669039165316b9847cae2ea65b3cead12d",
+  "originalProposal": {
+    "goal": "继续现有领导引领力 PC 前端标准化候选：保留全部当前业务改动，先受控保存完整 dirty 并同步当前 canonical；修复详情竞态、附件只读展示与个人计划真实上传、费用只读计算详情、适用可维护台账的默认选择与确认批删、指定页面完整可读详情；执行必要前端定向检查，受控提交、集成 main 并发布 forge-ui。",
+    "ownedPaths": [
+      "forge-admin-ui/src/styles/leadership-module.css",
+      "forge-admin-ui/src/views/leadership"
+    ],
+    "taskProfiles": [
+      "frontend-admin"
+    ],
+    "references": [
+      "PROJECT_CONTEXT.md",
+      "forge-admin-ui/src/views/leadership/action-plan.vue",
+      "forge-admin-ui/src/views/leadership/fee-budget.vue",
+      "forge-admin-ui/src/views/leadership/fee-accrual.vue",
+      "forge-admin-ui/src/views/leadership/personal-plan.vue",
+      "forge-admin-ui/src/views/leadership/__tests__/leadership-ui-contract.test.js",
+      "forge-admin-ui/src/views/leadership/__tests__/config-assets-page.test.js"
+    ]
+  },
+  "proposal": {
+    "goal": "继续现有领导引领力 PC 前端标准化候选：保留全部当前业务改动，先受控保存完整 dirty 并同步当前 canonical；修复详情竞态、附件只读展示与个人计划真实上传、费用只读计算详情、适用可维护台账的默认选择与确认批删、指定页面完整可读详情；执行必要前端定向检查，受控提交、集成 main 并发布 forge-ui。",
+    "ownedPaths": [
+      "forge-admin-ui/src/styles/leadership-module.css",
+      "forge-admin-ui/src/views/leadership"
+    ],
+    "taskProfiles": [
+      "frontend-admin"
+    ],
+    "references": [
+      {
+        "path": "PROJECT_CONTEXT.md",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        "path": "forge-admin-ui/src/views/leadership/action-plan.vue",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        "path": "forge-admin-ui/src/views/leadership/fee-budget.vue",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        "path": "forge-admin-ui/src/views/leadership/fee-accrual.vue",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        "path": "forge-admin-ui/src/views/leadership/personal-plan.vue",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        "path": "forge-admin-ui/src/views/leadership/__tests__/leadership-ui-contract.test.js",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        "path": "forge-admin-ui/src/views/leadership/__tests__/config-assets-page.test.js",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    ]
+  }
+}

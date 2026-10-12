@@ -1,0 +1,19 @@
+[Unit]
+Description=Refresh the shared Codex CLI access reference for Harness conversations
+After=docker.service forge-codex-proxy.service
+Requires=docker.service
+ConditionPathExists=/etc/forge-delivery/codex-cli.json
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+WorkingDirectory=/opt/forge-delivery-platform
+ExecStart=/usr/bin/python3 /opt/forge-delivery-platform/scripts/sync-codex-cli-authorization.py
+TimeoutStartSec=300
+NoNewPrivileges=true
+PrivateTmp=true
+RuntimeDirectory=forge-codex-cli-authorization
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes

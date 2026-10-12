@@ -1,0 +1,11 @@
+# Retain Skills .22.6, Host tooling and installed dependencies from the verified image.
+# Base: sha256:453ba92c074300b379873758857d357bc1da03040c1e8652547f40390de311ba
+ARG BASE_IMAGE=forge-delivery/deepseek-harness:0.1.1-rc.2-skill-result-reuse-20260922-1
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 docker/harness/forge-protected-acceptance-service.mjs /usr/local/lib/
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/
+COPY --chmod=0644 docker/harness/Dockerfile.candidate-validity-renewal /usr/local/share/forge-image-build/
+RUN --network=none node --check /usr/local/lib/forge-protected-acceptance-service.mjs
+LABEL com.forge-delivery.candidate-validity-renewal.version="2026.09.22.1"
+USER 1000:1000

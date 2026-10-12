@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "policyMode": "production",
+  "policyVersion": "forge-protected-execution/phase-2-one-shot-controller-authority",
+  "defaultActionCeiling": "read-only",
+  "writerRoutes": []
+}

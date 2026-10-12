@@ -1,0 +1,14 @@
+ARG TASKSPACE_BROKER_BASE_IMAGE
+FROM ${TASKSPACE_BROKER_BASE_IMAGE}
+
+ARG TASKSPACE_BROKER_BASE_IMAGE_ID
+ARG TASKSPACE_BROKER_OWNERSHIP_PATCH_VERSION
+ARG TASKSPACE_BROKER_SOURCE_SHA256
+
+COPY --chown=0:0 --chmod=0644 docker/harness/taskspace-broker.mjs /usr/local/lib/taskspace-broker.mjs
+
+RUN node --check /usr/local/lib/taskspace-broker.mjs
+
+LABEL com.forge-delivery.taskspace-broker-ownership-patch="${TASKSPACE_BROKER_OWNERSHIP_PATCH_VERSION}" \
+      com.forge-delivery.taskspace-broker-source-sha256="${TASKSPACE_BROKER_SOURCE_SHA256}" \
+      com.forge-delivery.taskspace-broker-base-image-id="${TASKSPACE_BROKER_BASE_IMAGE_ID}"

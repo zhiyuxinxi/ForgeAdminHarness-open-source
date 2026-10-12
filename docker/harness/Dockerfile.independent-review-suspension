@@ -1,0 +1,4 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY --chmod=0644 docker/harness/conversation-manager.mjs docker/harness/forge-conversation-task-proposal.mjs docker/harness/forge-delivery-phase-controller.mjs docker/harness/forge-delivery-phase-host-receipts.mjs docker/harness/forge-delivery-phase-runtime.mjs docker/harness/forge-execution-context.mjs docker/harness/forge-obligation-ledger.mjs docker/harness/forge-production-task-grant.mjs docker/harness/forge-protected-acceptance-service.mjs docker/harness/forge-task-execution-contract.mjs /usr/local/lib/
+LABEL com.forge-delivery.independent-review-suspension.version="2026.09.19.1"

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "contractType": "forge-change/what-how-task",
+  "contractId": "change-order-001",
+  "projectSlug": "forge-admin",
+  "revision": 1,
+  "source": { "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "fingerprint": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+  "what": {
+    "objective": "Add a tenant-safe order status change.",
+    "requirements": [
+      { "requirementId": "REQ-2", "statement": "Unauthorized roles are rejected.", "acceptanceCriteria": ["Direct API call returns 403."] },
+      { "requirementId": "REQ-1", "statement": "Order status changes atomically.", "acceptanceCriteria": ["Failure rolls back all writes.", "Success writes one audit record."] }
+    ],
+    "assumptions": ["The order exists.", "The caller tenant is resolved."]
+  },
+  "how": {
+    "decisions": [
+      { "decisionId": "DEC-2", "statement": "Use the existing permission resource.", "rationale": "Avoid a parallel authorization owner." },
+      { "decisionId": "DEC-1", "statement": "Keep the transaction in the service.", "rationale": "The service owns the mutation boundary." }
+    ],
+    "risks": [
+      { "riskId": "RISK-1", "statement": "Concurrent updates can overwrite state.", "mitigation": "Use an expected version predicate." }
+    ]
+  },
+  "tasks": [
+    { "taskId": "TASK-2", "summary": "Implement and verify the service mutation.", "dependsOn": ["TASK-1"], "requirementIds": ["REQ-1", "REQ-2"], "decisionIds": ["DEC-1", "DEC-2"], "ownedPaths": ["forge-server/order/OrderService.java"] },
+    { "taskId": "TASK-1", "summary": "Add failing transaction and permission tests.", "dependsOn": [], "requirementIds": ["REQ-1", "REQ-2"], "decisionIds": ["DEC-1", "DEC-2"], "ownedPaths": ["forge-server/order/OrderServiceTest.java"] }
+  ]
+}

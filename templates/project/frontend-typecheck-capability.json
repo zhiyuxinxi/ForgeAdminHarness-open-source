@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "capability": "frontend-admin-typecheck",
+  "source": {
+    "repository": "https://github.com/yaomindong1996/forge-admin.git",
+    "commit": "6eb2881e6f6af85a5348acf3da63cef53a873b0e"
+  },
+  "frontendDirectory": "forge-admin-ui",
+  "command": "vue-tsc --noEmit --project jsconfig.json",
+  "packageManager": {
+    "name": "pnpm",
+    "sourceVersion": "11.7.0",
+    "runnerVersion": "11.24.0"
+  },
+  "dependencies": {
+    "typescript": {
+      "version": "5.9.3",
+      "engines": {
+        "node": ">=14.17"
+      },
+      "integrity": "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==",
+      "tarball": "https://registry.npmjs.org/typescript/-/typescript-5.9.3.tgz"
+    },
+    "vue-tsc": {
+      "version": "3.3.11",
+      "typescriptPeerRange": ">=5.0.0",
+      "integrity": "sha512-gOb0B9rtU2+f1dszwPqSH5kAieIF9ReeLhD3kSRNHv5WZZUQz/JdVXW0RTdqhNTMlQkqKzrTTviqKr/4FYZraQ==",
+      "tarball": "https://registry.npmjs.org/vue-tsc/-/vue-tsc-3.3.11.tgz"
+    }
+  },
+  "files": {
+    "packageJson": {
+      "path": "forge-admin-ui/package.json",
+      "beforeSha256": "f441bfec427cb2fe34a87edb9f49c588322c05fac4814b45235841855b58bccd",
+      "targetSha256": "97a8c7cf83311175f2dee35fda0ac55cded687fbd1728d1da7cb4dd7245d270d"
+    },
+    "lockfile": {
+      "path": "forge-admin-ui/pnpm-lock.yaml",
+      "beforeSha256": "129262c97b7f4198a2078569967b5dea8012f4d1fd8fd079638b26802cf3d2aa",
+      "targetSha256": "e38f804076ec92b58ae0ddf20abea8afdc653da150372fe5093ef22ecf5450f4"
+    },
+    "jsconfig": {
+      "path": "forge-admin-ui/jsconfig.json",
+      "beforeSha256": "da26240813bd172503f579d859c7788d999784088b4f2ec12218e8eb93d92896",
+      "upgradeFromSha256": "db89fbfebdaaf016297e14e4577ed706c6bfd80af28bfec3ae2a34a1167713ce",
+      "targetSha256": "e23aaebf3ac757edbb0a0b4b15f1108767cef669bf8e451c968a595e83fe67d7"
+    }
+  },
+  "patch": {
+    "path": "templates/project/frontend-typecheck-capability.patch",
+    "sha256": "0f3315c995d6b18a002a6c0cd30fff97c179dd326ac2c8d48afa322fe83056fe"
+  },
+  "foundationPreimage": {
+    "sourceCommit": "1a0d2b6d32c79d825dbcb8d133367e4d6bd26073",
+    "files": {
+      "packageJson": {
+        "beforeSha256": "528c2d7393dd08561ab0f36f54d7e4fb25105245f0dbcc3bd92d955fcf21f74e",
+        "targetSha256": "93cb5d093d5d5c0807ca4e8b05e2b2a9e40d684837f373b1469e3dc33841036f"
+      },
+      "lockfile": {
+        "beforeSha256": "ba6cfa3e13b8a13e8d67cfd9315ac451f1d10b15e75e024bf85c3cfd77be42ea",
+        "targetSha256": "2e267eb3747aab4c2ff71c0b0f06fb1c9259c459aa4d265e86899de1362f16d8"
+      }
+    }
+  }
+}

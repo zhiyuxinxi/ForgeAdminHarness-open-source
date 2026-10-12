@@ -1,0 +1,19 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 \
+  docker/harness/forge-controlled-command.mjs \
+  docker/harness/forge-phase-budget-guard.mjs \
+  docker/harness/verify-policy.mjs \
+  docker/harness/taskspace-broker.mjs \
+  /usr/local/lib/
+COPY --chmod=0755 docker/harness/forge-verify /usr/local/bin/forge-verify
+RUN --network=none node --check /usr/local/lib/forge-controlled-command.mjs \
+    && node --check /usr/local/lib/forge-phase-budget-guard.mjs \
+    && node --check /usr/local/lib/verify-policy.mjs \
+    && node --check /usr/local/lib/taskspace-broker.mjs \
+    && node --check /usr/local/bin/forge-verify
+ENV FORGE_HARNESS_SKILL_BUNDLE_VERSION=2026.09.20.2
+LABEL com.forge-delivery.harness-skill-bundle="2026.09.20.2"
+LABEL com.forge-delivery.verification-continuation.version="2026.09.20.1"
+USER 1000:1000

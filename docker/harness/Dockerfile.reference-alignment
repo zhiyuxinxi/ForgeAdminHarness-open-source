@@ -1,0 +1,6 @@
+# Fold the adjacent backend-coverage patch into this layer; avoid a deeper chain.
+ARG BASE_IMAGE=forge-delivery/deepseek-harness:0.1.1-rc.2-governance-explain-20260928-1
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY overlay/ /
+USER 1000:1000

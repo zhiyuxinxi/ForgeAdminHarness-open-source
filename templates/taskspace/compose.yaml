@@ -1,0 +1,197 @@
+name: ${TASKSPACE_COMPOSE_PROJECT_NAME:?TASKSPACE_COMPOSE_PROJECT_NAME is required}
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 20m
+    max-file: "5"
+
+services:
+  harness:
+    image: ${HARNESS_IMAGE:?HARNESS_IMAGE is required}
+    restart: unless-stopped
+    working_dir: /workspace
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    environment:
+      HOME: /home/node
+      DSH_HOME: /home/node/.dsh
+      # A proxy is an operator-owned opt-in for this TaskSpace only. Node's
+      # native fetch covers provider login, token refresh and streamed replies.
+      # Store any per-TaskSpace proxy login in operator-owned mode-0600 task.env;
+      # never put upstream node credentials or OpenAI tokens in this URL.
+      NODE_USE_ENV_PROXY: ${TASKSPACE_HTTPS_PROXY:+1}
+      HTTPS_PROXY: ${TASKSPACE_HTTPS_PROXY:-}
+      NO_PROXY: localhost,127.0.0.1,::1,taskspace-broker,harness-upload${TASKSPACE_NO_PROXY:+,}${TASKSPACE_NO_PROXY:-}
+      # The protected phase guard only admits real project writes when DSH is
+      # itself constrained to the TaskSpace workspace boundary.
+      DSH_PERMISSION_MODE: workspace-write
+      # The versioned Skill bundle is independent from the Harness image. The
+      # host atomically switches the current link; Harness is then restarted
+      # without rebuilding its base image.
+      DSH_BUNDLED_SKILL_DIR: /opt/forge-skill-bundles/current/skills
+      # DSH workspace-write only grants writes below /workspace and /tmp.
+      # These are separate host bind mounts, not files copied into the Git
+      # clone; placing their container paths below /workspace makes ordinary
+      # Maven/npm/pnpm commands work without a full-access approval.
+      MAVEN_CONFIG: /workspace/.forge-cache/m2
+      MAVEN_OPTS: -Dmaven.repo.local=/workspace/.forge-cache/m2/repository -Djansi.tmpdir=/workspace/.forge-cache/general/jansi
+      NPM_CONFIG_CACHE: /workspace/.forge-cache/npm
+      XDG_CACHE_HOME: /workspace/.forge-cache/general
+      XDG_DATA_HOME: /workspace/.forge-cache/pnpm/data
+      XDG_STATE_HOME: /workspace/.forge-cache/general/state
+      PNPM_HOME: /workspace/.forge-cache/pnpm/home
+      DSH_TELEMETRY_DISABLED: "1"
+      HARNESS_DEFAULT_WORKSPACE: /workspace
+      HARNESS_DEFAULT_WORKSPACE_TITLE: "Forge Admin · ${PROJECT_SLUG:?PROJECT_SLUG is required}"
+      HARNESS_BIND_ADDRESS: 127.0.0.1
+      HARNESS_PROXY_ADDRESS: 0.0.0.0
+      HARNESS_INTERNAL_PORT: 3080
+      HARNESS_TRUSTED_HOST: ${FORGE_BIND_ADDRESS:?FORGE_BIND_ADDRESS is required}:${TASKSPACE_HARNESS_PORT:?TASKSPACE_HARNESS_PORT is required}
+      HARNESS_PRIVILEGED_API_MODE: ${HARNESS_PRIVILEGED_API_MODE:-trusted-host}
+      HARNESS_HISTORY_PAGE_MESSAGES: ${HARNESS_HISTORY_PAGE_MESSAGES:-5}
+      HARNESS_ACCESS_MODE: ${TASKSPACE_ACCESS_MODE:-token}
+      HARNESS_ACCESS_TOKEN_FILE: /run/forge-taskspace/browser-access-token
+      HARNESS_ACCESS_AUTHZ_SOCKET: /run/forge-conversation-auth/authorize.sock
+      HARNESS_LOGIN_URL: ${CONVERSATION_GATEWAY_LOGIN_URL:-}
+      HARNESS_MAINTENANCE_FENCE_FILE: /run/forge-taskspace-maintenance/proxy-fence.json
+      HARNESS_UPLOAD_HOST: harness-upload
+      HARNESS_UPLOAD_PORT: "3090"
+      HARNESS_UPLOAD_TOKEN: ${HARNESS_UPLOAD_TOKEN:?HARNESS_UPLOAD_TOKEN is required}
+      HARNESS_PORT: ${TASKSPACE_HARNESS_PORT:?TASKSPACE_HARNESS_PORT is required}
+      HARNESS_DOCUMENT_INPUT_ROOT: /project-inputs
+      HARNESS_DOCUMENT_INPUT_ROOTS: /project-inputs:/project-ftp-inputs:/project-shared-inputs
+      HARNESS_DOCUMENT_MAX_SOURCE_BYTES: ${HARNESS_DOCUMENT_MAX_SOURCE_BYTES:-26214400}
+      HARNESS_DOCUMENT_MAX_OUTPUT_BYTES: ${HARNESS_DOCUMENT_MAX_OUTPUT_BYTES:-1048576}
+      HARNESS_DOCUMENT_MAX_PDF_PAGES: ${HARNESS_DOCUMENT_MAX_PDF_PAGES:-200}
+      HARNESS_DOCUMENT_MAX_SPREADSHEET_ROWS: ${HARNESS_DOCUMENT_MAX_SPREADSHEET_ROWS:-2000}
+      HARNESS_DOCUMENT_MAX_SPREADSHEET_COLUMNS: ${HARNESS_DOCUMENT_MAX_SPREADSHEET_COLUMNS:-100}
+      HARNESS_PROTOTYPE_DIRECTORY_STABILITY_MS: ${HARNESS_PROTOTYPE_DIRECTORY_STABILITY_MS:-2000}
+      FORGE_TASKSPACE_BROKER_URL: http://taskspace-broker:3100
+      FORGE_TASKSPACE_TOKEN_FILE: /run/forge-taskspace/broker-token
+      PROJECT_SLUG: ${PROJECT_SLUG:?PROJECT_SLUG is required}
+      FORGE_TASKSPACE_ID: ${TASKSPACE_ID:?TASKSPACE_ID is required}
+      FORGE_TASKSPACE_ACTOR_ID: ${TASKSPACE_ACTOR_ID:?TASKSPACE_ACTOR_ID is required}
+      FORGE_TASKSPACE_ACTOR_USER_ID: ${TASKSPACE_ACTOR_USER_ID:?TASKSPACE_ACTOR_USER_ID is required}
+      FORGE_TASKSPACE_CONVERSATION_ID: ${TASKSPACE_CONVERSATION_ID:?TASKSPACE_CONVERSATION_ID is required}
+      TZ: ${TZ:-Asia/Shanghai}
+    secrets:
+      - deepseek-api-key
+      - kimi-api-key
+      - glm-api-key
+    ports:
+      - "${FORGE_BIND_ADDRESS:?FORGE_BIND_ADDRESS is required}:${TASKSPACE_HARNESS_PORT:?TASKSPACE_HARNESS_PORT is required}:${TASKSPACE_HARNESS_PORT:?TASKSPACE_HARNESS_PORT is required}"
+    volumes:
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/workspace:/workspace
+      # PROJECT_CONTEXT.md is platform-owned, hash-admitted before every start,
+      # and overlaid on the writable clone as an immutable bind mount. Long
+      # syntax prevents Compose from creating a directory if the source is
+      # missing, so absence fails closed before Harness starts.
+      - type: bind
+        source: ${PROJECT_ROOT:?PROJECT_ROOT is required}/governance/PROJECT_CONTEXT.md
+        target: /workspace/PROJECT_CONTEXT.md
+        read_only: true
+        bind:
+          create_host_path: false
+      - ${PROJECT_ROOT:?PROJECT_ROOT is required}/workspace:/integration:ro
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/dsh-home:/home/node/.dsh
+      - ${FORGE_SKILL_BUNDLE_ROOT:?FORGE_SKILL_BUNDLE_ROOT is required}:/opt/forge-skill-bundles:ro
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/uploads:/project-inputs:ro
+      # Project-level SFTP input is direct-read by default. The lifecycle
+      # resolves this to raw intake in direct mode or accepted material in the
+      # reserved reviewed mode. It is always read-only inside the TaskSpace.
+      - ${PROJECT_FTP_INPUT_ROOT:?PROJECT_FTP_INPUT_ROOT is required}:/project-ftp-inputs:ro
+      # The reviewed channel remains available separately for future governance.
+      - ${PROJECT_SHARED_INPUT_ROOT:?PROJECT_SHARED_INPUT_ROOT is required}:/project-shared-inputs:ro
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/tokens/browser:/run/forge-taskspace/browser-access-token:ro
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/tokens/broker:/run/forge-taskspace/broker-token:ro
+      - ${PLATFORM_CONVERSATION_AUTH_ROOT:?PLATFORM_CONVERSATION_AUTH_ROOT is required}:/run/forge-conversation-auth:ro
+      - type: bind
+        source: ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/maintenance
+        target: /run/forge-taskspace-maintenance
+        read_only: true
+        bind:
+          create_host_path: false
+      # TaskSpace-owned bind directories avoid uid-mismatched named volumes and
+      # never share mutable cache state across conversations. Their in-container
+      # targets intentionally live under the DSH workspace-write boundary; the
+      # matching placeholder tree is excluded through .git/info/exclude.
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/cache/m2:/workspace/.forge-cache/m2
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/cache/npm:/workspace/.forge-cache/npm
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/cache/pnpm:/workspace/.forge-cache/pnpm
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/cache/general:/workspace/.forge-cache/general
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=1g
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 1024
+    stop_grace_period: 30s
+    logging: *default-logging
+    depends_on:
+      harness-upload:
+        condition: service_healthy
+    networks: [project-application, project-taskspaces, uploads]
+
+  harness-upload:
+    image: ${HARNESS_IMAGE:?HARNESS_IMAGE is required}
+    restart: unless-stopped
+    command: ["node", "/usr/local/lib/harness-upload-server.mjs"]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    environment:
+      HARNESS_UPLOAD_ADDRESS: 0.0.0.0
+      HARNESS_UPLOAD_PORT: "3090"
+      HARNESS_UPLOAD_ROOT: /project-uploads
+      HARNESS_UPLOAD_PUBLIC_PATH: /project-inputs
+      HARNESS_UPLOAD_TOKEN: ${HARNESS_UPLOAD_TOKEN:?HARNESS_UPLOAD_TOKEN is required}
+      HARNESS_UPLOAD_SCOPE_TYPE: taskspace-private
+      HARNESS_UPLOAD_PROJECT_SLUG: ${PROJECT_SLUG:?PROJECT_SLUG is required}
+      HARNESS_UPLOAD_TASKSPACE_ID: ${TASKSPACE_ID:?TASKSPACE_ID is required}
+      HARNESS_UPLOAD_ACTOR_ID: ${TASKSPACE_ACTOR_ID:?TASKSPACE_ACTOR_ID is required}
+      HARNESS_UPLOAD_CONVERSATION_ID: ${TASKSPACE_CONVERSATION_ID:?TASKSPACE_CONVERSATION_ID is required}
+      HARNESS_UPLOAD_MAX_FILE_BYTES: ${HARNESS_UPLOAD_MAX_FILE_BYTES:-52428800}
+      HARNESS_UPLOAD_MAX_BATCH_FILES: ${HARNESS_UPLOAD_MAX_BATCH_FILES:-20}
+      HARNESS_UPLOAD_MAX_BATCH_BYTES: ${HARNESS_UPLOAD_MAX_BATCH_BYTES:-209715200}
+      HARNESS_UPLOAD_MAX_PROJECT_BYTES: ${HARNESS_UPLOAD_MAX_PROJECT_BYTES:-10737418240}
+      HARNESS_DOCUMENT_MAX_SOURCE_BYTES: ${HARNESS_DOCUMENT_MAX_SOURCE_BYTES:-26214400}
+      HARNESS_DOCUMENT_MAX_OUTPUT_BYTES: ${HARNESS_DOCUMENT_MAX_OUTPUT_BYTES:-1048576}
+      HARNESS_DOCUMENT_MAX_PDF_PAGES: ${HARNESS_DOCUMENT_MAX_PDF_PAGES:-200}
+      HARNESS_DOCUMENT_MAX_SPREADSHEET_ROWS: ${HARNESS_DOCUMENT_MAX_SPREADSHEET_ROWS:-2000}
+      HARNESS_DOCUMENT_MAX_SPREADSHEET_COLUMNS: ${HARNESS_DOCUMENT_MAX_SPREADSHEET_COLUMNS:-100}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/uploads:/project-uploads
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 768m
+    cpus: "1.0"
+    logging: *default-logging
+    networks: [uploads]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3090/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+
+networks:
+  project-application:
+    external: true
+    name: ${PROJECT_COMPOSE_NAME:?PROJECT_COMPOSE_NAME is required}_application
+  project-taskspaces:
+    external: true
+    name: ${PROJECT_COMPOSE_NAME:?PROJECT_COMPOSE_NAME is required}_taskspaces
+  uploads:
+    driver: bridge
+    internal: true
+
+secrets:
+  deepseek-api-key:
+    file: ${DEEPSEEK_KEY_FILE:?DEEPSEEK_KEY_FILE is required}
+  kimi-api-key:
+    file: ${KIMI_KEY_FILE:?KIMI_KEY_FILE is required}
+  glm-api-key:
+    file: ${GLM_KEY_FILE:?GLM_KEY_FILE is required}

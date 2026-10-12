@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>交付隔离台</title>
+  <link rel="stylesheet" href="/forge-gateway/assets/gateway.css">
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="/forge-gateway/" aria-label="交付隔离台首页">
+      <span class="brand-mark">F</span>
+      <span><strong>交付隔离台</strong><small>统一项目入口</small></span>
+    </a>
+    <div class="identity-cluster">
+      <span class="role-badge" id="role-badge">—</span>
+      <span><strong id="display-name">正在识别…</strong><small id="username">—</small></span>
+      <button id="logout-button" class="secondary-button" type="button" disabled>退出</button>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <section class="hero-band" aria-labelledby="page-title">
+      <div>
+        <p class="eyebrow">PROJECT DELIVERY DIRECTORY</p>
+        <h1 id="page-title">选择交付项目，再进入我的 AI 对话</h1>
+        <p>服务器上的每个 Forge Admin 副本都是一个独立交付项目；账号统一，对话和项目运行资源分别隔离。</p>
+      </div>
+      <ol class="isolation-path" aria-label="当前隔离链路">
+        <li><span>01</span><strong>当前人员</strong><small>登录态实时校验</small></li>
+        <li><span>02</span><strong>交付项目</strong><small>明确选择项目副本</small></li>
+        <li><span>03</span><strong>我的对话</strong><small>只能看到自己的</small></li>
+        <li><span>04</span><strong>独立工作舱</strong><small>文件与状态分开</small></li>
+      </ol>
+    </section>
+
+    <div id="system-warning" class="system-warning" role="status" hidden></div>
+
+    <section id="project-section" class="workspace-section" aria-labelledby="projects-title">
+      <div class="section-heading">
+        <div><p class="section-kicker">服务器项目目录</p><h2 id="projects-title" tabindex="-1">Forge Admin 项目副本 <span id="project-count" class="count-badge">—</span></h2></div>
+      </div>
+      <p class="section-help">所有登录人员都能看到项目目录；只有获得项目授权后，才能进入并创建自己的独立对话。</p>
+      <div id="project-loading" class="loading-row" role="status">正在读取服务器项目目录…</div>
+      <div id="project-empty" class="empty-state" hidden><strong>还没有登记交付项目</strong><p>请由平台管理员先完成项目创建和登记。</p></div>
+      <div id="project-list" class="project-grid" aria-live="polite"></div>
+    </section>
+
+    <section id="conversation-section" class="workspace-section" aria-labelledby="conversations-title" hidden>
+      <div class="section-heading">
+        <div><p class="section-kicker">当前项目 · <span id="selected-project-slug">—</span></p><h2 id="conversations-title" tabindex="-1"><span id="selected-project-name">—</span> · 我的对话</h2></div>
+        <div class="heading-actions"><label id="all-conversations-control" class="scope-toggle" hidden><input id="all-conversations-toggle" type="checkbox">所有人的对话</label><button id="switch-project-button" class="secondary-button" type="button" disabled>切换项目</button><a id="forge-admin-link" class="secondary-button button-link" target="_blank" rel="noopener">打开 Forge Admin</a><button id="new-conversation-button" class="primary-button" type="button" disabled>新建独立对话</button><a id="project-delivery-link" class="secondary-button button-link" href="/forge-gateway/delivery-center?project=forge-base" hidden>需求与交付中心</a></div>
+      </div>
+      <p id="project-access-note" class="section-help"></p>
+      <section id="project-release-panel" class="release-panel" aria-labelledby="project-release-title">
+        <div class="section-heading compact-heading">
+          <h3 id="project-release-title">项目发布状态</h3>
+          <button id="release-refresh-button" class="secondary-button" type="button">刷新状态</button>
+        </div>
+        <p id="release-status-heading" class="release-status-heading" role="status">正在读取发布状态…</p>
+        <dl id="release-status-details" class="release-status-details"></dl>
+        <p id="release-status-note" class="section-help"></p>
+        <p class="section-help">此处只查看状态，不会提交发布或自动排队。同一项目发布串行进行，你可以继续自己的对话。</p>
+      </section>
+      <div id="conversation-browser">
+        <div id="conversation-loading" class="loading-row" role="status">正在加载你的对话…</div>
+        <div id="conversation-empty" class="empty-state" hidden>
+          <strong>还没有对话工作舱</strong>
+          <p>创建第一个对话后，可在此查看对话及其归档文件。</p>
+        </div>
+        <div id="conversation-list" class="conversation-list" aria-live="polite"></div>
+        <button id="load-more-button" class="secondary-button" type="button" hidden disabled>加载更多</button>
+      </div>
+      <section id="conversation-output-panel" class="output-panel" aria-labelledby="output-title" hidden>
+        <div class="section-heading compact-heading"><div><p class="section-kicker">阶段成果与聊天归档 · 只读</p><h3 id="output-title" tabindex="-1">对话文件</h3></div><button id="close-output-button" class="secondary-button" type="button" disabled>返回对话列表</button></div>
+        <p id="output-owner-note" class="section-help"></p>
+        <p class="section-help">管理员可查阅对话输入、输出和归档文件；此页面不会打开、恢复、停止工作舱或代发消息。</p>
+        <section class="phase-output-section" aria-labelledby="phase-output-heading">
+          <div class="section-heading compact-heading"><h3 id="phase-output-heading">阶段成果</h3><button id="phase-output-retry" class="secondary-button" type="button" disabled>重新加载阶段成果</button></div>
+          <p class="section-help">按阶段和保存版本查看交付文件。每个版本先阅读标有“先看这份”的阶段结果，再按用途查看其他文件。</p>
+          <p id="phase-output-error" class="form-message error" role="alert" hidden></p>
+          <div id="phase-output-loading" class="loading-row" role="status" hidden>正在读取阶段成果…</div>
+          <div id="phase-output-empty" class="empty-state" hidden><strong>暂无可查看的阶段成果</strong><p>此对话形成阶段成果后会显示在这里。聊天记录保留在下方，不代表阶段已通过。</p></div>
+          <div id="phase-output-list" class="output-list" aria-live="polite"></div>
+        </section>
+        <h3 class="output-archive-heading">聊天归档</h3>
+        <p id="output-error" class="form-message error" role="alert" hidden></p>
+        <div id="output-loading" class="loading-row" role="status" hidden>正在读取归档文件…</div>
+        <div id="output-empty" class="empty-state" hidden><strong>暂无对话归档</strong><p>对话产生首份归档后会显示在这里；已停止的工作舱仍可查阅既有归档。</p></div>
+        <div id="output-list" class="output-list" aria-live="polite"></div>
+        <button id="output-more-button" class="secondary-button" type="button" hidden disabled>加载更多归档</button>
+        <section id="output-preview-panel" class="output-preview-panel" aria-labelledby="output-preview-title" hidden>
+          <div class="output-preview-heading"><h4 id="output-preview-title">文件预览</h4><a id="output-download-link" class="secondary-button button-link">下载文件</a></div>
+          <pre id="output-preview" tabindex="0"></pre>
+        </section>
+      </section>
+    </section>
+
+    <section id="material-section" class="workspace-section" aria-labelledby="materials-title" hidden>
+      <div class="section-heading">
+        <div><p class="section-kicker">当前项目 · SFTP 目录与可选共享区</p><h2 id="materials-title"><span id="material-project-name">—</span> · 项目资料 <span id="material-count" class="count-badge">—</span></h2></div>
+        <button id="material-retry-button" class="secondary-button" type="button" hidden disabled>重新加载</button>
+      </div>
+      <p id="material-mode-help" class="section-help">正在读取当前项目的资料访问模式…</p>
+      <p class="section-help">下表保留为可选的审核共享区。你在 Harness 页面直接上传的文件仍只属于当前对话，位于该工作舱的 <code>/project-inputs</code>；ZIP 上传会安全展开并生成 AI 索引，不执行原型脚本。</p>
+      <p id="material-error" class="form-message error" role="alert" hidden></p>
+      <div id="material-loading" class="loading-row" role="status">正在读取项目共享资料…</div>
+      <div id="material-empty" class="empty-state" hidden><strong>可选审核共享区暂无资料</strong><p>SFTP 直读模式下，这不影响 AI 读取 <code>/project-ftp-inputs</code>；对话私有上传仍不会自动变成项目共享资料。</p></div>
+      <div id="material-table" class="table-scroll" hidden><table><thead><tr><th>资料</th><th>分类</th><th>大小</th><th>审核</th></tr></thead><tbody id="material-list"></tbody></table></div>
+
+      <div id="material-review-panel" class="review-panel" hidden>
+        <div class="section-heading compact-heading"><div><p class="section-kicker">管理员审核</p><h2>待处理原始资料 <span id="material-intake-count" class="count-badge">—</span></h2></div></div>
+        <p class="section-help">原始上传位于隔离区，其他对话看不到。批准会复制一份到当前项目共享区，并为 PDF、DOCX、XLSX、Axure/前端 HTML ZIP 生成受限 AI 可读副本；原文件和审计记录保持不变。旧审计未记录用户和对话时，页面会明确标为“历史记录，无法归属”。</p>
+        <div id="material-intake-empty" class="empty-state" hidden><strong>没有待审核资料</strong><p>隔离区为空，或现有资料已经按当前内容校验值批准。</p></div>
+        <div id="material-intake-table" class="table-scroll" hidden><table><thead><tr><th>原始资料</th><th>来源</th><th>分类</th><th>操作</th></tr></thead><tbody id="material-intake-list"></tbody></table></div>
+      </div>
+    </section>
+
+    <section id="user-admin-section" class="workspace-section" aria-labelledby="users-title" hidden>
+      <div class="section-heading">
+        <div><p class="section-kicker">管理员</p><h2 id="users-title">项目人员</h2></div>
+        <button id="new-user-button" class="secondary-button" type="button" disabled>添加人员</button>
+      </div>
+      <p class="section-help">停用账号会立即撤销全部登录会话；管理员不会因此获得该人员对话的内容权限。</p>
+      <div class="table-scroll"><table><thead><tr><th>人员</th><th>角色</th><th>项目权限</th><th>状态</th><th>操作</th></tr></thead><tbody id="user-list"></tbody></table></div>
+    </section>
+
+    <section id="audit-section" class="workspace-section" aria-labelledby="audit-title" hidden>
+      <div class="section-heading"><div><p class="section-kicker">审计</p><h2 id="audit-title">最近操作</h2></div></div>
+      <div class="table-scroll"><table><thead><tr><th>时间</th><th>人员</th><th>动作</th><th>对象</th><th>结果</th></tr></thead><tbody id="audit-list"></tbody></table></div>
+    </section>
+  </main>
+
+  <dialog id="conversation-dialog" aria-labelledby="conversation-dialog-title">
+    <form id="conversation-form" method="dialog" novalidate>
+      <div class="dialog-heading"><div><p class="section-kicker">独立工作舱</p><h2 id="conversation-dialog-title">新建对话</h2></div><button class="icon-button" type="button" data-close-dialog="conversation-dialog" aria-label="关闭" disabled>×</button></div>
+      <label for="conversation-title">对话名称</label>
+      <input id="conversation-title" maxlength="100" required placeholder="例如：订单模块验收与发布">
+      <p class="field-help">名称只用于你自己的列表。创建后会初始化一个独立 Git 工作区和 Harness 状态。</p>
+      <p id="conversation-error" class="form-message error" role="alert" hidden></p>
+      <div class="dialog-actions"><button class="secondary-button" type="button" data-close-dialog="conversation-dialog" disabled>取消</button><button id="conversation-submit" class="primary-button" type="submit">创建工作舱</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="rename-dialog" aria-labelledby="rename-dialog-title">
+    <form id="rename-form" method="dialog" novalidate>
+      <div class="dialog-heading"><h2 id="rename-dialog-title">重命名对话</h2><button class="icon-button" type="button" data-close-dialog="rename-dialog" aria-label="关闭" disabled>×</button></div>
+      <label for="rename-title">新名称</label><input id="rename-title" maxlength="100" required>
+      <p id="rename-error" class="form-message error" role="alert" hidden></p>
+      <div class="dialog-actions"><button class="secondary-button" type="button" data-close-dialog="rename-dialog" disabled>取消</button><button class="primary-button" type="submit">保存</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="user-dialog" aria-labelledby="user-dialog-title">
+    <form id="user-form" method="dialog" novalidate>
+      <div class="dialog-heading"><h2 id="user-dialog-title">添加项目人员</h2><button class="icon-button" type="button" data-close-dialog="user-dialog" aria-label="关闭" disabled>×</button></div>
+      <label for="new-username">用户名</label><input id="new-username" maxlength="64" required spellcheck="false" placeholder="例如：zhangsan">
+      <label for="new-display-name">显示名称</label><input id="new-display-name" maxlength="80" required placeholder="例如：张三">
+      <label for="new-role">角色</label>
+      <select id="new-role"><option value="member">成员：管理自己的对话</option><option value="auditor">审计员：只读审计</option><option value="admin">平台管理员：账号、项目权限与审计</option></select>
+      <fieldset><legend>可进入的项目</legend><div id="new-user-projects" class="project-checklist"></div></fieldset>
+      <p id="user-error" class="form-message error" role="alert" hidden></p>
+      <div class="dialog-actions"><button class="secondary-button" type="button" data-close-dialog="user-dialog" disabled>取消</button><button class="primary-button" type="submit">创建账号</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="membership-dialog" aria-labelledby="membership-dialog-title">
+    <form id="membership-form" method="dialog" novalidate>
+      <div class="dialog-heading"><div><p class="section-kicker">最小权限</p><h2 id="membership-dialog-title">管理项目权限</h2></div><button class="icon-button" type="button" data-close-dialog="membership-dialog" aria-label="关闭" disabled>×</button></div>
+      <p id="membership-user-label" class="section-help"></p>
+      <fieldset><legend>允许进入并创建对话</legend><div id="membership-projects" class="project-checklist"></div></fieldset>
+      <p id="membership-error" class="form-message error" role="alert" hidden></p>
+      <div class="dialog-actions"><button class="secondary-button" type="button" data-close-dialog="membership-dialog" disabled>取消</button><button id="membership-submit" class="primary-button" type="submit">保存项目权限</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+    <div class="dialog-heading"><h2 id="confirm-title">确认操作</h2><button class="icon-button" type="button" data-close-dialog="confirm-dialog" aria-label="关闭" disabled>×</button></div>
+    <p id="confirm-message"></p>
+    <p id="confirm-error" class="form-message error" role="alert" hidden></p>
+    <div class="dialog-actions"><button class="secondary-button" type="button" data-close-dialog="confirm-dialog" disabled>取消</button><button id="confirm-button" class="danger-button" type="button" disabled>确认</button></div>
+  </dialog>
+
+  <dialog id="credential-dialog" aria-labelledby="credential-title">
+    <div class="dialog-heading"><h2 id="credential-title">一次性临时密码</h2><button class="icon-button" type="button" data-close-dialog="credential-dialog" aria-label="关闭" disabled>×</button></div>
+    <p>请通过安全渠道交给该人员。关闭后平台不会再次显示这次临时密码。</p>
+    <pre id="credential-value" class="credential-value"></pre>
+    <div class="dialog-actions"><button id="copy-credential-button" class="secondary-button" type="button" disabled>复制</button><button class="primary-button" type="button" data-close-dialog="credential-dialog" disabled>我已保存</button></div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script type="module" src="/forge-gateway/assets/gateway.js"></script>
+</body>
+</html>

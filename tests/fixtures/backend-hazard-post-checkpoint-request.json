@@ -1,0 +1,22 @@
+{
+  "prompt": "本次优先处理职业健康“接害岗位”后端删除缺口。Owner已明确授权后端整改、必要测试和正常受控保存检查点，并要求与前端已有普通维护能力衔接。此前领导力L01-L05仍待后续继续，不把它标成完成。这是原后端整改的明确关联任务，业务源码、业务测试、必要迁移由当前Harness GPT-5.6 Sol完成。\n\n本任务只改后端。另一个AI负责前端，禁止修改forge-admin-ui、forge-h5-ui、forge-report-ui和任何其他前端源码/测试/配置；保留在途修改。不要进入或修改前端职业健康工作舱c-3ac9491c7e833391cd5869ec，不直接修改canonical。代码事实来自该舱HEAD38735d3680d8215825b11741a8fca9aff2e165c9的只读回执，不能把旧行号/旧接口当作当前不变事实。\n\n先加载forge-taskspace-collaboration与forge-controlled-release，按现行prepare_task及实际请求身份准备本次精确后端范围。上轮领导力在同步前因为平台错误识别检查点权限而blocked，未产生本批业务修改；该AS错误已通过版本镜像修复并生效。不要自行设置actionCeiling或用不断改goal措辞来反复propose。先forge-release status读取真实head/workspaceFingerprint/canonicalHead；若当前工作舱还不含canonical且没有在途integration，使用现有forge-release integrate --mode start --expected-head <实际head> --expected-fingerprint <实际workspaceFingerprint> --canonical-head <实际canonicalHead>受控同步。clean工作区不要填--path；有在途操作恢复原operation，不重复start，不手工git fetch/merge。当前公共源码canonical至少0bbd23690847f3aa5611fe69e1c5a272f2a10d26及Skills .93已由平台交付，若canonical已前进保留他人更新。\n\n待核实的明确缺口：occupationalhealth/controller/HazardPostController.java当时仅page、getById、add、edit、import、export-data、employee-options，没有删除路由、删除权限或明确业务禁删依据。前端index.vue因此hide-batch-delete=true，hazard-post.js没有delete调用。这是源码缺口证据，不是生产事故或产品禁删结论。\n\n请在当前真实后端代码中核实接害岗位及其人员/危害因素/其他引用关系、租户与组织范围、记录状态和已有权限种子。普通可维护台账应有真实单条删除能力，后端校验当前操作者动作权限和记录范围；已有引用、流程/归档等真实禁删情况返回明确且可展示的原因。不要仅因接口缺失推断“业务禁止删除”，也不要为了补按钮无条件级联删除、改写历史或绕过既有公共逻辑删除规则。确有业务禁删依据的，给出来源、适用状态和前端应如何表达。没有此依据的，按成熟原生模块模式补齐所需Controller/Service/权限和必要兼容迁移，复用现有事务、校验、审计、响应与异常处理。普通批量操作允许前端调用单删逐项处理，不要求为了外观新造batch端点。\n\n仅对本点必要范围执行有效验证：有权限且可删除的记录能处理；无权限、跨租户/组织范围、真实引用/受限状态不能被越过；重复调用和错误反馈有明确语义；相关历史不因删除被误清理。使用隔离测试数据或现有受控测试环境，不删除生产记录，不制造线上真实通知。复用未变检查，不重跑整个业务模块或全仓。\n\n完成后正常受控保存检查点，给出可供前端接入的确切接口方法/路径、ID传递方式、权限编码、成功响应与失败语义、引用/状态规则、改动文件、候选HEAD及实际验证回执。不要只说“后端已支持”而不给合同。当前请求不自动生产发布；后续由同一受控交付链按Owner总体授权完成必要发布。若有直接平台/公共依赖阻塞，报准确操作/错误及已完成候选，保留历史，不私改平台或代替权限确认。\n",
+  "ownedPaths": [
+    "forge-server/db/migration",
+    "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/occupationalhealth/controller/HazardPostController.java",
+    "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/occupationalhealth/mapper/HazardPostMapper.java",
+    "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/occupationalhealth/service/HazardPostService.java",
+    "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/occupationalhealth/service/impl/HazardPostServiceImpl.java",
+    "forge-server/forge-business/forge-business-core/src/main/resources/mapper/business/HazardPostMapper.xml",
+    "forge-server/forge-business/forge-business-core/src/test/java/com/mdframe/forge/business/core/occupationalhealth/HazardPostMapperContractTest.java",
+    "forge-server/forge-business/forge-business-core/src/test/java/com/mdframe/forge/business/core/occupationalhealth/HazardPostMigrationContractTest.java",
+    "forge-server/forge-business/forge-business-core/src/test/java/com/mdframe/forge/business/core/occupationalhealth/HazardPostServiceImplTest.java"
+  ],
+  "taskProfiles": [
+    "migration",
+    "database",
+    "backend",
+    "crud",
+    "dictionary",
+    "security"
+  ]
+}

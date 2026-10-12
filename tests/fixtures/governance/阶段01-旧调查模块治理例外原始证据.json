@@ -1,0 +1,1009 @@
+{
+  "ok": false,
+  "schemaVersion": 1,
+  "policyVersion": "2026.09.03.1",
+  "profile": "forge-admin-v1.1.2-regulated",
+  "sourceBaseline": {
+    "repository": "https://github.com/yaomindong1996/forge-admin.git",
+    "ref": "v1.1.2",
+    "commit": "6eb2881e6f6af85a5348acf3da63cef53a873b0e"
+  },
+  "repositoryIdentity": "forge-base",
+  "executionProven": true,
+  "runtimeBehaviorProven": false,
+  "semanticReviewProven": false,
+  "scope": {
+    "base": "371c7ac2c0dc2a64158c6d4087b43fede2f9050d",
+    "baseCommit": "371c7ac2c0dc2a64158c6d4087b43fede2f9050d",
+    "head": "371c7ac2c0dc2a64158c6d4087b43fede2f9050d",
+    "explicitPaths": false,
+    "completeChange": true
+  },
+  "files": [
+    {
+      "path": "forge-admin-ui/jsconfig.json",
+      "status": "M",
+      "bytes": 310,
+      "sha256": "e23aaebf3ac757edbb0a0b4b15f1108767cef669bf8e451c968a595e83fe67d7"
+    },
+    {
+      "path": "forge-admin-ui/package.json",
+      "status": "M",
+      "bytes": 3432,
+      "sha256": "97a8c7cf83311175f2dee35fda0ac55cded687fbd1728d1da7cb4dd7245d270d"
+    },
+    {
+      "path": "forge-admin-ui/pnpm-lock.yaml",
+      "status": "M",
+      "bytes": 472195,
+      "sha256": "e38f804076ec92b58ae0ddf20abea8afdc653da150372fe5093ef22ecf5450f4"
+    },
+    {
+      "path": "forge-admin-ui/src/composables/__tests__/use-dict-import-contract.test.js",
+      "status": "U",
+      "bytes": 1132,
+      "sha256": "f9a1413adb1d174f0ef652b1407e47c932fef378c1c83adc2c2375b61e08bd5d"
+    },
+    {
+      "path": "forge-admin-ui/src/composables/__tests__/useDict.spec.js",
+      "status": "M",
+      "bytes": 960,
+      "sha256": "a951f6a6018ae0db5f1c2e0665bdcc0e1523d56c2fcfac59475ac3fc68e03f81"
+    },
+    {
+      "path": "forge-admin-ui/src/composables/useDict.js",
+      "status": "M",
+      "bytes": 6572,
+      "sha256": "beca687edfab37401f6c374114cefd27b702384fcfd2bb652704fe56fe1c963f"
+    },
+    {
+      "path": "forge-admin-ui/src/views/accident/__tests__/accident-level-cascade-contract.test.js",
+      "status": "U",
+      "bytes": 2481,
+      "sha256": "85fd4882b486000060b65912a07f0dd9ea4cd6417c058bf33eff14fbda45e96b"
+    },
+    {
+      "path": "forge-admin-ui/src/views/accident/__tests__/investigate-tab-filter.test.js",
+      "status": "U",
+      "bytes": 5497,
+      "sha256": "b51d681a653d1d5baae153afb0784fd88d50dc5c9653586772cf69f12acccdac"
+    },
+    {
+      "path": "forge-admin-ui/src/views/accident/accident-batch-a-contract.js",
+      "status": "M",
+      "bytes": 3556,
+      "sha256": "4cfb3d2e0872ac17251202b643a43b2a6a4fbd4e6c72f64b202600a53984aa25"
+    },
+    {
+      "path": "forge-admin-ui/src/views/accident/investigate.vue",
+      "status": "M",
+      "bytes": 84899,
+      "sha256": "c4df5f8f2ac709ad10cb2df9f961dfdfc5c49e52e06e247bff8e53780e1b2d0b"
+    },
+    {
+      "path": "forge-admin-ui/src/views/external/__tests__/external-manage-provider-contract.test.js",
+      "status": "U",
+      "bytes": 3449,
+      "sha256": "c7166e3b7601d2da37684931eacf05cc6066ab56a5136ab3be48f1eedab62694"
+    },
+    {
+      "path": "forge-admin-ui/src/views/external/manage.vue",
+      "status": "M",
+      "bytes": 58296,
+      "sha256": "dc4b00ba69a349ca3fed3afdb52436ecc76c77a9abc2e5ef878e9d0871a913b2"
+    },
+    {
+      "path": "forge-admin-ui/src/views/system/client.vue",
+      "status": "M",
+      "bytes": 10840,
+      "sha256": "bde1facd6a36f55febb9970a8a4ee2e68be893cd3616d13b5cf54a127e41d6b4"
+    }
+  ],
+  "counts": {
+    "files": 13,
+    "block": 107,
+    "review": 0
+  },
+  "findings": [
+    {
+      "ruleId": "FE-CRUD-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1,
+      "message": "Ordinary Forge business CRUD page must use AiCrudPage.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-CRUD-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1,
+      "message": "Business CRUD page hand-rolls pagination instead of using AiCrudPage.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 180,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 242,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 245,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 312,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 621,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 624,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 712,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 732,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1131,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1608,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1615,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1617,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1618,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1621,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1624,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1632,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1633,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1638,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1642,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1643,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1650,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1651,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1654,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1661,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1672,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1679,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1684,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1692,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1699,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1700,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1718,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1723,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1724,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1728,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1729,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1730,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1733,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1734,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1735,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1740,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1741,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1748,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1749,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1759,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1761,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1770,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1785,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1789,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1805,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1808,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1820,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1821,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1826,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1827,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1831,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1842,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1846,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1847,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1863,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1868,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1873,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1876,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1881,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1887,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1891,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1902,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1926,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1932,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1937,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1946,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1952,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1956,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1957,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1964,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1968,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1969,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1979,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1983,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1987,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1992,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 1996,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 2004,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 2013,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 2017,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 2020,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 2032,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 2037,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 2038,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 2044,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 2060,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 2072,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 2073,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 2074,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 2085,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/accident/investigate.vue",
+      "line": 2086,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-API-001",
+      "file": "forge-admin-ui/src/views/external/manage.vue",
+      "line": 370,
+      "message": "Generated frontend CRUD contract must use POST-safe routes and :id placeholders.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-API-001",
+      "file": "forge-admin-ui/src/views/external/manage.vue",
+      "line": 371,
+      "message": "Generated frontend CRUD contract must use POST-safe routes and :id placeholders.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-API-001",
+      "file": "forge-admin-ui/src/views/external/manage.vue",
+      "line": 378,
+      "message": "Generated frontend CRUD contract must use POST-safe routes and :id placeholders.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-API-001",
+      "file": "forge-admin-ui/src/views/external/manage.vue",
+      "line": 379,
+      "message": "Generated frontend CRUD contract must use POST-safe routes and :id placeholders.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-API-001",
+      "file": "forge-admin-ui/src/views/external/manage.vue",
+      "line": 385,
+      "message": "Generated frontend CRUD contract must use POST-safe routes and :id placeholders.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/external/manage.vue",
+      "line": 1578,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/external/manage.vue",
+      "line": 1625,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-DESIGN-001",
+      "file": "forge-admin-ui/src/views/external/manage.vue",
+      "line": 1626,
+      "message": "Raw color literal is forbidden in a new admin business page; use a Forge design token.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-API-001",
+      "file": "forge-admin-ui/src/views/system/client.vue",
+      "line": 10,
+      "message": "Generated frontend CRUD contract must use POST-safe routes and :id placeholders.",
+      "evidence": {},
+      "severity": "block"
+    },
+    {
+      "ruleId": "FE-API-001",
+      "file": "forge-admin-ui/src/views/system/client.vue",
+      "line": 11,
+      "message": "Generated frontend CRUD contract must use POST-safe routes and :id placeholders.",
+      "evidence": {},
+      "severity": "block"
+    }
+  ],
+  "appliedExceptions": [],
+  "obligations": [
+    {
+      "ruleId": "PERMISSION-001",
+      "enforcement": "semantic",
+      "summary": "Menu, button, API resource, backend enforcement, tenant, and data-scope behavior form one reviewed contract.",
+      "requiredEvidence": [
+        "permission-contract-review",
+        "negative-api-test-receipt"
+      ]
+    },
+    {
+      "ruleId": "FE-UX-001",
+      "enforcement": "runtime",
+      "summary": "Changed user flows verify responsive layout, keyboard/focus behavior, loading, empty, error, permission, and retry states in a real browser.",
+      "requiredEvidence": [
+        "responsive-browser-receipt",
+        "accessibility-receipt",
+        "negative-ui-state-receipt"
+      ]
+    },
+    {
+      "ruleId": "OBS-001",
+      "enforcement": "runtime",
+      "summary": "New failure and business-critical paths define masked structured logs, request/trace propagation, metrics, alerts, and a runbook owner.",
+      "requiredEvidence": [
+        "log-redaction-test-receipt",
+        "trace-propagation-receipt",
+        "metric-alert-runbook-review"
+      ]
+    },
+    {
+      "ruleId": "QUALITY-TDD-001",
+      "enforcement": "runtime",
+      "summary": "Bug fixes and new behavior retain independent RED and GREEN receipts bound to the same diff lineage.",
+      "requiredEvidence": [
+        "red-receipt",
+        "green-receipt",
+        "review-receipt"
+      ]
+    }
+  ],
+  "generatedAt": "2026-09-11T08:51:30.728Z",
+  "receiptDigest": "sha256:a3ab7b2f03602b8a8e4733efdad689bab76e4f161589fbc8885cb884ff9038aa"
+}

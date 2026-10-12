@@ -1,0 +1,23 @@
+ARG HARNESS_BASE_IMAGE
+FROM ${HARNESS_BASE_IMAGE}
+
+ARG HARNESS_BASE_IMAGE_ID
+ARG HARNESS_IMAGE_REVISION=vpn-legacy-conversation-surface-55
+ARG HARNESS_SKILL_BUNDLE_VERSION
+
+LABEL org.opencontainers.image.revision="${HARNESS_IMAGE_REVISION}"
+LABEL org.opencontainers.image.description="Pinned DeepSeek Harness legacy conversation surface compatibility release"
+LABEL com.forge-delivery.harness-skill-bundle="${HARNESS_SKILL_BUNDLE_VERSION}"
+LABEL com.forge-delivery.harness-base-image-id="${HARNESS_BASE_IMAGE_ID}"
+
+USER 0:0
+COPY --chmod=0644 docker/harness/apply-legacy-conversation-surface.mjs /tmp/apply-legacy-conversation-surface.mjs
+RUN node /tmp/apply-legacy-conversation-surface.mjs --root /usr/local/lib \
+    && node --check /usr/local/lib/conversation-gateway.mjs \
+    && node --check /usr/local/lib/harness-tcp-proxy.mjs \
+    && rm -f /tmp/apply-legacy-conversation-surface.mjs
+COPY --chmod=0644 docker/harness/conversation-policy.mjs /usr/local/lib/conversation-policy.mjs
+COPY --chmod=0644 docker/harness/conversation-gateway/ /usr/local/share/conversation-gateway/
+
+WORKDIR /workspace
+USER 1000:1000

@@ -1,0 +1,9 @@
+# Reuse the verified acceptance/Skills image and every existing dependency layer.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0755 docker/harness/forge-verify /usr/local/bin/forge-verify
+COPY --chmod=0644 docker/harness/Dockerfile.receipt-selector-reuse /usr/local/share/forge-image-build/
+RUN --network=none node --check /usr/local/bin/forge-verify
+LABEL com.forge-delivery.receipt-selector-reuse.version="2026.09.22.1"
+USER 1000:1000

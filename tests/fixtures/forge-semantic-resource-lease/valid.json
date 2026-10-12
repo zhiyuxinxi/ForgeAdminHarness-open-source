@@ -1,0 +1,22 @@
+{
+  "registry": {
+    "schemaVersion": 1,
+    "registryType": "forge-semantic-resource/lease-registry",
+    "projectSlug": "forge-admin",
+    "sourceFingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "acquire": {
+    "expectedRevision": 0,
+    "leaseId": "123e4567-e89b-42d3-a456-426614174200",
+    "taskId": "task-order-api",
+    "actorUserId": "123e4567-e89b-42d3-a456-426614174201",
+    "ownedPaths": ["forge-server/order/OrderController.java"],
+    "resources": [
+      { "type": "api", "key": "POST /business/order/{id}" },
+      { "type": "permission", "key": "business:order:edit" },
+      { "type": "table", "key": "forge.order" }
+    ],
+    "acquiredAt": "2026-09-01T00:00:00.000Z",
+    "expiresAt": "2026-09-01T00:10:00.000Z"
+  }
+}

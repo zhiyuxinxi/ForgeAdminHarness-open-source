@@ -1,0 +1,163 @@
+ARG HARNESS_REPACK_SOURCE_IMAGE=forge-delivery/deepseek-harness:0.1.1-rc.2-vpn76
+FROM ${HARNESS_REPACK_SOURCE_IMAGE} AS runtime-root
+
+ARG HARNESS_REPACK_SOURCE_IMAGE_ID
+ARG HARNESS_REPACK_DOCKERFILE_SHA256
+SHELL ["/bin/bash", "-Eeuo", "pipefail", "-c"]
+USER 0:0
+
+# This path is an offline recovery bridge for a verified, exact Harness image
+# when its original registry bases are unavailable. A single mounted RUN keeps
+# the 123-layer source at the reviewed 124-layer execution ceiling; the final
+# scratch copy then publishes a flattened low-layer filesystem.
+RUN --network=none \
+    --mount=type=bind,source=docker/harness/validate-runtime-dependencies.mjs,target=/run/forge-repack/validate-runtime-dependencies.mjs,ro \
+    --mount=type=bind,source=docker/harness/validate-runtime-tree-metadata.sh,target=/run/forge-repack/validate-runtime-tree-metadata.sh,ro \
+    --mount=type=bind,source=docker/harness/runtime-dependencies/package.json,target=/run/forge-repack/package.json,ro \
+    --mount=type=bind,source=docker/harness/runtime-dependencies/package-lock.json,target=/run/forge-repack/package-lock.json,ro \
+    [[ "${HARNESS_REPACK_SOURCE_IMAGE_ID}" =~ ^sha256:[0-9a-f]{64}$ ]] \
+    && [[ "${HARNESS_REPACK_DOCKERFILE_SHA256}" =~ ^[0-9a-f]{64}$ ]] \
+    && command -v java >/dev/null \
+    && command -v javac >/dev/null \
+    && command -v mvn >/dev/null \
+    && command -v pnpm >/dev/null \
+    && test -d /opt/forge-harness-runtime/node_modules/pnpm \
+    && test -f /opt/forge-harness-runtime/node_modules/.package-lock.json \
+    && test -d /usr/local/share/dsh-skills \
+    && test -f /usr/local/share/dsh-skills.catalog.json \
+    && install -m 0644 -o 0 -g 0 /run/forge-repack/validate-runtime-dependencies.mjs /usr/local/lib/validate-runtime-dependencies.mjs \
+    && install -m 0755 -o 0 -g 0 /run/forge-repack/validate-runtime-tree-metadata.sh /usr/local/lib/validate-runtime-tree-metadata.sh \
+    && install -m 0644 -o 0 -g 0 /run/forge-repack/package.json /opt/forge-harness-runtime/package.json \
+    && install -m 0644 -o 0 -g 0 /run/forge-repack/package-lock.json /opt/forge-harness-runtime/package-lock.json \
+    && rm -rf \
+      /opt/java \
+      /usr/share/maven \
+      /root/.m2 \
+      /home/node/.m2 \
+      /home/node/.local/share/pnpm \
+      /opt/forge-harness-runtime/node_modules/pnpm \
+      /usr/local/share/dsh-skills \
+      /usr/local/share/dsh-skills.catalog.json \
+      /opt/forge-skill-bundles \
+    && rm -f \
+      /usr/bin/mvn \
+      /usr/local/bin/mvn-entrypoint.sh \
+      /usr/local/bin/pn \
+      /usr/local/bin/pnpm \
+      /usr/local/bin/pnpx \
+      /usr/local/bin/pnx \
+      /opt/forge-harness-runtime/node_modules/.bin/pn \
+      /opt/forge-harness-runtime/node_modules/.bin/pnpm \
+      /opt/forge-harness-runtime/node_modules/.bin/pnpx \
+      /opt/forge-harness-runtime/node_modules/.bin/pnx \
+      /usr/local/lib/node_modules/corepack/shims/pn \
+      /usr/local/lib/node_modules/corepack/shims/pn.cmd \
+      /usr/local/lib/node_modules/corepack/shims/pn.ps1 \
+      /usr/local/lib/node_modules/corepack/shims/pnpm \
+      /usr/local/lib/node_modules/corepack/shims/pnpm.cmd \
+      /usr/local/lib/node_modules/corepack/shims/pnpm.ps1 \
+      /usr/local/lib/node_modules/corepack/shims/pnpx \
+      /usr/local/lib/node_modules/corepack/shims/pnpx.cmd \
+      /usr/local/lib/node_modules/corepack/shims/pnpx.ps1 \
+      /usr/local/lib/node_modules/corepack/shims/pnx \
+      /usr/local/lib/node_modules/corepack/shims/pnx.cmd \
+      /usr/local/lib/node_modules/corepack/shims/pnx.ps1 \
+      /usr/local/lib/node_modules/corepack/shims/nodewin/pn \
+      /usr/local/lib/node_modules/corepack/shims/nodewin/pn.cmd \
+      /usr/local/lib/node_modules/corepack/shims/nodewin/pn.ps1 \
+      /usr/local/lib/node_modules/corepack/shims/nodewin/pnpm \
+      /usr/local/lib/node_modules/corepack/shims/nodewin/pnpm.cmd \
+      /usr/local/lib/node_modules/corepack/shims/nodewin/pnpm.ps1 \
+      /usr/local/lib/node_modules/corepack/shims/nodewin/pnpx \
+      /usr/local/lib/node_modules/corepack/shims/nodewin/pnpx.cmd \
+      /usr/local/lib/node_modules/corepack/shims/nodewin/pnpx.ps1 \
+      /usr/local/lib/node_modules/corepack/shims/nodewin/pnx \
+      /usr/local/lib/node_modules/corepack/shims/nodewin/pnx.cmd \
+      /usr/local/lib/node_modules/corepack/shims/nodewin/pnx.ps1 \
+      /usr/local/lib/node_modules/corepack/dist/pnpm.js \
+    && node -e 'const fs=require("node:fs");const file=process.argv[1];const value=JSON.parse(fs.readFileSync(file,"utf8"));if(value.lockfileVersion!==3||!value.packages||!Object.hasOwn(value.packages,"node_modules/pnpm"))process.exit(2);delete value.packages["node_modules/pnpm"];fs.writeFileSync(file,`${JSON.stringify(value,null,2)}\n`)' \
+      /opt/forge-harness-runtime/node_modules/.package-lock.json \
+    && node /usr/local/lib/validate-runtime-dependencies.mjs --mode source --root /opt/forge-harness-runtime \
+    && node /usr/local/lib/validate-runtime-dependencies.mjs --root /opt/forge-harness-runtime --smoke --json \
+      >/usr/local/share/forge-image-build/runtime-dependency-receipt.json \
+    && /usr/local/lib/validate-runtime-tree-metadata.sh /opt/forge-harness-runtime \
+    && if test -f /usr/local/share/forge-image-build/receipt.json; then \
+      install -m 0644 -o 0 -g 0 /usr/local/share/forge-image-build/receipt.json \
+        /usr/local/share/forge-image-build/assembly-source-build-input-receipt.json; \
+    fi \
+    && rm -f /usr/local/share/forge-image-build/receipt.json \
+    && runtime_sha="$(sha256sum /usr/local/share/forge-image-build/runtime-dependency-receipt.json | awk '{print $1}')" \
+    && node -e 'const fs=require("node:fs");const [file,sourceImageId,dockerfileSha256,runtimeReceiptSha256]=process.argv.slice(1);const value={schemaVersion:"forge-harness-offline-repack/v1",outcome:"repacked",assemblySourceImageId:sourceImageId,assemblySourceRevision:"vpn-forge-delivery-toolkit-76",dockerfileSha256,runtimeDependencyReceiptSha256:runtimeReceiptSha256,networkMode:"none",removedCapabilities:["jdk","maven","direct-pnpm","embedded-skills"]};fs.writeFileSync(file,`${JSON.stringify(value,null,2)}\n`,{encoding:"utf8",mode:0o644})' \
+      /usr/local/share/forge-image-build/offline-repack-receipt.json \
+      "${HARNESS_REPACK_SOURCE_IMAGE_ID}" "${HARNESS_REPACK_DOCKERFILE_SHA256}" "${runtime_sha}" \
+    && dpkg-query -W -f='${binary:Package}\t${Version}\t${Architecture}\n' \
+      | LC_ALL=C sort > /usr/local/share/forge-os-package-inventory.tsv \
+    && ! command -v java \
+    && ! command -v javac \
+    && ! command -v mvn \
+    && ! command -v pnpm \
+    && ! command -v pnpx \
+    && ! command -v pn \
+    && ! command -v pnx \
+    && test ! -e /opt/forge-harness-runtime/node_modules/pnpm \
+    && test ! -e /usr/local/share/dsh-skills \
+    && test ! -e /usr/local/share/dsh-skills.catalog.json \
+    && test ! -e /opt/forge-skill-bundles \
+    && node --check /usr/local/lib/verification-runner.mjs \
+    && dsh --version
+
+FROM scratch AS harness-core
+
+ARG HARNESS_REPACK_SOURCE_IMAGE_ID
+ARG HARNESS_NODE_BASE_IMAGE
+ARG HARNESS_MAVEN_BASE_IMAGE
+ARG DSH_VERSION=0.1.1-rc.2
+ARG HARNESS_IMAGE_REVISION=vpn-forge-delivery-toolkit-77-base
+ARG HARNESS_SKILL_BUNDLE_VERSION=2026.09.01.5
+ARG HARNESS_RUNTIME_PROFILE=loopback-safe
+
+COPY --from=runtime-root / /
+
+LABEL org.opencontainers.image.title="Forge Delivery DeepSeek Harness"
+LABEL org.opencontainers.image.description="Pinned DeepSeek Harness core with external Skills and host verification"
+LABEL org.opencontainers.image.source="https://github.com/deepseek-ai/deepseek-harness"
+LABEL org.opencontainers.image.version="${DSH_VERSION}"
+LABEL org.opencontainers.image.revision="${HARNESS_IMAGE_REVISION}"
+LABEL com.forge-delivery.harness-skill-bundle="${HARNESS_SKILL_BUNDLE_VERSION}"
+LABEL com.forge-delivery.harness-runtime-profile="${HARNESS_RUNTIME_PROFILE}"
+LABEL com.forge-delivery.harness-node-base-manifest="${HARNESS_NODE_BASE_IMAGE}"
+LABEL com.forge-delivery.harness-maven-base-manifest="${HARNESS_MAVEN_BASE_IMAGE}"
+
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    NODE_PATH=/opt/forge-harness-runtime/node_modules \
+    LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8 \
+    HOME=/home/node \
+    DSH_HOME=/home/node/.dsh \
+    DSH_BUNDLED_SKILL_DIR=/opt/forge-skill-bundles/current/skills \
+    DSH_TELEMETRY_DISABLED=1 \
+    FORGE_HARNESS_SKILL_BUNDLE_VERSION=${HARNESS_SKILL_BUNDLE_VERSION} \
+    HARNESS_DOCUMENT_INPUT_ROOT=/project-inputs \
+    HARNESS_DOCUMENT_MAX_OUTPUT_BYTES=1048576 \
+    HARNESS_DOCUMENT_MAX_PDF_PAGES=200 \
+    HARNESS_DOCUMENT_MAX_SOURCE_BYTES=26214400 \
+    HARNESS_DOCUMENT_MAX_SPREADSHEET_COLUMNS=100 \
+    HARNESS_DOCUMENT_MAX_SPREADSHEET_ROWS=2000 \
+    HARNESS_PROTOTYPE_MAX_ARCHIVE_BYTES=52428800 \
+    HARNESS_PROTOTYPE_MAX_COMPRESSION_RATIO=100 \
+    HARNESS_PROTOTYPE_MAX_DEPTH=24 \
+    HARNESS_PROTOTYPE_MAX_ENTRIES=5000 \
+    HARNESS_PROTOTYPE_MAX_FILE_BYTES=16777216 \
+    HARNESS_PROTOTYPE_MAX_HTML_ANALYSIS_BYTES=4194304 \
+    HARNESS_PROTOTYPE_MAX_PAGES=200 \
+    HARNESS_PROTOTYPE_MAX_PATH_BYTES=1024 \
+    HARNESS_PROTOTYPE_MAX_SUMMARY_BYTES=2097152 \
+    HARNESS_PROTOTYPE_MAX_UNCOMPRESSED_BYTES=268435456 \
+    HARNESS_HISTORY_PAGE_MESSAGES=5 \
+    HARNESS_PRIVILEGED_API_MODE=loopback-only
+
+WORKDIR /workspace
+USER 1000:1000
+ENTRYPOINT []
+CMD ["/usr/local/bin/start-harness"]

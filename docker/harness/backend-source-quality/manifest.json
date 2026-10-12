@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "source": "forge-admin-foundation backend audit source scanner",
+  "tools": {
+    "pmd": "7.17.0",
+    "checkstyle": "10.26.1"
+  },
+  "files": {
+    "backend-quality.py": "1e6afd64b73c5c65af7d49178eec51c2c3cce8f87dfb72626d0100fedaeb7d32",
+    "pom.xml": "d349edd237d2032cefaf329a05440d9a5e9e5d5ee00bfbf20bcc16864be5cc43",
+    "pmd.xml": "12185c9b58b2e2cacf6adefbc68ab92e182701291bff82ca7fc684202be6ea92",
+    "checkstyle.xml": "e74124dbc40a3d5a9593212825c6c8b3df4c923a82594f78c7c07ce4de5c9599"
+  }
+}

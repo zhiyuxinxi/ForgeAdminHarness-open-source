@@ -1,0 +1,11 @@
+# Retain the verified preset, Host, Skills and dependency layers.
+# Base: sha256:0eb16e416f9b3e82a8c1ba8dcd3c6aca243756c9d2db965b50b9803086e4d577
+ARG BASE_IMAGE=forge-delivery/deepseek-harness:0.1.1-rc.2-release-preset-alignment-20260923-1
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 docker/harness/forge-protected-issuer-adapter.mjs docker/harness/taskspace-broker.mjs /usr/local/lib/
+COPY --chmod=0644 config/versions.env docker/harness/Dockerfile.acceptance-expiry-recovery /usr/local/share/forge-image-build/
+RUN --network=none node --check /usr/local/lib/forge-protected-issuer-adapter.mjs \
+    && node --check /usr/local/lib/taskspace-broker.mjs
+LABEL com.forge-delivery.acceptance-expiry-recovery.version="2026.09.23.1"
+USER 1000:1000

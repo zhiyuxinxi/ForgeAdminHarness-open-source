@@ -1,0 +1,11 @@
+# Inherit all verified dependencies, Host.22.2, Skills.22.2 and native route tooling.
+# Base sha256:16ba45c4ef8389b8fe659990f908bfb8c78b12a4601fb1b98c25f9e7c615ebff.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 docker/harness/forge-phase-budget-guard.mjs /usr/local/lib/forge-phase-budget-guard.mjs
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.runtime-budget-guidance /usr/local/share/forge-image-build/Dockerfile.runtime-budget-guidance
+RUN --network=none node --check /usr/local/lib/forge-phase-budget-guard.mjs
+LABEL com.forge-delivery.runtime-budget-guidance.version="2026.09.22.1"
+USER 1000:1000

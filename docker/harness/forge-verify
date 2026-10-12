@@ -1,0 +1,369 @@
+#!/usr/bin/env node
+
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import http from 'node:http';
+import { fileURLToPath } from 'node:url';
+
+const verifyPolicyModuleUrl = [
+  new URL('./verify-policy.mjs', import.meta.url),
+  new URL('../lib/verify-policy.mjs', import.meta.url),
+].find((candidate) => existsSync(fileURLToPath(candidate)));
+if (verifyPolicyModuleUrl === undefined) {
+  throw new Error('verify-policy.mjs is not installed in a supported location.');
+}
+const { validateVerifyAction, defaultBackgroundVerification } = await import(verifyPolicyModuleUrl.href);
+
+const BROKER_URL = new URL(process.env.FORGE_TASKSPACE_BROKER_URL ?? 'http://taskspace-broker:3100');
+const TOKEN_FILE = process.env.FORGE_TASKSPACE_TOKEN_FILE ?? '/run/forge-taskspace/broker-token';
+const PROFILE_LIST = Object.freeze([
+  'governance', 'backend-red-test', 'frontend-red-test', 'backend-module-compile', 'backend-module-test', 'backend-test-class',
+  'frontend-admin-lint', 'frontend-admin-test', 'frontend-admin-typecheck', 'frontend-admin-build', 'frontend-h5-test', 'frontend-h5-build', 'changed-safe', 'full-regression',
+  'backend-source-quality',
+]);
+const PROFILE_NAMES = new Set(PROFILE_LIST);
+
+function usage() {
+  process.stdout.write([
+    'Usage:',
+    '  forge-verify profiles --format json',
+    '  forge-verify admit --profile <reviewed-profile> [--profile <reviewed-profile>]...',
+    '  forge-verify capability --profile <reviewed-profile>',
+    '  forge-verify run --profile <reviewed-profile> --admission-id <uuid> --idempotency-key <key> [--reuse-receipt <uuid>] [--module <forge-server/...>]... [--test <Class[#method]>]... [--file <forge-admin-ui/src/...>]... [--test-file <forge-admin-ui/...spec.ts|forge-h5-ui/src/...test.js>]...',
+    '  forge-verify status --job-id <uuid> [--wait-seconds <1..60>]',
+    '  forge-verify watch --job-id <uuid>  (use bash run_in_background: true for a native completion notice)',
+    '  forge-verify receipt --receipt-id <uuid>',
+    '  forge-verify review --contract-id <current-protected-contract-sha256>',
+    '',
+    'This client exposes typed verification profiles only. It never accepts arbitrary commands,',
+    'working directories, environment variables, images, mounts, URLs, or network settings.',
+    '--reuse-receipt explicitly revalidates an unchanged, passed Host execution under current authority; it does not rerun checks.',
+    'review requests independent semantic review required by the current contract; it does not revalidate passed test receipts. Use run --reuse-receipt for receipt revalidation, with the original profile/selectors and current admission.',
+    'A rejected receipt reuse is not a pass: preserve the reason and rerun only the invalidated check when authorized. Backend receipt reuse across frontend changes does not make an old governance or frontend receipt current.',
+    'For frontend lint and tests, receipt reuse keeps the original file selectors when no file selectors are supplied.',
+    'Backend compilation, module tests and focused diagnostics, full regression, admin build and unfiltered admin tests default to background submission; query the existing job status, then receipt. An accepted job is not verification proof.',
+    'For a focused backend check use backend-test-class --module <module> --test <Class[#method]>; backend-module-test runs the whole module and does not accept --test.',
+    `Reviewed profiles: ${PROFILE_LIST.join(', ')}`,
+  ].join('\n') + '\n');
+}
+
+function parse(argv) {
+  const command = argv[0];
+  if (!['admit', 'capability', 'run', 'status', 'watch', 'receipt', 'review'].includes(command)) throw new Error('A supported forge-verify command is required.');
+  const values = { profiles: [], modules: [], tests: [], files: [], testFiles: [] };
+  if (command === 'review') {
+    if (argv.length !== 3 || argv[1] !== '--contract-id') throw new Error('review requires exactly --contract-id <current protected contract>.');
+    const review = validateVerifyAction({ action: 'review', acceptanceContractId: argv[2] });
+    return { command, ...values, acceptanceContractId: review.acceptanceContractId };
+  }
+  const singleton = new Set();
+  for (let index = 1; index < argv.length; index += 1) {
+    const option = argv[index];
+    const value = argv[index + 1];
+    if (value === undefined) throw new Error(`${option} requires a value.`);
+    if (['--profile', '--job-id', '--receipt-id', '--idempotency-key', '--admission-id', '--reuse-receipt', '--execution-mode', '--wait-seconds'].includes(option)
+      && !(command === 'admit' && option === '--profile')) {
+      if (singleton.has(option)) throw new Error(`${option} may be provided only once.`);
+      singleton.add(option);
+    }
+    if (option === '--profile' && command === 'admit') values.profiles.push(value);
+    else if (option === '--profile') values.profile = value;
+    else if (option === '--module') values.modules.push(value);
+    else if (option === '--test') values.tests.push(value);
+    else if (option === '--file') values.files.push(value);
+    else if (option === '--test-file') values.testFiles.push(value);
+    else if (option === '--job-id') values.jobId = value;
+    else if (option === '--receipt-id') values.receiptId = value;
+    else if (option === '--reuse-receipt') values.reuseReceiptId = value;
+    else if (option === '--idempotency-key') values.idempotencyKey = value;
+    else if (option === '--admission-id') values.admissionId = value;
+    else if (option === '--execution-mode') values.executionMode = value;
+    else if (option === '--wait-seconds') {
+      if (!/^(?:[1-9]|[1-5][0-9]|60)$/u.test(value)) throw new Error('--wait-seconds must be an integer from 1 to 60.');
+      values.waitSeconds = Number(value);
+    }
+    else throw new Error(`Unsupported forge-verify option: ${option}`);
+    index += 1;
+  }
+  if (command === 'admit') {
+    if (values.profiles.length < 1 || new Set(values.profiles).size !== values.profiles.length
+      || values.profiles.some((profile) => !PROFILE_NAMES.has(profile))) {
+      throw new Error(`VERIFY_PROFILE_UNKNOWN: unique reviewed --profile values are required; allowedProfiles=${PROFILE_LIST.join(',')}`);
+    }
+    const selected = new Set(values.profiles);
+    const canonical = PROFILE_LIST.filter((profile) => selected.has(profile));
+    if (canonical.some((profile, index) => profile !== values.profiles[index])) {
+      throw new Error('VERIFY_PROFILE_ORDER_INVALID: admission profiles must use the reviewed catalog order.');
+    }
+  } else if (['capability', 'run'].includes(command)) {
+    if (!PROFILE_NAMES.has(values.profile)) {
+      throw new Error(`VERIFY_PROFILE_UNKNOWN: a reviewed --profile is required; allowedProfiles=${PROFILE_LIST.join(',')}`);
+    }
+  }
+  if (command !== 'run' && (values.modules.length > 0 || values.tests.length > 0
+    || values.files.length > 0 || values.testFiles.length > 0)) {
+    throw new Error('Module and test selectors are accepted only by forge-verify run.');
+  }
+  if (command !== 'run' && values.idempotencyKey !== undefined) {
+    throw new Error('--idempotency-key is accepted only by forge-verify run.');
+  }
+  if (command !== 'run' && values.admissionId !== undefined) {
+    throw new Error('--admission-id is accepted only by forge-verify run.');
+  }
+  if (command !== 'run' && values.reuseReceiptId !== undefined) {
+    throw new Error('--reuse-receipt is accepted only by forge-verify run.');
+  }
+  if (command !== 'run' && values.executionMode !== undefined) {
+    throw new Error('--execution-mode is accepted only by forge-verify run.');
+  }
+  if (command !== 'status' && values.waitSeconds !== undefined) {
+    throw new Error('--wait-seconds is accepted only by forge-verify status.');
+  }
+  if (command === 'run' && values.receiptId !== undefined) {
+    throw new Error('Use --reuse-receipt to explicitly revalidate a Host receipt.');
+  }
+  const backend = ['backend-red-test', 'backend-module-compile', 'backend-module-test', 'backend-test-class'].includes(values.profile);
+  if (command === 'run' && backend && values.modules.length === 0) throw new Error('Backend profiles require at least one --module.');
+  if (command === 'run' && values.profile === 'backend-red-test' && values.modules.length !== 1) {
+    throw new Error('backend-red-test requires exactly one --module.');
+  }
+  if (command === 'run' && values.profile === 'backend-test-class' && values.tests.length === 0) {
+    throw new Error('backend-test-class requires at least one --test.');
+  }
+  if (command === 'run' && values.profile === 'backend-red-test' && values.tests.length !== 1) {
+    throw new Error('backend-red-test requires exactly one --test.');
+  }
+  if (command === 'run' && values.profile === 'frontend-red-test' && values.testFiles.length !== 1) {
+    throw new Error('frontend-red-test requires exactly one --test-file.');
+  }
+  if (command === 'run' && backend && (values.files.length > 0 || values.testFiles.length > 0)) {
+    throw new Error('Backend profiles do not accept frontend file selectors.');
+  }
+  if (command === 'run' && values.profile === 'frontend-red-test'
+    && (values.modules.length > 0 || values.tests.length > 0 || values.files.length > 0)) {
+    throw new Error('frontend-red-test accepts only --test-file.');
+  }
+  if (command === 'run' && typeof values.idempotencyKey !== 'string') {
+    throw new Error('run requires an explicit --idempotency-key.');
+  }
+  if (command === 'run' && typeof values.admissionId !== 'string') {
+    throw new Error('run requires an explicit --admission-id.');
+  }
+  const frontendFocused = ['frontend-red-test', 'frontend-admin-lint', 'frontend-admin-test', 'frontend-h5-test', 'backend-source-quality'].includes(values.profile);
+  if (command === 'run' && !backend && !frontendFocused
+    && (values.modules.length > 0 || values.tests.length > 0
+      || values.files.length > 0 || values.testFiles.length > 0)) {
+    throw new Error('This profile does not accept module or test selectors.');
+  }
+  if (command === 'run' && ['frontend-admin-lint', 'backend-source-quality'].includes(values.profile)
+    && (values.modules.length > 0 || values.tests.length > 0 || values.testFiles.length > 0)) {
+    throw new Error(`${values.profile} accepts only --file selectors.`);
+  }
+  if (command === 'run' && ['frontend-admin-test', 'frontend-h5-test'].includes(values.profile)
+    && (values.modules.length > 0 || values.tests.length > 0 || values.files.length > 0)) {
+    throw new Error(`${values.profile} accepts only --test-file selectors.`);
+  }
+  if (command === 'run' && values.profile === 'frontend-h5-test' && values.testFiles.length === 0) {
+    throw new Error('frontend-h5-test requires explicit --test-file selectors.');
+  }
+  if (command === 'status' && typeof values.jobId !== 'string') throw new Error('status requires --job-id.');
+  if (command === 'watch' && (typeof values.jobId !== 'string' || argv.length !== 3 || argv[1] !== '--job-id')) {
+    throw new Error('watch requires exactly --job-id <uuid>.');
+  }
+  if (command === 'receipt' && typeof values.receiptId !== 'string') throw new Error('receipt requires --receipt-id.');
+  if (command === 'run' && values.executionMode === undefined && values.reuseReceiptId === undefined
+    && defaultBackgroundVerification(values.profile, { testFiles: values.testFiles })) {
+    values.executionMode = 'background';
+  }
+  return { command, ...values };
+}
+
+async function callBroker(body, timeoutMs) {
+  let token;
+  try {
+    token = (await readFile(TOKEN_FILE, 'utf8')).trim();
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      throw new Error(`VERIFY_CAPABILITY_UNAVAILABLE: TaskSpace broker token is not mounted at ${TOKEN_FILE}`);
+    }
+    throw error;
+  }
+  if (token.length < 32 || token.length > 256) throw new Error('TaskSpace verification capability token is invalid.');
+  const payload = Buffer.from(JSON.stringify(body));
+  return new Promise((resolve, reject) => {
+    const request = http.request({
+      protocol: BROKER_URL.protocol,
+      hostname: BROKER_URL.hostname,
+      port: BROKER_URL.port,
+      path: '/v1/actions',
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'content-length': payload.length,
+        'x-forge-taskspace-token': token,
+      },
+    }, (response) => {
+      const chunks = [];
+      let bytes = 0;
+      response.on('data', (chunk) => {
+        bytes += chunk.length;
+        if (bytes > 2 * 1024 * 1024) response.destroy(new Error('Verification response exceeded its limit.'));
+        else chunks.push(chunk);
+      });
+      response.once('error', reject);
+      response.once('end', () => {
+        try {
+          const result = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+          if ((response.statusCode ?? 500) >= 400 || result.ok !== true) {
+            const exposed = result.error;
+            const error = new Error(typeof exposed?.message === 'string' ? exposed.message.slice(0, 1000) : 'Verification failed.');
+            error.verificationError = {
+              code: typeof exposed?.code === 'string' && /^[A-Z][A-Z0-9_]{2,95}$/u.test(exposed.code) ? exposed.code : 'VERIFY_FAILED',
+              message: error.message,
+              retryable: exposed?.retryable === true,
+              ...(typeof exposed?.recommendedAction === 'string' ? { recommendedAction: exposed.recommendedAction.slice(0, 1000) } : {}),
+            };
+            reject(error);
+          } else resolve(result.result);
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    request.once('error', reject);
+    if (timeoutMs !== undefined) request.setTimeout(timeoutMs, () => request.destroy(new Error('Verification observation request timed out; the Host job was not cancelled.')));
+    request.end(payload);
+  });
+}
+
+async function main() {
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    usage();
+    return;
+  }
+  if (process.argv[2] === 'profiles') {
+    if (process.argv.length !== 5 || process.argv[3] !== '--format' || process.argv[4] !== 'json') {
+      throw new Error('forge-verify profiles requires exactly --format json.');
+    }
+    process.stdout.write(`${JSON.stringify({
+      schemaVersion: 'forge-verification-profile-catalog/v1',
+      profiles: PROFILE_LIST,
+    }, null, 2)}\n`);
+    return;
+  }
+  const parsed = parse(process.argv.slice(2));
+  if (parsed.command === 'watch') {
+    validateVerifyAction({ action: 'status', jobId: parsed.jobId });
+    // Observe an existing Host job only. DSH owns the native background shell
+    // and completion notice; stopping this observer never cancels the Host job.
+    const deadline = Date.now() + 65 * 60 * 1000;
+    let lastOutputSequence = 0;
+    while (true) {
+      const result = await callBroker({ action: 'verify-status', jobId: parsed.jobId, waitSeconds: 60 }, 75_000);
+      const output = result.progress?.output;
+      if (result.active === true && result.jobId === parsed.jobId
+        && output?.contentWithheld === true && output.untrusted === true && output.verificationProven === false
+        && Number.isSafeInteger(output.sequence) && output.sequence > lastOutputSequence
+        && Number.isSafeInteger(output.observedBytes) && output.observedBytes >= 0
+        && Number.isSafeInteger(output.capturedBytes) && output.capturedBytes >= 0) {
+        lastOutputSequence = output.sequence;
+        process.stdout.write(`${JSON.stringify({ event: 'forge-verification-progress', jobId: parsed.jobId,
+          status: 'accepted', phase: result.progress.phase, phaseStartedAt: result.progress.phaseStartedAt,
+          output: { sequence: output.sequence, observedBytes: output.observedBytes,
+            capturedBytes: output.capturedBytes, truncated: output.truncated === true,
+            updatedAt: output.updatedAt, contentWithheld: true },
+          untrusted: true, verificationProven: false })}\n`);
+      }
+      if (result.active !== true || Date.now() >= deadline) {
+        process.stdout.write(`${JSON.stringify({ ...result,
+          observerStatus: result.active === true ? 'deadline-exceeded' : 'finished',
+          nextAction: result.receiptId && result.active !== true && !result.error
+            ? `forge-verify receipt --receipt-id ${result.receiptId}`
+            : `forge-verify status --job-id ${parsed.jobId}`,
+        }, null, 2)}\n`);
+        return;
+      }
+    }
+  }
+  const action = `verify-${parsed.command}`;
+  let selectors = parsed.command === 'run'
+    ? {
+        ...(parsed.modules.length === 0 ? {} : { modules: parsed.modules }),
+        ...(parsed.tests.length === 0 ? {} : { tests: parsed.tests }),
+        ...(parsed.files.length === 0 ? {} : { files: parsed.files }),
+        ...(parsed.testFiles.length === 0 ? {} : { testFiles: parsed.testFiles }),
+      }
+    : undefined;
+  if (parsed.command === 'run') {
+    validateVerifyAction({
+      action: 'run', profile: parsed.profile, selectors,
+      idempotencyKey: parsed.idempotencyKey, admissionId: parsed.admissionId,
+      ...(parsed.executionMode === undefined ? {} : { executionMode: parsed.executionMode }),
+      ...(parsed.reuseReceiptId === undefined ? {} : { receiptId: parsed.reuseReceiptId }),
+      includeDiagnostics: true,
+    });
+    if (parsed.reuseReceiptId !== undefined && Object.keys(selectors).length === 0
+      && ['frontend-admin-lint', 'frontend-admin-test'].includes(parsed.profile)) {
+      const original = await callBroker({ action: 'verify-receipt', receiptId: parsed.reuseReceiptId });
+      if (original?.receiptId !== parsed.reuseReceiptId || original.status !== 'passed'
+        || original.request?.profile !== parsed.profile || original.request.selectors === undefined) {
+        throw new Error('Receipt reuse requires the original passed receipt for the requested profile.');
+      }
+      // Keep the recorded scope; the Host still checks the canonical receipt,
+      // current authority, source, toolchain and command before accepting it.
+      selectors = validateVerifyAction({ action: 'run', profile: parsed.profile,
+        selectors: original.request.selectors, idempotencyKey: parsed.idempotencyKey,
+        admissionId: parsed.admissionId, receiptId: parsed.reuseReceiptId }).selectors;
+    }
+  }
+  const body = parsed.command === 'review'
+    ? { action, acceptanceContractId: parsed.acceptanceContractId }
+    : parsed.command === 'admit'
+    ? { action, profiles: parsed.profiles }
+    : parsed.command === 'capability'
+    ? { action, profile: parsed.profile }
+    : parsed.command === 'run'
+      ? {
+        action,
+        profile: parsed.profile,
+        selectors,
+        idempotencyKey: parsed.idempotencyKey,
+        admissionId: parsed.admissionId,
+        ...(parsed.executionMode === undefined ? {} : { executionMode: parsed.executionMode }),
+        ...(parsed.reuseReceiptId === undefined ? {} : { receiptId: parsed.reuseReceiptId }),
+        includeDiagnostics: true,
+      }
+      : parsed.command === 'status'
+        ? { action, jobId: parsed.jobId, ...(parsed.waitSeconds === undefined ? {} : { waitSeconds: parsed.waitSeconds }) }
+        : { action, receiptId: parsed.receiptId, includeDiagnostics: true };
+  let result = await callBroker(body);
+  if (['run', 'status'].includes(parsed.command) && result?.receiptType === 'forge-verify/host-job'
+    && result.status === 'accepted' && result.active === true && !result.error
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(result.jobId ?? '')) {
+    // A Host job is not itself a native Harness background task. Put the
+    // existing observer action next to the acknowledgement that needs it.
+    result = { ...result,
+      nextAction: 'If this job has no native observer, start nativeObserver once before ending the turn. On its completion notice, read job_output and collect the terminal receipt. Accepted is not passed; do not resubmit the verification.',
+      nativeObserver: { tool: 'bash', arguments: { command: `forge-verify watch --job-id ${result.jobId}`, run_in_background: true } },
+    };
+  }
+  // Native result pruning keeps the beginning and end. Surface the bounded,
+  // already-redacted Host error block before long metadata, while retaining
+  // every original receipt field and its failed outcome unchanged.
+  if (result?.receiptType === 'forge-verify/host-run' && result.status === 'failed'
+    && typeof result.logs?.excerpt === 'string') {
+    const first = result.logs.excerpt.search(/Maven (?:initial compiler errors|failed test details):\n/u);
+    if (first >= 0) result = { failureDiagnostics: {
+      receiptId: result.receiptId, status: result.status, untrusted: true,
+      excerpt: result.logs.excerpt.slice(first, first + 2048),
+    }, ...result };
+  }
+  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+}
+
+main().catch((error) => {
+  process.stderr.write(error.verificationError
+    ? `${JSON.stringify({ ok: false, error: error.verificationError })}\n`
+    : `forge-verify: ${error.message}\n`);
+  process.exitCode = 1;
+});

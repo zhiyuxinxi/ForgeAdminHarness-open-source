@@ -1,0 +1,51 @@
+{
+  "kind": "unsigned-test-fixture-not-runtime-authority",
+  "sourcePromptSha256": "c440b5413c5d7de975e3e1544918d1669039165316b9847cae2ea65b3cead12d",
+  "contract": {
+    "schemaVersion": 1,
+    "contractId": "4fe985e6568f49050eccc09b1117efad5b0e3650301041e9b8be8ca3761ad559",
+    "taskProfiles": [
+      "frontend-admin"
+    ],
+    "suspendedReviewObligations": [],
+    "requiredSkills": [
+      "forge-task-contract",
+      "forge-task-router",
+      "forge-change-design",
+      "forge-frontend-admin",
+      "forge-security-tenancy-permission",
+      "forge-testing-observability",
+      "forge-git-checkpoint",
+      "forge-controlled-release",
+      "forge-evidence-truth"
+    ],
+    "tddRequired": false,
+    "requiredVerificationProfiles": [
+      "governance",
+      "frontend-admin-lint",
+      "frontend-admin-test"
+    ],
+    "requiredRedProfiles": [],
+    "requiredObligations": [
+      "preserve-action-ceiling",
+      "repository-relative-owned-paths",
+      "report-evidence-boundaries",
+      "final-governance-audit",
+      "final-verification",
+      "no-implicit-git-or-release",
+      "loading-empty-error-and-busy-states",
+      "responsive-keyboard-and-browser-review",
+      "explicit-path-git-checkpoint",
+      "controlled-release-only"
+    ],
+    "semanticOwners": [
+      "frontend-admin-surface"
+    ],
+    "actionCeiling": "release",
+    "ownedPaths": [
+      "forge-admin-ui/src/styles/leadership-module.css",
+      "forge-admin-ui/src/views/leadership"
+    ],
+    "sourceFingerprint": "86b452096b0b74b6d01caed3bc966b27c3a3ef05ce593de80294bcf6e451334a"
+  }
+}

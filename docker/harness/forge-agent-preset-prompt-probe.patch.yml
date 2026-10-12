@@ -1,0 +1,3 @@
+- insert:
+    - id: forge-agent-preset-prompt-probe
+      name: file:///usr/local/lib/forge-agent-preset-prompt-probe.mjs

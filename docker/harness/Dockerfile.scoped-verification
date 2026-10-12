@@ -1,0 +1,38 @@
+# Reuse retained F14 image/dependency layers; update only current consumers.
+# Base ID: sha256:dc398d0cfb2f95d1940e5a6234efa315c09c7ef34c8e8f6e5b2304fbd668b01b
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+ARG HOST_RUNNER_MANIFEST_SHA256
+ARG SKILL_BUNDLE_MANIFEST_SHA256
+COPY --chmod=0644 docker/harness/forge-protected-acceptance-service.mjs docker/harness/forge-phase-budget-guard.mjs docker/harness/forge-production-task-grant.mjs docker/harness/forge-execution-context.mjs docker/harness/taskspace-broker.mjs docker/harness/host-verification-runner.mjs docker/harness/host-verify-policy.mjs docker/harness/verify-policy.mjs docker/harness/verification-runner.mjs docker/harness/forge-task-execution-contract.mjs docker/harness/forge-governance.mjs docker/harness/conversation-manager.mjs /usr/local/lib/
+COPY host-runner-bundle/ /opt/forge-host-runner-bundle/
+COPY skill-bundle/ /opt/forge-skill-bundles/versions/2026.09.21.4/
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.scoped-verification /usr/local/share/forge-image-build/Dockerfile.scoped-verification
+RUN --network=none node --input-type=module -e '\
+  import fs from "node:fs"; import crypto from "node:crypto"; \
+  import {validateHostRunnerBundle} from "/opt/forge-host-runner-bundle/bin/forge-host-runner-bundle.mjs"; \
+  import {validateSkillBundle} from "/usr/local/lib/validate-skill-bundle.mjs"; \
+  const digest=(p)=>crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex"); \
+  const hostRoot="/opt/forge-host-runner-bundle"; \
+  if(digest(hostRoot+"/runner.manifest.json")!==process.argv[1])throw Error("Host manifest mismatch"); \
+  const host=await validateHostRunnerBundle(hostRoot,{profileCatalogVersion:"2026.09.03.22"}); \
+  if(host.manifest.bundleVersion!=="2026.09.21.7-scoped-verification")throw Error("Host version mismatch"); \
+  const root="/opt/forge-skill-bundles/versions/2026.09.21.4"; \
+  if(digest(root+"/bundle.manifest.json")!==process.argv[2])throw Error("Skill manifest mismatch"); \
+  const manifest=JSON.parse(fs.readFileSync(root+"/bundle.manifest.json")); \
+  if(manifest.bundleVersion!=="2026.09.21.4")throw Error("Skill version mismatch"); \
+  for(const entry of manifest.files){const p=root+"/"+entry.path;if(fs.statSync(p).size!==entry.bytes||digest(p)!==entry.sha256)throw Error("Skill payload mismatch");} \
+  await validateSkillBundle({skillsRoot:root+"/skills",catalogPath:root+"/catalog.json",strict:true}); \
+  const current="/opt/forge-skill-bundles/current"; \
+  if(fs.lstatSync(current,{throwIfNoEntry:false})){if(!fs.lstatSync(current).isSymbolicLink())throw Error("Skill current is not a symlink");fs.unlinkSync(current);} \
+  fs.symlinkSync("versions/2026.09.21.4",current); \
+  const runtime=await import("/usr/local/lib/forge-execution-context.mjs"); \
+  if(runtime.FORGE_CHANGED_VERIFICATION_SUPPORTED!==true)throw Error("Changed verification unsupported"); \
+  for(const name of ["forge-protected-acceptance-service","forge-production-task-grant","taskspace-broker","host-verification-runner","verification-runner","forge-governance","conversation-manager"])await import("/usr/local/lib/"+name+".mjs"); \
+  ' "${HOST_RUNNER_MANIFEST_SHA256}" "${SKILL_BUNDLE_MANIFEST_SHA256}" && node --check /usr/local/lib/forge-phase-budget-guard.mjs
+ENV FORGE_HARNESS_SKILL_BUNDLE_VERSION=2026.09.21.4
+LABEL com.forge-delivery.harness-skill-bundle="2026.09.21.4"
+LABEL com.forge-delivery.scoped-verification.version="2026.09.21.1"
+USER 1000:1000

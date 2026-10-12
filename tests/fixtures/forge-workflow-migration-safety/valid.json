@@ -1,0 +1,90 @@
+{
+  "baselineDefinition": {
+    "schemaVersion": 1,
+    "definitionType": "forge-workflow/definition",
+    "processKey": "orderApproval",
+    "definitionId": "orderApproval:17",
+    "version": 17,
+    "status": "published",
+    "bpmnSha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "bindingSha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "nodeKeys": ["start", "review", "end"]
+  },
+  "candidateDefinition": {
+    "schemaVersion": 1,
+    "definitionType": "forge-workflow/definition",
+    "processKey": "orderApproval",
+    "definitionId": "orderApproval:18",
+    "version": 18,
+    "status": "draft",
+    "bpmnSha256": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "bindingSha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "nodeKeys": ["start", "manualReview", "end"]
+  },
+  "instanceInventory": [
+    {
+      "instanceId": "instance-1",
+      "definitionId": "orderApproval:17",
+      "definitionVersion": 17,
+      "currentNodeKey": "review",
+      "state": "active"
+    },
+    {
+      "instanceId": "instance-2",
+      "definitionId": "orderApproval:17",
+      "definitionVersion": 17,
+      "currentNodeKey": "end",
+      "state": "completed"
+    }
+  ],
+  "inventoryAttestation": {
+    "protected": true,
+    "receiptId": "workflow-inventory-001"
+  },
+  "plan": {
+    "schemaVersion": 1,
+    "planType": "forge-workflow/inflight-migration-plan",
+    "planId": "123e4567-e89b-42d3-a456-426614174301",
+    "strategy": "migrate-compatible",
+    "sourceDefinitionId": "orderApproval:17",
+    "targetDefinitionId": "orderApproval:18",
+    "retainSourceDefinition": true,
+    "newInstanceAdmission": "open",
+    "mappings": [
+      {
+        "instanceId": "instance-1",
+        "fromNodeKey": "review",
+        "toNodeKey": "manualReview"
+      }
+    ],
+    "callbackPolicy": {
+      "idempotencyKeyFields": ["eventId", "instanceId", "transition"],
+      "duplicateOutcome": "no-op-success",
+      "retentionSeconds": 86400,
+      "storeOwner": "workflow-callback-store",
+      "transactionOwner": "workflow-command-transaction"
+    },
+    "rollbackStrategy": "restore-source-version"
+  },
+  "ledger": {
+    "schemaVersion": 1,
+    "ledgerType": "forge-workflow/callback-ledger",
+    "projectSlug": "forge-admin",
+    "processKey": "orderApproval",
+    "callbackPolicy": {
+      "idempotencyKeyFields": ["eventId", "instanceId", "transition"],
+      "duplicateOutcome": "no-op-success",
+      "retentionSeconds": 86400,
+      "storeOwner": "workflow-callback-store",
+      "transactionOwner": "workflow-command-transaction"
+    }
+  },
+  "callback": {
+    "expectedRevision": 0,
+    "instanceId": "instance-1",
+    "eventId": "event-001",
+    "transition": "review-approved",
+    "payloadSha256": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "receivedAt": "2026-09-01T00:10:00.000Z"
+  }
+}

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="了解 AI 平台为客户与团队承担了哪些工作、提供哪些能力，以及最近新增、改进和修复的内容。">
+  <title>平台能力与更新 · 交付隔离台</title>
+  <link rel="stylesheet" href="/forge-gateway/assets/gateway.css">
+  <link rel="stylesheet" href="/forge-gateway/assets/platform-value.css">
+  <script src="/forge-gateway/assets/platform-value.js" defer></script>
+</head>
+<body class="platform-value-page">
+  <a class="pv-skip" href="#pv-main">跳到主要内容</a>
+  <header class="pv-header">
+    <a class="pv-brand" href="/forge-gateway/" aria-label="返回交付隔离台"><span class="pv-brand-mark" aria-hidden="true">F</span><span><strong>平台能力与更新</strong><small>交付隔离台 · AI 平台 · Harness · Forge Admin</small></span></a>
+    <a class="secondary-button" href="/forge-gateway/">返回交付隔离台</a>
+  </header>
+  <main class="pv-main" id="pv-main">
+    <section class="pv-intro pv-intro-readable" aria-labelledby="pv-page-title">
+      <div class="pv-intro-copy"><h1 id="pv-page-title">平台到底替大家省了哪些事？</h1><p class="pv-lead">AI 本来就能写代码。这个平台做的，是把搭环境、多人配合、反复交代规则、统一生成结果和最后上线这些工作接起来，让大家少从头准备、少来回修改。</p></div>
+    </section>
+    <div class="pv-tabbar">
+      <div class="pv-tabs" role="tablist" aria-label="说明内容">
+        <button id="pv-catalog-tab" role="tab" aria-selected="true" aria-controls="pv-catalog-panel" tabindex="0" type="button">建设过程与功能清单</button>
+        <button id="pv-updates-tab" role="tab" aria-selected="false" aria-controls="pv-updates-panel" tabindex="-1" type="button">最近更新</button>
+      </div>
+      <p id="pv-as-of" class="pv-muted" role="status">正在读取内容…</p>
+    </div>
+    <div id="pv-load-state" class="pv-load-state" role="status">正在读取功能清单与更新记录…</div>
+    <div id="pv-error" class="pv-error" hidden><p id="pv-error-message" role="alert"></p><button id="pv-retry" type="button" class="secondary-button">重新加载</button></div>
+    <section id="pv-catalog-panel" role="tabpanel" aria-labelledby="pv-catalog-tab" tabindex="0" aria-busy="true">
+      <div class="pv-catalog-layout">
+        <aside class="pv-sidebar">
+          <details id="pv-navigation" open>
+            <summary>详细功能目录</summary>
+            <div class="pv-sidebar-body">
+              <label for="pv-search">查找你关心的能力</label><input type="search" id="pv-search" placeholder="搜索功能、工作或角色" autocomplete="off">
+              <label for="pv-status-filter">能力状态</label><select id="pv-status-filter"><option value="all">全部状态</option><option value="available">可用</option><option value="partial">部分可用</option><option value="in-progress">建设中</option></select>
+              <p id="pv-search-status" class="pv-filter-status" role="status"></p>
+              <nav id="pv-tree" aria-label="三级功能目录"></nav>
+            </div>
+          </details>
+        </aside>
+        <div id="pv-catalog-content" class="pv-reading" aria-live="polite" tabindex="-1"></div>
+      </div>
+    </section>
+    <section id="pv-updates-panel" class="pv-updates-panel" role="tabpanel" aria-labelledby="pv-updates-tab" tabindex="0" aria-busy="true" hidden>
+      <header class="pv-section-heading"><p class="pv-eyebrow">持续改进，看得见变化</p><h2>最近新增、改进与修复</h2><p>直接看使用中遇到了什么问题、这次改了什么、哪些地方已经可以这样用。</p></header>
+      <form id="pv-updates-filters" class="pv-updates-filters">
+        <div><label for="pv-update-type">更新类型</label><select id="pv-update-type"><option value="all">全部类型</option><option value="new">新增能力</option><option value="improved">体验与能力改进</option><option value="fixed">问题修复</option></select></div>
+        <div><label for="pv-update-date">更新日期</label><select id="pv-update-date"><option value="all">全部日期</option></select></div>
+        <button id="pv-updates-reset" class="secondary-button" type="button">清除筛选</button>
+      </form>
+      <p id="pv-update-summary" class="pv-muted" role="status"></p>
+      <p id="pv-today-note" class="pv-note"></p>
+      <div id="pv-updates-content" class="pv-timeline" aria-live="polite"></div>
+    </section>
+    <footer class="pv-footer"><p>时间为大概记录，正在完善和仅部分可用的内容会单独注明。各项目的实际可用范围见具体说明。</p></footer>
+  </main>
+  <noscript><p class="pv-noscript">请启用 JavaScript，以读取功能清单和最近更新。</p></noscript>
+</body>
+</html>

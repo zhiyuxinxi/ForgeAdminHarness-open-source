@@ -1,0 +1,12 @@
+# Reuse the verified 857 dependency layers with the retained b767 small-file overlay.
+# Base: sha256:857dda2fdafbdc1f82b0305522c0b034850781d8cfe9bc71ee74db24954f3ced
+ARG BASE_IMAGE=forge-delivery/deepseek-harness:0.1.1-rc.2-background-source-transition-20260923-1
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY overlay/ /
+LABEL com.forge-delivery.integrated-receipt-reuse.version="2026.09.23.6" \
+      com.forge-delivery.scoped-direct-release.version="2026.09.23.1" \
+      com.forge-delivery.governance-head-guard-reuse.version="2026.09.23.7" \
+      com.forge-delivery.c-dce-release-phrases.version="2026.09.23.1" \
+      com.forge-delivery.object-first-release.version="2026.09.23.1"
+USER 1000:1000

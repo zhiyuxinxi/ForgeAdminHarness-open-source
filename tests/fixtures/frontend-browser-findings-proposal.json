@@ -1,0 +1,34 @@
+{
+  "promptSha256": "8aae26cafb9242879ebbd02fd63bd5b4a65b59777891da64967fd7faf83f9965",
+  "promptText": "继续原事故上报前端标准任务。当前线上已发布 f3c43465875e67d26fe809c37e92398f27608821，版本 release-20261009t092709z-f3c43465875e；Runner 3ec9ac01-0787-4581-9ebc-dbbaacf8054e 成功，实际 Admin/UI 镜像为 9dc77193 / 54f55a1e。请基于现有成果修复以下真实浏览器问题，完成直接相关检查、正常检查点/集成和必要的受控发布。业务修改和测试仍由你完成，不重生成整个模块，保留现有审批、数据、权限及并行主干变化。\n\n已确认有效并保留：列表多选/批删默认存在；新增在原列表路由打开约 900px 的弹窗；日期、时间已使用语义控件；底部取消、草稿、提交顺序正确。现有前端 27/27、后端 4/4、治理及 Lint 回执中未受本次变化影响的结果继续复用，不把已过流程全部重做。完整前端默认标准继续适用。\n\n追加真实浏览器证据：新增空表单提交确实提示“请选择发生时间”，但日期/时间区域的标签未清楚反映既有必填规则。请让必填标识、提示和实际校验一致；只遵循原有规则，不因标签问题把原本可选的日期或其他字段新增为必填。批删已验证：选中一条非草稿时，确认框显示 0 条可删除、1 条跳过，随后已取消；保留这个行为，本轮不删除任何既有事故数据，也不额外扩展删除业务。\n\n1. **恢复列表默认查询和真实操作。** 实际列表完全没有查询控件、搜索、重置。当前 GET `/forge-api/ai/business/flow-app/config/accident_report` 返回 200/code200：`options.codeAppMetadata.viewSchema.search={fields:[],settings:{}}`；16 个 metadata 字段的 searchable 全为 false；pageSchema 的 search 区域 enabled=true、fieldRefs=[]，CRUD block 的 showSearch=true、searchFieldRefs=[]。这不是“用户明确关闭查询”的证据，也不能用历史 84531 的十个旧查询字段当成当前配置。\n\n   固定 f3c 的 report.vue 已有 status/reportType/level/keyword 四个默认查询项，title/reportNo 映射 keyword；但 resolveConfiguredSearchFields 在 283–302 行只在未配置时回退，已存在的空数组或全部失效字段会覆盖成空。公共 AiCrudPage 的搜索区据 schema 是否为空决定显示。先前 query-capability 修复已声明 provider 四字段能力并修复资产合并，但运行页面优先读的 metadata 与保存的 viewSchema 仍可为空。请修复这条实际消费链：默认查询应在当前已启用、无有效查询配置的旧数据下正常出现并工作；明确关闭、合法字段取舍及真实不支持的查询仍须得到正确处理。不要放开后端不支持的字段，也不要要求产品重新勾选四项或由操作者改数据库来补标准。必要共性使用现有公共实现，不另建框架或扩查全部设计器。\n\n2. **把详情恢复为成熟的阅读界面并消除实际控制台错误。** 打开首条 033 记录的详情，目前是三列顶部右对齐标签和满屏 disabled textbox，顶部蓝色信息区域为空。控制台实际错误为 `TypeError: Cannot read properties of undefined (reading 'split')`，调用链为 `css-DEmdllcC.js` → `Space-4PuU_r0j.js`。f3c report.vue 89 行的 NSpace 使用 `size=\"18\"` 字符串；现有组件将字符串作为主题尺寸名处理。请修正这个真实参数错误并保证摘要信息正常显示。\n\n   同文件 548–563 行将详情字段统一映射成 input/textarea+readonly，经 AiForm 输入控件禁用逻辑形成灰框。请沿用平台真实详情公共组件和阅读模式，提供清晰的信息分组、主次、空值、长文本与状态显示，保留原审批历史、合法操作和已有配置中的字段标签/布局能力。不能只去掉 disabled 后让详情可编辑，也不能把只读详情要求当成全局禁止本次修复。仅修事故详情及确有必要的直接公共缺口，不重做全部历史页面。\n\n3. **恢复已有依据的部门/装置选择，保持业务数据语义。** 原模块 `code-copilot/changes/accident-incident-management/spec.md` 第49行明确 EHSS 部门/装置下拉，第84行列 QT 部门/装置选项，第90行要求部门/装置必选；当前 report-form/[type].vue 的 dept 却是 input。请结合原规格和项目现有数据来源复用对应选择能力，保证编辑回填和 API 边界仍符合现有名称文本 DTO，不能直接把名称替换成 ID。规格是已有实现依据，不能冒称重新获得产品人工确认。\n\n   上报人 reporterName、上报人职务 reporterPos 当前 DTO 是姓名/职务字符串，provider 也声明 input；目前没有已证据支持的“必须绑定系统人员/岗位 ID、禁止手填”的需求。公共 AiForm 已支持组织选择、UserSelectPicker，原生用户管理也有岗位选项来源。请仅在原业务上下文和现有数据来源确实支持时采用这些能力或带出名称，保持 ID/名称映射和回填；不要为了控件统一虚构人员范围、组织关系、权限或强制必选规则。缺乏依据的差异明确说明，不扩大业务设计。\n\n本轮验证只覆盖上述实际变化：旧启用且空配置下默认查询可见并可用、有效配置与明确关闭的区别、详情摘要和阅读渲染/参数错误、部门选择的值与回填。继续保留取消不写入、失败保留输入和既有状态限制；不删除现有事故数据、不代审批制造结果。按实际改动范围完成必要检查，受控路径要求的必要 fresh 复核正常办理；不因发布机械重跑无关全仓检查。完成后报告固定提交、实际测试、发布 job/版本和运行镜像。真实浏览器验收由操作者在同一新版本继续完成，不能用模型叙述或测试通过替代。\n",
+  "proposal": {
+    "goal": "修复事故上报已发布页面的三个真实浏览器问题：在查询功能未明确关闭且旧元数据为空或失效时恢复四项受支持默认查询，同时保留合法字段配置和显式关闭；将事故详情改为分组式只读阅读展示并修复 NSpace 字符串尺寸异常；按既有事故规格恢复部门/装置名称下拉、必填标识与编辑回填，保持现有文本 DTO、审批权限、数据和删除限制。完成聚焦前端验证、正常检查点/集成并受控发布 forge-admin 与 forge-ui。",
+    "ownedPaths": [
+      "forge-admin-ui/src/views/accident/report.vue",
+      "forge-admin-ui/src/views/accident/report-form/[type].vue",
+      "forge-admin-ui/src/views/accident/accident-report-form-contract.js",
+      "forge-admin-ui/src/views/accident/accident-report-view-contract.js",
+      "forge-admin-ui/src/views/accident/__tests__/accident-report-designer-contract.test.js",
+      "forge-admin-ui/src/views/accident/__tests__/accident-report-form-contract.test.js",
+      "forge-admin-ui/src/views/accident/__tests__/accident-report-view-contract.test.js"
+    ],
+    "taskProfiles": [
+      "frontend-admin",
+      "crud",
+      "shared-owner"
+    ],
+    "references": [
+      "AGENTS.md",
+      "PROJECT_CONTEXT.md",
+      "forge-admin-ui/DESIGN.md",
+      "code-copilot/rules/coding-style.md",
+      "code-copilot/memory/pitfalls.md",
+      "code-copilot/memory/decisions.md",
+      "code-copilot/memory/preferences.md",
+      "code-copilot/changes/accident-incident-management/spec.md",
+      "forge-admin-ui/src/views/accident/accident-batch-a-contract.js",
+      "forge-admin-ui/src/components/lowcode-builder/shared/FieldValueRenderer.vue",
+      "forge-admin-ui/src/components/ai-form/AiCrudPage.vue"
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "prompt": "第三批e70a8689已发布，我已真实浏览器验收：原SQL查询500、单位装置默认值均修复；原人防记录2103233946292453378可查看、编辑刷新保留，并已正常提交审批。流程监控确实存在“人防审批-codex验收-20260925-三防人防-001”，当前为各装置经理审批、待认领，发起历史真实存在。物防技防的文件上传保存、只读查看、下载字节一致、编辑刷新、代表性查询重置和导出、单删及技防两条批删已通过，设施测试记录均正常UI清理。现在继续修复第三批剩余界面问题并提交、集成、发布：一是MD明确要求人防查看弹窗有基础信息和流程信息两个Tab，当前审批中的查看详情仍只有基础字段，没有流程信息，请复用项目统一流程组件接真实实例/历史，不做静态假图，不要求人跳去流程监控才看得到。二是新增物防和技防时，选择源文件和照片、上传HTTP已200且已出现图片文件名后点击确定，实际新增body的photoIds仍可能为null，保存200但再次查看没有图片；编辑后重新选照片并保存则能持久化，物防与技防已分别验证这一差异。根因尚未确定，请核对本页面新增表单与上传组件值更新/未完成上传时可提交的关系，只做直接修复与相关测试，不靠让用户等几秒绕开。原后端查询修复与1440项通过结果已经完成，不因上述历史叙述重做后端；先按此次实际前端改动判断最小检查范围，只有具体后端根因才扩大。保持既有审批中测试记录与流程，禁止代删、重建或伪造审批通过；审批账户或组织缺口如确实存在请说明实际依据与正常UI入口，不任意赋权。当前只收尾第三批，不实施第四至七批。检查、受控提交集成、必要回执复核、发布及终态回收连续完成，已授权不等我再说继续；合同到期依现有Skill恢复并复用有效制品。业务源码和测试仍全部由你完成。",
+  "ownedPaths": [
+    "forge-admin-ui/src/components/ai-form/AiCrudPage.vue",
+    "forge-admin-ui/src/components/ai-form/AiCrudPageProps.js",
+    "forge-admin-ui/src/components/ai-form/__tests__/business-action-runtime.spec.js",
+    "forge-admin-ui/src/components/ai-form/business-action-runtime.js",
+    "forge-admin-ui/src/components/image-upload/__tests__/image-upload-value.test.js",
+    "forge-admin-ui/src/components/image-upload/image-upload-value.js",
+    "forge-admin-ui/src/components/image-upload/index.vue",
+    "forge-admin-ui/src/views/security/__tests__/security-defense-page.test.js",
+    "forge-admin-ui/src/views/security/components/SecurityDefensePage.vue"
+  ]
+}

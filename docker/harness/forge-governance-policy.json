@@ -1,0 +1,792 @@
+{
+  "schemaVersion": 1,
+  "policyVersion": "2026.09.20.2",
+  "profile": "forge-admin-v1.1.2-regulated",
+  "sourceBaseline": {
+    "repository": "https://github.com/yaomindong1996/forge-admin.git",
+    "ref": "v1.1.2",
+    "commit": "6eb2881e6f6af85a5348acf3da63cef53a873b0e"
+  },
+  "exceptionPolicy": {
+    "authority": "versioned-image-policy-only",
+    "inlineDirectives": "forbidden",
+    "modelAuthoredExceptions": "forbidden",
+    "requiredBinding": ["ruleId", "repository", "path", "contentSha256", "approvalRef", "owner", "reason", "expiresAt"],
+    "nonExemptibleRules": [
+      "GOV-PATH-001", "GOV-BYPASS-001", "GOV-SCOPE-001", "BE-SAFETY-001",
+      "BE-TENANT-002", "BE-MUTATION-001",
+      "BE-PAGE-002", "FE-MENU-001", "PERMISSION-CONTRACT-001", "PERMISSION-ROLE-001",
+      "SUPPLY-001", "QUALITY-TEST-002", "QUALITY-TEST-003", "QUALITY-TEST-004", "QUALITY-BUILD-001", "SKILL-SAFETY-001"
+    ]
+  },
+  "exceptions": [
+    {
+      "id": "EXC-FORGE-BASE-DETECTION-PLAN-ATTACHMENT-LEDGER-20261009",
+      "ruleId": "BE-CRUD-001",
+      "repository": "forge-base",
+      "path": "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/occupationalhealth/controller/DetectionPlanController.java",
+      "contentSha256": "sha256:8b8b457967ce1eae6b3b99ef14de8b194def2f3be3e80a36c539c449e97c6681",
+      "approvalRef": "docs/long-tasks/todo-followup-20261008/HANDOFF.md",
+      "owner": "ForgeAdminHarness project owner",
+      "reason": "Owner requirement 009 explicitly defines an attachment ledger without ordinary add/edit/detail operations; preserve upload, metadata listing, attachment download, export and deletion. Original Host receipt c1fa70fa-ccef-456f-8ab6-2590210d7224 reports four BE-CRUD-001 findings: /getById, /add and /edit are inapplicable, while /remove/{id} already exists as @PostMapping(path = ...) with permission and audit and is missed by the positional-annotation check. Exempt only this reviewed controller hash and rule, preserving other rules, original failures and Harness business ownership.",
+      "expiresAt": "2026-10-16T00:00:00.000Z"
+    },
+    {
+      "id": "EXC-FORGE-BASE-HAZARD-POST-NO-DELETE-20261009",
+      "ruleId": "BE-CRUD-001",
+      "repository": "forge-base",
+      "path": "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/occupationalhealth/controller/HazardPostController.java",
+      "contentSha256": "sha256:9d50c774f7da9055ce5f75ca99cc83b35a2c8dc20d726e31b4817101462e1e3b",
+      "approvalRef": "docs/long-tasks/todo-followup-20261008/HANDOFF.md",
+      "owner": "ForgeAdminHarness project owner",
+      "reason": "Owner explicitly excludes the hazard-post delete operation and authorizes this bounded platform repair. Original Host receipt ec5aab9c-5321-41b8-83b1-e5daf9dc8f35 has only the missing /remove/{id} finding. Exempt only this exact reviewed controller; preserve all other rules, original failures, and business source ownership.",
+      "expiresAt": "2026-10-16T00:00:00.000Z"
+    },
+    {
+      "id": "EXC-FORGE-BASE-INVESTIGATE-CRUD-20260911",
+      "ruleId": "FE-CRUD-001",
+      "repository": "forge-base",
+      "path": "forge-admin-ui/src/views/accident/investigate.vue",
+      "contentSha256": "sha256:c4df5f8f2ac709ad10cb2df9f961dfdfc5c49e52e06e247bff8e53780e1b2d0b",
+      "approvalRef": "docs/validation-evidence/2026-09-11-investigate-governance-exception-authorization.md",
+      "owner": "ForgeAdminHarness project owner",
+      "reason": "Existing HEAD 371c7ac2 business page already uses manual pagination. This exact candidate only removes list status tabs; forced AiCrudPage migration is outside the approved change.",
+      "expiresAt": "2026-09-18T00:00:00.000Z"
+    },
+    {
+      "id": "EXC-FORGE-BASE-INVESTIGATE-DESIGN-20260911",
+      "ruleId": "FE-DESIGN-001",
+      "repository": "forge-base",
+      "path": "forge-admin-ui/src/views/accident/investigate.vue",
+      "contentSha256": "sha256:c4df5f8f2ac709ad10cb2df9f961dfdfc5c49e52e06e247bff8e53780e1b2d0b",
+      "approvalRef": "docs/validation-evidence/2026-09-11-investigate-governance-exception-authorization.md",
+      "owner": "ForgeAdminHarness project owner",
+      "reason": "All 95 current color trigger lines match HEAD 371c7ac2. The approved tab removal deletes two prior color lines and introduces none.",
+      "expiresAt": "2026-09-18T00:00:00.000Z"
+    },
+    {
+      "id": "EXC-FORGE-BASE-OLD-INVESTIGATE-CRUD-20260911",
+      "ruleId": "FE-CRUD-001",
+      "repository": "forge-base",
+      "path": "forge-admin-ui/src/views/accident/investigate.vue",
+      "contentSha256": "sha256:9984555a0613e6e019429d6a2ef5803496adb8118b1d2033637e650b683045fb",
+      "approvalRef": "docs/validation-evidence/2026-09-11-old-investigate-governance-exception-authorization.md",
+      "owner": "ForgeAdminHarness project owner",
+      "reason": "The two manual CRUD findings are present at old HEAD 192cff1. This exact candidate only removes the status-tab filter and retains the existing investigation-page implementation.",
+      "expiresAt": "2026-09-18T00:00:00.000Z"
+    },
+    {
+      "id": "EXC-FORGE-BASE-OLD-INVESTIGATE-DESIGN-20260911",
+      "ruleId": "FE-DESIGN-001",
+      "repository": "forge-base",
+      "path": "forge-admin-ui/src/views/accident/investigate.vue",
+      "contentSha256": "sha256:9984555a0613e6e019429d6a2ef5803496adb8118b1d2033637e650b683045fb",
+      "approvalRef": "docs/validation-evidence/2026-09-11-old-investigate-governance-exception-authorization.md",
+      "owner": "ForgeAdminHarness project owner",
+      "reason": "All 95 current design findings existed at old HEAD 192cff1; this exact candidate deletes two pre-existing color declarations and introduces none.",
+      "expiresAt": "2026-09-18T00:00:00.000Z"
+    },
+    {
+      "id": "EXC-FORGE-BASE-EXTERNAL-DESIGN-20260911",
+      "ruleId": "FE-DESIGN-001",
+      "repository": "forge-base",
+      "path": "forge-admin-ui/src/views/external/manage.vue",
+      "contentSha256": "sha256:dc4b00ba69a349ca3fed3afdb52436ecc76c77a9abc2e5ef878e9d0871a913b2",
+      "approvalRef": "docs/validation-evidence/2026-09-11-investigate-governance-exception-authorization.md",
+      "owner": "ForgeAdminHarness project owner",
+      "reason": "All three color trigger lines are unchanged from HEAD 371c7ac2. Candidate only corrects provider access and TypeScript field types required by the real typecheck.",
+      "expiresAt": "2026-09-18T00:00:00.000Z"
+    },
+    {
+      "id": "EXC-FORGE-BASE-EXTERNAL-API-20260911",
+      "ruleId": "FE-API-001",
+      "repository": "forge-base",
+      "path": "forge-admin-ui/src/views/external/manage.vue",
+      "contentSha256": "sha256:dc4b00ba69a349ca3fed3afdb52436ecc76c77a9abc2e5ef878e9d0871a913b2",
+      "approvalRef": "docs/validation-evidence/2026-09-11-investigate-governance-exception-authorization.md",
+      "owner": "ForgeAdminHarness project owner",
+      "reason": "Five unchanged PUT/DELETE configurations match ExternalSystemController, ExternalApiController and ExternalApiLogController exactly. Rewriting them to POST would break the existing backend contract.",
+      "expiresAt": "2026-09-18T00:00:00.000Z"
+    },
+    {
+      "id": "EXC-FORGE-BASE-CLIENT-API-20260911",
+      "ruleId": "FE-API-001",
+      "repository": "forge-base",
+      "path": "forge-admin-ui/src/views/system/client.vue",
+      "contentSha256": "sha256:bde1facd6a36f55febb9970a8a4ee2e68be893cd3616d13b5cf54a127e41d6b4",
+      "approvalRef": "docs/validation-evidence/2026-09-11-investigate-governance-exception-authorization.md",
+      "owner": "ForgeAdminHarness project owner",
+      "reason": "Two unchanged PUT/DELETE configurations match SysClientController exactly. Candidate changes only message provider access; API routes are not part of this change.",
+      "expiresAt": "2026-09-18T00:00:00.000Z"
+    }
+  ],
+  "approvedPaths": {
+    "backendDomainSupportPattern": "^forge-server/.+/src/main/java/.+/support/[^/]+\\.java$",
+    "backendSharedUtilityPatterns": [
+      "^forge-server/forge-framework/forge-starter-parent/forge-starter-[^/]+/src/main/java/.+/util/[^/]+\\.java$",
+      "^forge-server/forge-framework/forge-plugin-parent/forge-plugin-generator/src/main/java/.+/util/[^/]+\\.java$"
+    ],
+    "frontendCanonicalComponents": [
+      "AiCrudPage",
+      "AiForm",
+      "AiTable",
+      "DictSelect",
+      "DictTag",
+      "RegionTreeSelect",
+      "AuthImage",
+      "IconRenderer"
+    ]
+  },
+  "rules": [
+    {
+      "id": "GOV-PATH-001",
+      "domain": "governance",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "no-follow-input",
+      "summary": "Every audited path must remain inside the repository and contain no symbolic-link segment.",
+      "remediation": "Replace linked inputs with reviewed regular files inside the TaskSpace.",
+      "requiredEvidence": ["forge-governance-receipt"]
+    },
+    {
+      "id": "GOV-BYPASS-001",
+      "domain": "governance",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "bypass-directive",
+      "summary": "Source comments cannot disable policy, tests, tenant, permission, review, or verification gates.",
+      "remediation": "Remove the bypass. A real exception must be published in the versioned Harness policy.",
+      "requiredEvidence": ["forge-governance-receipt"]
+    },
+    {
+      "id": "GOV-SCOPE-001",
+      "domain": "governance",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "complete-change-scope",
+      "summary": "A passing governance receipt covers the complete Git change; an explicit path subset is diagnostic only.",
+      "remediation": "Run the audit from the repository root without --path against the reviewed base commit.",
+      "requiredEvidence": ["complete-change-forge-governance-receipt"]
+    },
+    {
+      "id": "DB-SCHEMA-001",
+      "domain": "database",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "business-table-columns",
+      "summary": "Every new business table has id, tenant_id, create_by, create_time, create_dept, update_by, update_time, and del_flag.",
+      "remediation": "Use the Forge business-table template and its TenantEntity/TableLogic contract.",
+      "requiredEvidence": ["sql-static-receipt", "migration-execution-receipt"]
+    },
+    {
+      "id": "DB-SCHEMA-002",
+      "domain": "database",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "mysql-table-options",
+      "summary": "New tables use InnoDB and utf8mb4.",
+      "remediation": "Declare ENGINE=InnoDB and DEFAULT CHARSET=utf8mb4.",
+      "requiredEvidence": ["sql-static-receipt"]
+    },
+    {
+      "id": "DB-SCHEMA-003",
+      "domain": "database",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "schema-documentation-and-types",
+      "summary": "New business tables and required governance columns declare reviewed types and SQL comments.",
+      "remediation": "Use BIGINT identifiers/governance flags, DATETIME audit timestamps, and explicit table/column comments.",
+      "requiredEvidence": ["sql-static-receipt", "schema-review-receipt"]
+    },
+    {
+      "id": "DB-DELETE-001",
+      "domain": "database",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "tombstone-delete",
+      "summary": "Logical deletion uses BIGINT del_flag default 0; active-only unique keys include tenant_id and del_flag.",
+      "remediation": "Use @TableLogic(value=\"0\", delval=\"id\") and a tenant/business-key/del_flag unique key.",
+      "requiredEvidence": ["sql-static-receipt", "delete-reuse-test-receipt"]
+    },
+    {
+      "id": "DB-MIGRATION-001",
+      "domain": "database",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "append-only-migration",
+      "summary": "Applied Flyway migrations are append-only and destructive DDL is not generated by an ordinary task.",
+      "remediation": "Create the next migration and use an independently reviewed data-migration runbook for destructive changes.",
+      "requiredEvidence": ["git-diff-receipt", "migration-plan-receipt"]
+    },
+    {
+      "id": "DB-MIGRATION-002",
+      "domain": "database",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "flyway-version-and-dml-safety",
+      "summary": "New Flyway files use the canonical version/name, advance beyond the base, never duplicate a version, and contain no unbounded UPDATE/DELETE.",
+      "remediation": "Allocate the next reviewed Vx.y.z__lower_snake.sql migration and bound every data change with an explicit predicate.",
+      "requiredEvidence": ["flyway-inventory-receipt", "migration-data-review-receipt"]
+    },
+    {
+      "id": "DB-SEED-001",
+      "domain": "database",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "safe-seed",
+      "summary": "Seed inserts list columns, are idempotent, use tenant 1, and do not leave Flyway placeholders.",
+      "remediation": "Add explicit columns and NOT EXISTS/INSERT IGNORE/ON DUPLICATE KEY protection; replace tenant 0 and raw ${...}.",
+      "requiredEvidence": ["sql-static-receipt", "repeat-migration-receipt"]
+    },
+    {
+      "id": "DB-QUERY-001",
+      "domain": "database",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "mapper-query-shape",
+      "summary": "Mapper XML uses explicit columns, active-row filtering, and stable pagination order.",
+      "remediation": "Replace SELECT *; include del_flag/tenant rules and ORDER BY update_time DESC, id DESC for page queries.",
+      "requiredEvidence": ["mapper-static-receipt", "pagination-test-receipt"]
+    },
+    {
+      "id": "BE-ENTITY-001",
+      "domain": "backend",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "tenant-entity",
+      "summary": "New table entities extend TenantEntity without redeclaring inherited audit fields.",
+      "remediation": "Extend TenantEntity and keep only id, business fields, and delFlag in the entity.",
+      "requiredEvidence": ["java-static-receipt", "module-compile-receipt"]
+    },
+    {
+      "id": "BE-ENTITY-002",
+      "domain": "backend",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "entity-table-logic",
+      "summary": "A logical-delete entity declares Long delFlag with the primary-key tombstone TableLogic contract.",
+      "remediation": "Add @TableLogic(value = \"0\", delval = \"id\") to Long delFlag.",
+      "requiredEvidence": ["java-static-receipt", "delete-reuse-test-receipt"]
+    },
+    {
+      "id": "BE-PAGE-001",
+      "domain": "backend",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "forge-pagination",
+      "summary": "Pagination uses PageQuery or pageNum/pageSize and database paging; in-memory paging is forbidden.",
+      "remediation": "Pass Page/IPage to Mapper XML and remove List.subList/stream skip-limit pagination.",
+      "requiredEvidence": ["java-static-receipt", "pagination-test-receipt"]
+    },
+    {
+      "id": "BE-PAGE-002",
+      "domain": "backend",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "shared-pagination-owner-and-boundaries",
+      "summary": "The shared PageQuery owner consumes normalized getters, aliases normalize invalid inputs, and boundary tests cannot preserve illegal page values.",
+      "remediation": "Use getPageNum()/getPageSize() in toPage(), normalize null/zero/negative aliases, and test null, zero, negative, maximum, and over-maximum inputs.",
+      "requiredEvidence": ["pagination-owner-static-receipt", "pagination-boundary-test-receipt"]
+    },
+    {
+      "id": "BE-QUERY-001",
+      "domain": "backend",
+      "severity": "advisory",
+      "enforcement": "deterministic",
+      "detector": "mapper-owned-query",
+      "summary": "Business query SQL belongs to Mapper XML, not Service wrappers or annotation SQL.",
+      "remediation": "Move query/list/page conditions and SQL into the module Mapper XML.",
+      "requiredEvidence": ["java-static-receipt", "mapper-test-receipt"]
+    },
+    {
+      "id": "BE-CRUD-001",
+      "domain": "backend",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "post-safe-crud",
+      "summary": "Generated CRUD uses /getById, /add, /edit and /remove/{id} POST-safe routes.",
+      "remediation": "Use Forge's generated CRUD controller contract; do not introduce PUT/DELETE variants.",
+      "requiredEvidence": ["controller-static-receipt", "api-contract-test-receipt"]
+    },
+    {
+      "id": "BE-CONTROLLER-001",
+      "domain": "backend",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "thin-audited-controller",
+      "summary": "Controllers return RespInfo, log mutating operations, and delegate business logic.",
+      "remediation": "Move persistence/business branching to Service and add OperationLog/RespInfo.",
+      "requiredEvidence": ["controller-static-receipt", "controller-test-receipt"]
+    },
+    {
+      "id": "BE-UTILITY-001",
+      "domain": "backend",
+      "severity": "advisory",
+      "enforcement": "deterministic",
+      "detector": "utility-owner",
+      "summary": "Domain helpers live in module support; reusable technical utilities live in the owning starter util package and have tests.",
+      "remediation": "Choose the capability owner, move the class to support or starter util, and add a matching unit test.",
+      "requiredEvidence": ["path-static-receipt", "unit-test-receipt", "reuse-search-receipt"]
+    },
+    {
+      "id": "BE-SAFETY-001",
+      "domain": "backend",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "backend-safety",
+      "summary": "Backend code does not swallow exceptions, print to stdout, expose secrets in logs, or hardcode credentials.",
+      "remediation": "Use typed business exceptions, structured masked logging, and mounted/configured secrets.",
+      "requiredEvidence": ["java-static-receipt", "secret-scan-receipt"]
+    },
+    {
+      "id": "BE-TENANT-001",
+      "domain": "backend",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "tenant-context-owned",
+      "summary": "Ordinary request DTOs cannot accept tenantId and tenant-scoped entities/queries must use the platform tenant context.",
+      "remediation": "Remove tenantId from the client contract and derive it from the authenticated TenantContext.",
+      "requiredEvidence": ["java-static-receipt", "cross-tenant-negative-test-receipt"]
+    },
+    {
+      "id": "BE-TENANT-002",
+      "domain": "backend-security",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "tenant-context-fail-closed",
+      "summary": "Missing tenant context fails closed and never falls back to a constant tenant ID.",
+      "remediation": "Throw a stable unauthorized/tenant-context business error, or propagate an explicitly authorized tenant scope; add missing-tenant and cross-tenant negative tests.",
+      "requiredEvidence": ["java-static-receipt", "missing-tenant-negative-test-receipt", "cross-tenant-negative-test-receipt"]
+    },
+    {
+      "id": "BE-MUTATION-001",
+      "domain": "backend-reliability",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "persistence-mutation-result",
+      "summary": "Persistence mutations cannot discard boolean or affected-row outcomes and then report success.",
+      "remediation": "Check IService boolean results and BaseMapper affected-row counts, map false or an unexpected row count to a stable not-found, stale-write, or concurrent-change error, and add zero-row tests.",
+      "requiredEvidence": ["java-static-receipt", "zero-row-mutation-test-receipt", "concurrent-write-test-receipt"]
+    },
+    {
+      "id": "PERMISSION-API-001",
+      "domain": "permission",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "endpoint-permission-inventory",
+      "summary": "Every new non-public endpoint has SaCheckPermission enforcement or an exact method+path API resource in the same change.",
+      "remediation": "Add a backend permission annotation or a type-4 API resource; public endpoints require the explicit public annotation.",
+      "requiredEvidence": ["endpoint-inventory-receipt", "anonymous-no-permission-test-receipt"]
+    },
+    {
+      "id": "PERMISSION-RESOURCE-001",
+      "domain": "permission",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "permission-resource-parent",
+      "summary": "Button and API resources are attached to their owning menu instead of becoming root-level orphan nodes.",
+      "remediation": "Resolve the menu resource ID and use it as parent_id for every resource_type 3/4 seed; parent_id 0 is reserved for true root menus.",
+      "requiredEvidence": ["resource-seed-static-receipt", "permission-tree-runtime-receipt"]
+    },
+    {
+      "id": "PERMISSION-CONTRACT-001",
+      "domain": "permission",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "cross-artifact-permission-contract",
+      "summary": "Changed button/API resources and Controller endpoints agree on permission, HTTP method, URL, and owning menu.",
+      "remediation": "Use one literal permission contract across the button, type-4 API resource, and SaCheckPermission endpoint; keep button/API parents identical.",
+      "requiredEvidence": ["permission-contract-static-receipt", "negative-api-test-receipt"]
+    },
+    {
+      "id": "PERMISSION-ROLE-001",
+      "domain": "permission",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "active-role-grant",
+      "summary": "Changed role-resource grants select only active, non-deleted roles.",
+      "remediation": "Join or guard sys_role with role_status = 1 and del_flag = 0 before inserting sys_role_resource rows.",
+      "requiredEvidence": ["role-grant-static-receipt", "disabled-role-negative-test-receipt"]
+    },
+    {
+      "id": "FE-CRUD-001",
+      "domain": "frontend",
+      "severity": "advisory",
+      "enforcement": "deterministic",
+      "detector": "canonical-crud-page",
+      "summary": "New business CRUD pages and changed table/form/pagination structures reuse AiCrudPage. Unchanged structures in existing pages remain recorded as legacy findings against the protected review base.",
+      "remediation": "Use AiCrudPage for new or changed CRUD structures; retain unrelated historical findings without renewing whole-file exceptions.",
+      "requiredEvidence": ["vue-static-receipt", "browser-golden-task-receipt"]
+    },
+    {
+      "id": "FE-DICT-001",
+      "domain": "frontend",
+      "severity": "advisory",
+      "enforcement": "deterministic",
+      "detector": "canonical-dictionary",
+      "summary": "Dictionary-backed options and labels use useDict, DictSelect, and DictTag rather than page-local maps.",
+      "remediation": "Create/reuse a dict_type and bind the canonical dictionary components through computed schemas.",
+      "requiredEvidence": ["vue-static-receipt", "dictionary-runtime-receipt"]
+    },
+    {
+      "id": "FE-API-001",
+      "domain": "frontend",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "frontend-api-contract",
+      "summary": "Frontend generated CRUD paths and methods match the POST-safe backend and use :id placeholders.",
+      "remediation": "Use post@.../getById, add, edit, remove/:id; never {id}, put@, or delete@.",
+      "requiredEvidence": ["frontend-api-static-receipt", "api-contract-test-receipt"]
+    },
+    {
+      "id": "FE-MENU-001",
+      "domain": "frontend",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "menu-component-owner",
+      "summary": "Every changed menu resource binds a literal component to a real Forge Admin view in the same worktree.",
+      "remediation": "Create/reuse forge-admin-ui/src/views/<component>.vue (or its canonical index/module form) and seed that exact repository-relative component key.",
+      "requiredEvidence": ["menu-component-static-receipt", "route-browser-receipt"]
+    },
+    {
+      "id": "FE-DATA-001",
+      "domain": "frontend",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "frontend-data-boundary",
+      "summary": "Snowflake Long IDs stay strings and protected files/images use AuthImage or the authenticated file adapter.",
+      "remediation": "Keep Snowflake IDs as quoted strings from fixtures through API calls, remove Number(id) coercion, and route protected file rendering through AuthImage.",
+      "requiredEvidence": ["vue-static-receipt", "browser-network-receipt"]
+    },
+    {
+      "id": "FE-HTTP-001",
+      "domain": "frontend",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "canonical-http-client",
+      "summary": "Frontend API modules use the project request adapter, not direct axios/fetch clients.",
+      "remediation": "Use the canonical request utility so auth, encryption, errors, and tracing remain consistent.",
+      "requiredEvidence": ["frontend-api-static-receipt"]
+    },
+    {
+      "id": "FE-DESIGN-001",
+      "domain": "design",
+      "severity": "advisory",
+      "enforcement": "deterministic",
+      "detector": "admin-design-tokens",
+      "summary": "New admin pages and changed lines/components use Naive UI and Forge design tokens. Unchanged legacy colors/components remain recorded against the protected review base.",
+      "remediation": "Use semantic UnoCSS classes/CSS variables and Naive UI for new or changed code; keep unrelated historical findings visible without treating them as remediated.",
+      "requiredEvidence": ["frontend-style-static-receipt", "responsive-a11y-browser-receipt"]
+    },
+    {
+      "id": "FE-RUNTIME-001",
+      "domain": "frontend-security",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "frontend-runtime-supply-chain",
+      "summary": "Production frontend code cannot dynamically load latest/CDN scripts or use Math.random for nonce, trace, or idempotency identifiers.",
+      "remediation": "Pin build-time dependencies and use crypto.randomUUID/getRandomValues for security-relevant identifiers.",
+      "requiredEvidence": ["frontend-supply-chain-receipt", "production-bundle-scan-receipt"]
+    },
+    {
+      "id": "UI-DESIGN-001",
+      "domain": "frontend-design",
+      "severity": "advisory",
+      "enforcement": "deterministic",
+      "detector": "canonical-ui-design-owner",
+      "summary": "New Forge Admin business UI uses semantic tokens and the canonical Naive UI owner.",
+      "remediation": "Replace raw colors and Element Plus controls with Forge tokens and canonical components.",
+      "requiredEvidence": ["ui-contract-static-receipt", "responsive-a11y-browser-receipt"]
+    },
+    {
+      "id": "UI-HTTP-001",
+      "domain": "frontend",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "canonical-ui-request-owner",
+      "summary": "New business views call src/api adapters; only API adapters depend on the canonical request owner.",
+      "remediation": "Move transport calls into a src/api adapter, import the canonical request owner there, and remove direct request, axios, or fetch access from the business view.",
+      "requiredEvidence": ["ui-contract-static-receipt", "frontend-api-static-receipt"]
+    },
+    {
+      "id": "UI-DIALOG-001",
+      "domain": "frontend",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "canonical-ui-dialog-owner",
+      "summary": "New business UI does not use browser alert, confirm, or prompt dialogs.",
+      "remediation": "Use the canonical Forge feedback and dangerous-confirmation owner.",
+      "requiredEvidence": ["ui-contract-static-receipt", "browser-dialog-receipt"]
+    },
+    {
+      "id": "UI-A11Y-001",
+      "domain": "frontend-accessibility",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "clickable-noninteractive-keyboard-contract",
+      "summary": "Clickable div and span elements expose focus and keyboard activation semantics.",
+      "remediation": "Prefer a native button or add role=button, tabindex=0, and Enter/Space activation.",
+      "requiredEvidence": ["ui-contract-static-receipt", "accessibility-receipt"]
+    },
+    {
+      "id": "UI-PERMI-001",
+      "domain": "frontend-permission",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "mutation-button-permission-directive",
+      "summary": "Obvious mutation buttons use the canonical v-hasPermi directive.",
+      "remediation": "Bind the button to its exact permission through v-hasPermi and retain backend enforcement.",
+      "requiredEvidence": ["ui-contract-static-receipt", "permission-contract-static-receipt"]
+    },
+    {
+      "id": "UI-DANGER-001",
+      "domain": "frontend-safety",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "dangerous-action-confirmation-owner",
+      "summary": "Obvious destructive actions use the canonical dangerous-confirmation owner.",
+      "remediation": "Wrap destructive mutations with NPopconfirm or the reviewed danger-confirm service.",
+      "requiredEvidence": ["ui-contract-static-receipt", "destructive-action-browser-receipt"]
+    },
+    {
+      "id": "UI-IMAGE-001",
+      "domain": "frontend-security",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "authenticated-image-owner",
+      "summary": "Protected images use AuthImage or the authenticated file adapter.",
+      "remediation": "Replace raw protected image bindings with AuthImage or an authenticated file URL.",
+      "requiredEvidence": ["ui-contract-static-receipt", "browser-network-receipt"]
+    },
+    {
+      "id": "UI-PAGE-001",
+      "domain": "frontend",
+      "severity": "advisory",
+      "enforcement": "deterministic",
+      "detector": "canonical-ui-pagination-owner",
+      "summary": "Ordinary business CRUD pages use AiCrudPage rather than page-local pagination.",
+      "remediation": "Move ordinary CRUD tables, actions, forms, and paging to AiCrudPage.",
+      "requiredEvidence": ["ui-contract-static-receipt", "browser-golden-task-receipt"]
+    },
+    {
+      "id": "UI-FORM-001",
+      "domain": "frontend",
+      "severity": "advisory",
+      "enforcement": "deterministic",
+      "detector": "canonical-ui-form-owner",
+      "summary": "Ordinary new business forms use AiForm.",
+      "remediation": "Represent the form through AiForm schema and canonical validation behavior.",
+      "requiredEvidence": ["ui-contract-static-receipt", "form-validation-browser-receipt"]
+    },
+    {
+      "id": "UI-DICT-001",
+      "domain": "frontend",
+      "severity": "advisory",
+      "enforcement": "deterministic",
+      "detector": "canonical-ui-dictionary-owner",
+      "summary": "New business option labels use DictSelect, DictTag, and useDict rather than page-local maps.",
+      "remediation": "Register or reuse a dictionary and bind the canonical dictionary components.",
+      "requiredEvidence": ["ui-contract-static-receipt", "dictionary-runtime-receipt"]
+    },
+    {
+      "id": "UI-TOKEN-001",
+      "domain": "frontend-security",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "canonical-ui-token-owner",
+      "summary": "New business UI does not access authentication token browser storage directly.",
+      "remediation": "Use getToken, setToken, and removeToken through the canonical auth owner.",
+      "requiredEvidence": ["ui-contract-static-receipt", "frontend-auth-static-receipt"]
+    },
+    {
+      "id": "UI-UPLOAD-001",
+      "domain": "frontend-security",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "canonical-ui-upload-owner",
+      "summary": "New business uploads use the canonical authenticated upload owner.",
+      "remediation": "Use the shared upload component or authenticated custom-request adapter instead of a direct action URL.",
+      "requiredEvidence": ["ui-contract-static-receipt", "upload-browser-network-receipt"]
+    },
+    {
+      "id": "UI-STATE-001",
+      "domain": "frontend",
+      "severity": "review",
+      "enforcement": "semantic",
+      "detector": "custom-ui-async-state-owner-review",
+      "summary": "Custom business UI identifies loading, empty, error, and busy state ownership.",
+      "remediation": "Use AiCrudPage or retain browser evidence for each explicit async state.",
+      "requiredEvidence": ["async-state-design-review", "negative-ui-state-receipt"]
+    },
+    {
+      "id": "UI-API-CONSUMER-001",
+      "domain": "frontend-design",
+      "severity": "advisory",
+      "enforcement": "semantic",
+      "detector": "business-api-consumer-obligation",
+      "summary": "A new business API adapter has at least one real UI consumer.",
+      "remediation": "Add or identify the importing business view and retain the consumer graph evidence.",
+      "requiredEvidence": ["ui-consumer-graph-receipt", "frontend-api-contract-review"]
+    },
+    {
+      "id": "UI-SHARED-CONSUMER-001",
+      "domain": "frontend-design",
+      "severity": "advisory",
+      "enforcement": "semantic",
+      "detector": "shared-component-consumer-obligation",
+      "summary": "A new shared business component has at least two real consumers.",
+      "remediation": "Keep one-off UI local or identify two importing consumers before establishing a shared owner.",
+      "requiredEvidence": ["ui-consumer-graph-receipt", "canonical-owner-review"]
+    },
+    {
+      "id": "FLOW-001",
+      "domain": "workflow",
+      "severity": "advisory",
+      "enforcement": "deterministic",
+      "detector": "real-flowable-workflow",
+      "summary": "Approval work uses Flowable bindings, business_key/process_instance_id, callbacks, and BPMN; a status column alone is not a workflow.",
+      "remediation": "Use forge-business-flow-development and provide the full Flowable integration artifacts.",
+      "requiredEvidence": ["workflow-static-receipt", "approve-reject-resubmit-receipt"]
+    },
+    {
+      "id": "PERMISSION-001",
+      "domain": "permission",
+      "severity": "review",
+      "enforcement": "semantic",
+      "detector": "cross-layer-permission-contract",
+      "summary": "Menu, button, API resource, backend enforcement, tenant, and data-scope behavior form one reviewed contract.",
+      "remediation": "Add positive and anonymous/no-permission/cross-tenant/direct-API negative cases.",
+      "requiredEvidence": ["permission-contract-review", "negative-api-test-receipt"]
+    },
+    {
+      "id": "DESIGN-001",
+      "domain": "design",
+      "severity": "advisory",
+      "enforcement": "semantic",
+      "detector": "canonical-owner-review",
+      "summary": "A new global component or utility requires a reuse search, canonical owner decision, API contract, documentation, and two consumers.",
+      "remediation": "Reuse the existing owner or attach the independent owner-review evidence.",
+      "requiredEvidence": ["reuse-search-receipt", "independent-design-review"]
+    },
+    {
+      "id": "DB-REVIEW-001",
+      "domain": "database",
+      "severity": "review",
+      "enforcement": "semantic",
+      "detector": "table-category-index-and-rollback-review",
+      "summary": "Table category, permanent versus active uniqueness, index order, migration lock risk, retention, and rollback are independently reviewed.",
+      "remediation": "Record the table classification and query evidence; a model cannot self-approve an exception.",
+      "requiredEvidence": ["database-design-review", "query-plan-receipt", "rollback-review"]
+    },
+    {
+      "id": "BE-RELIABILITY-001",
+      "domain": "backend",
+      "severity": "review",
+      "enforcement": "semantic",
+      "detector": "transaction-idempotency-error-contract-review",
+      "summary": "Mutation boundaries explicitly cover transactions, duplicate requests, concurrency, stable error codes, HTTP status, safe messages, and request IDs.",
+      "remediation": "Bind the selected transaction/idempotency/lock strategy and negative API tests to the same change.",
+      "requiredEvidence": ["backend-reliability-review", "concurrency-negative-test-receipt", "error-contract-test-receipt"]
+    },
+    {
+      "id": "FE-UX-001",
+      "domain": "frontend",
+      "severity": "review",
+      "enforcement": "runtime",
+      "detector": "responsive-accessible-state-review",
+      "summary": "Changed user flows verify responsive layout, keyboard/focus behavior, loading, empty, error, permission, and retry states in a real browser.",
+      "remediation": "Run the project browser acceptance profile and retain screenshots/network/console evidence.",
+      "requiredEvidence": ["responsive-browser-receipt", "accessibility-receipt", "negative-ui-state-receipt"]
+    },
+    {
+      "id": "OBS-001",
+      "domain": "observability",
+      "severity": "review",
+      "enforcement": "runtime",
+      "detector": "logs-metrics-trace-review",
+      "summary": "New failure and business-critical paths define masked structured logs, request/trace propagation, metrics, alerts, and a runbook owner.",
+      "remediation": "Add directly exercised observability assertions; console output and prose are not telemetry evidence.",
+      "requiredEvidence": ["log-redaction-test-receipt", "trace-propagation-receipt", "metric-alert-runbook-review"]
+    },
+    {
+      "id": "SUPPLY-001",
+      "domain": "supply-chain",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "pinned-runtime-dependencies",
+      "summary": "New runtime dependencies, remote scripts, container bases, and dynamic installers are immutable and version pinned.",
+      "remediation": "Replace latest/wildcard/remote execution and mutable image tags with reviewed versions and immutable digests.",
+      "requiredEvidence": ["dependency-lock-receipt", "image-input-receipt", "sbom-scan-receipt"]
+    },
+    {
+      "id": "QUALITY-TEST-001",
+      "domain": "quality",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "new-code-tests",
+      "summary": "New Service, Controller, support/helper, utility, and canonical component code ships with matching automated tests.",
+      "remediation": "Add a focused regression/contract test in the owning module or component test directory.",
+      "requiredEvidence": ["test-file-static-receipt", "test-execution-receipt"]
+    },
+    {
+      "id": "QUALITY-TDD-001",
+      "domain": "quality",
+      "severity": "advisory",
+      "enforcement": "runtime",
+      "detector": "red-green-receipts",
+      "summary": "Bug fixes and new behavior retain independent RED and GREEN receipts bound to the same diff lineage.",
+      "remediation": "Run the controlled Evidence Runner; model prose is not a test receipt.",
+      "requiredEvidence": ["red-receipt", "green-receipt", "review-receipt"]
+    },
+    {
+      "id": "QUALITY-TEST-002",
+      "domain": "quality",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "tests-not-disabled",
+      "summary": "Changed tests and verification configuration cannot disable, skip, or silently exclude the required checks.",
+      "remediation": "Remove skip/disabled flags and run the policy-selected verification command through the Evidence Runner.",
+      "requiredEvidence": ["test-selection-receipt", "test-execution-receipt"]
+    },
+    {
+      "id": "QUALITY-TEST-003",
+      "domain": "quality",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "valid-reflection-selector",
+      "summary": "Reflection contract tests inspect annotations on their real Java element and cannot use selectors that are guaranteed to return null.",
+      "remediation": "For parameter annotations, select Method.getParameters()[n] and call Parameter.getAnnotation(), or inspect getParameterAnnotations().",
+      "requiredEvidence": ["test-source-static-receipt", "test-execution-receipt"]
+    },
+    {
+      "id": "QUALITY-TEST-004",
+      "domain": "quality",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "java-test-dependency-closure",
+      "summary": "Changed Java tests import only frameworks supplied by the owning Maven module or its explicitly declared local parent chain.",
+      "remediation": "Use an already admitted test module that depends on the production owner, or add the reviewed test dependency to the owning module before claiming the test compiles.",
+      "requiredEvidence": ["test-dependency-static-receipt", "test-compilation-receipt", "test-execution-receipt"]
+    },
+    {
+      "id": "QUALITY-BUILD-001",
+      "domain": "quality",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "tests-enabled-in-build",
+      "summary": "Changed build and verification configuration cannot make tests opt-out by default or exclude the required suites.",
+      "remediation": "Enable tests in the reviewed build profile and make any scoped exclusion explicit in the external policy.",
+      "requiredEvidence": ["build-profile-static-receipt", "test-selection-receipt"]
+    },
+    {
+      "id": "SKILL-SAFETY-001",
+      "domain": "skill-supply-chain",
+      "severity": "block",
+      "enforcement": "deterministic",
+      "detector": "skill-content-safety",
+      "summary": "Skills cannot contain unrelated privileged commands, dynamic installers, embedded credentials, or missing tool references.",
+      "remediation": "Remove the instruction, pin the capability in the image, and register it in the capability catalog.",
+      "requiredEvidence": ["skill-bundle-validator-receipt", "secret-scan-receipt"]
+    }
+  ]
+}

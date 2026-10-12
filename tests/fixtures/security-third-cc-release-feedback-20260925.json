@@ -1,0 +1,8 @@
+{
+  "prompt": "继续收尾第三批人防审批的实际抄送缺口。先回收你上一轮后台发布的真实终态，不要重复发布同一候选：d441837d9df2c6b3149fdc210434ab3f5c8d1077已于2026-09-25T01:25:35.536Z成功发布，release job 3f88647f-ac4e-46c7-9658-0b1c61e0a982，prepared job aeaeb511-f504-463e-aba1-84a0aff1b213；前后端实际已换版本。\n\n我已通过真实浏览器完成同一经理dgjl_dd01、同一原申请2103233946292453378的验证：97首页无403且不请求无权workbench；98原申请详情完整只读字段和审批按钮正确，未再加载整列表；99/100正常签收；101先点击同意出现正常确认框，103确认后业务task-action code200；104管理员刷新人防列表显示审批通过且仅查看无编辑，106详情14字段全部disabled+readonly；107经理我的已办显示已通过和真实审批意见，108业务流程历史有经理张伟同意。以上已通过，不再重跑导入、CRUD、首页或整个审批渲染修复。\n\n剩余直接失败是MD要求的“抄送安保部门”没有发生：原processInstanceId=40f8ca37-b865-11f1-88f5-da89809c8633已结束，act_hi_procinst.END_TIME_=2026-09-25 09:28:44.435；976只读实库SELECT COUNT(*) FROM sys_flow_cc WHERE process_instance_id为该值，结果0。原记录保留APPROVED，请保留真实历史，不能改数据库伪造成功，也不能无说明重放经理审批。你的SecurityDefenseServiceImpl在提交时写入ccRoleKeys；现有FlowTaskNotifyListener.sendProcessCc按该变量解析角色并调用flowCcService.sendCc，但本次没有任何抄送落库。请定位这条真实已通过业务流程为何未进入或未完成抄送消费，完成最小修复和直接检查，正常受控提交、集成、发布并回收终态。\n\n同时当前selectSecurityRoleKeys只按business:security:civil-defense:query权限取角色，974实际返回admin、ccInspector、dept、deptMgr、ehssMgr、ehssTech、hse、leader、superMgr。这不能据以断言这些人都属于MD中的安保部门。检查现有组织/角色和业务配置，复用真实安保部门映射，不把所有页面可见角色当抄送人，不擅自加权或把领导经理都抄送。若资料和现有配置确实无法唯一确定安保部门接收人，明确列出已有配置事实和唯一需要业务人员决定的信息；平台/代码能够补齐的部分先完成，不能用缺少业务决定掩盖未执行的抄送链路。\n\n业务代码和测试仍由你完成；本轮只处理上述抄送缺口，检查只覆盖当前修改及直接影响，复用有效回执。允许你使用现有正常恢复机制，保留原失败和已通过结果；不要触碰其他真实流程实例。新版本后我会用正常浏览器验证抄送，需要新的虚构验收申请才由我通过页面新增，不改原已结束实例或制造验收回执。完成这项后继续第四至七批，不等待重复发版授权。",
+  "source": {
+    "marker": "security-third-approval-cc-05",
+    "sessionId": "session-bf9b95fa-513d-4267-b951-9e0e8e99f97b",
+    "acceptedAt": 1790300079809
+  }
+}

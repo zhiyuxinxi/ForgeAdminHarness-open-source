@@ -1,0 +1,11 @@
+# Base sha256:87d3a1147e297e656605b29d3d971e7151527627db53d6bfb7220b1ac00d8a79.
+# Preserve the prior source-transition ordering fix and installed dependencies.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 docker/harness/forge-protected-acceptance-service.mjs /usr/local/lib/forge-protected-acceptance-service.mjs
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.coordinated-release /usr/local/share/forge-image-build/Dockerfile.coordinated-release
+RUN --network=none node --input-type=module -e 'await import("/usr/local/lib/forge-protected-acceptance-service.mjs"); await import("/usr/local/lib/conversation-manager.mjs");'
+LABEL com.forge-delivery.coordinated-release.version="2026.09.22.1"
+USER 1000:1000

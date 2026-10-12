@@ -1,0 +1,34 @@
+[Unit]
+Description=Forge host-toolchain verification Runner for %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__DELIVERY_OWNER__
+Group=__DELIVERY_GROUP__
+UMask=0007
+EnvironmentFile=__DELIVERY_ROOT__/projects/%i/verification/host-runner.env
+WorkingDirectory=__DELIVERY_ROOT__/projects/%i/verification
+ExecStart=__HOST_NODE_PATH__ __HOST_RUNNER_ROOT__/current/lib/host-verification-runner.mjs
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectKernelLogs=true
+ProtectClock=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadOnlyPaths=__DELIVERY_ROOT__/projects/%i/taskspaces
+ReadWritePaths=__DELIVERY_ROOT__/projects/%i/verification
+ReadWritePaths=__DELIVERY_ROOT__/projects/%i/acceptance/ipc-issuer
+
+[Install]
+WantedBy=multi-user.target

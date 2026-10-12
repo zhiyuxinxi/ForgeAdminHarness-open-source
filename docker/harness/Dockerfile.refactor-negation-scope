@@ -1,0 +1,10 @@
+# Retain the verified governance, Host, Skills and dependency layers.
+# Base: sha256:b1503c94c615912cb51ef350f7d41ef1ebd96d7a744f3b399aba75b5712489b4
+ARG BASE_IMAGE=forge-delivery/deepseek-harness:0.1.1-rc.2-governance-delta-20260923-1
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 docker/harness/forge-task-execution-contract.mjs /usr/local/lib/
+COPY --chmod=0644 config/versions.env docker/harness/Dockerfile.refactor-negation-scope /usr/local/share/forge-image-build/
+RUN --network=none node --check /usr/local/lib/forge-task-execution-contract.mjs
+LABEL com.forge-delivery.refactor-negation-scope.version="2026.09.23.1"
+USER 1000:1000

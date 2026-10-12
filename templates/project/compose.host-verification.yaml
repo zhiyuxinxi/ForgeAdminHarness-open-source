@@ -1,0 +1,6 @@
+services:
+  # The host runner owns the existing runner.sock outside Compose. Keeping the
+  # legacy service behind an explicit profile preserves a one-command rollback
+  # without exposing the Docker socket to Harness or Broker.
+  verification-runner:
+    profiles: [legacy-container-verification]

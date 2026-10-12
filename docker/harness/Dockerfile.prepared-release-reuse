@@ -1,0 +1,10 @@
+# Preserve the verified runtime, Host bundle, Skills and installed dependencies.
+# Base: sha256:50d3404f5a6e07a605e2ab7f6211d3e50b2125bdbc32df9eca11747dfc6cf30a
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 docker/harness/release-runner.mjs /usr/local/lib/release-runner.mjs
+COPY --chmod=0644 docker/harness/Dockerfile.prepared-release-reuse /usr/local/share/forge-image-build/
+RUN --network=none node --check /usr/local/lib/release-runner.mjs
+LABEL com.forge-delivery.prepared-release-reuse.version="2026.09.22.1"
+USER 1000:1000

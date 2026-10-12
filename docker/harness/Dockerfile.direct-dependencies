@@ -1,0 +1,30 @@
+# Reuse the verified runtime, Skills, seed and toolchain layers. Publish installed
+# dependency artifacts once; Host tasks consume the server binding without copies.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+ARG HOST_RUNNER_MANIFEST_SHA256
+ARG PREPARED_DEPENDENCIES_MANIFEST_SHA256
+COPY --chmod=0644 docker/harness/host-verification-runner.mjs docker/harness/host-verify-policy.mjs docker/harness/host-dependency-seed.mjs docker/harness/host-prepared-dependencies.mjs docker/harness/forge-protected-acceptance-service.mjs /usr/local/lib/
+COPY host-runner-bundle/ /opt/forge-host-runner-bundle/
+COPY --from=prepared-dependencies / /opt/forge-prepared-dependencies/
+COPY --chmod=0644 templates/project/host-verification-contract.json.tpl /usr/local/share/forge-image-build/templates/project/host-verification-contract.json.tpl
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.direct-dependencies /usr/local/share/forge-image-build/Dockerfile.direct-dependencies
+RUN --network=none node --input-type=module -e '\
+  import fs from "node:fs"; import crypto from "node:crypto"; \
+  import {validateHostRunnerBundle} from "/opt/forge-host-runner-bundle/bin/forge-host-runner-bundle.mjs"; \
+  import {preparedDependencyDigest} from "/usr/local/lib/host-prepared-dependencies.mjs"; \
+  const sha=b=>crypto.createHash("sha256").update(b).digest("hex"); \
+  const hostRoot="/opt/forge-host-runner-bundle", dependencyRoot="/opt/forge-prepared-dependencies"; \
+  if(sha(fs.readFileSync(hostRoot+"/runner.manifest.json"))!==process.argv[1])throw Error("Host manifest mismatch"); \
+  const host=await validateHostRunnerBundle(hostRoot,{profileCatalogVersion:"2026.09.03.22"}); \
+  if(host.manifest.bundleVersion!=="2026.09.21.2-direct-dependencies")throw Error("Host version mismatch"); \
+  for(const name of ["host-verification-runner.mjs","host-verify-policy.mjs","host-dependency-seed.mjs","host-prepared-dependencies.mjs"]){if(sha(fs.readFileSync(hostRoot+"/lib/"+name))!==sha(fs.readFileSync("/usr/local/lib/"+name)))throw Error("Host consumer mismatch");} \
+  const bytes=fs.readFileSync(dependencyRoot+"/manifest.json");if(sha(bytes)!==process.argv[2])throw Error("Prepared manifest mismatch"); \
+  const manifest=JSON.parse(bytes);if(manifest.schemaVersion!=="forge-host-prepared-dependencies/v1"||manifest.projectSlug!=="forge-base")throw Error("Prepared identity mismatch"); \
+  fs.chmodSync(dependencyRoot,0o555); \
+  for(const entry of manifest.projects){if(!["forge-admin-ui","forge-h5-ui"].includes(entry.project)||await preparedDependencyDigest(dependencyRoot+"/"+entry.project+"/node_modules",{readOnly:true})!==entry.sha256)throw Error("Prepared payload mismatch");} \
+  await import("/usr/local/lib/host-verification-runner.mjs"); \
+  ' "${HOST_RUNNER_MANIFEST_SHA256}" "${PREPARED_DEPENDENCIES_MANIFEST_SHA256}"
+USER 1000:1000

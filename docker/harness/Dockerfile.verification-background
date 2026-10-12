@@ -1,0 +1,13 @@
+ARG HARNESS_BACKGROUND_BASE
+ARG BROKER_BACKGROUND_BASE
+
+FROM ${HARNESS_BACKGROUND_BASE} AS harness
+COPY --chown=0:0 --chmod=0755 docker/harness/forge-verify /usr/local/bin/forge-verify
+COPY --chown=0:0 --chmod=0644 docker/harness/verify-policy.mjs docker/harness/forge-controlled-command.mjs docker/harness/forge-phase-budget-guard.mjs /usr/local/lib/
+RUN node --check /usr/local/bin/forge-verify && node --check /usr/local/lib/forge-phase-budget-guard.mjs
+LABEL com.forge-delivery.background-verification.version="2026.09.18.2"
+
+FROM ${BROKER_BACKGROUND_BASE} AS broker
+COPY --chown=0:0 --chmod=0644 docker/harness/verify-policy.mjs docker/harness/taskspace-broker.mjs /usr/local/lib/
+RUN node --check /usr/local/lib/taskspace-broker.mjs
+LABEL com.forge-delivery.background-verification.version="2026.09.18.2"

@@ -1,0 +1,12 @@
+# Retain all dependency layers, Host.22.2 and Skills.22.2 from F28.
+# Base sha256:24249c82f8b092ed2c53a824e7bd1d12f552a6adafae914f651295a55e430afe.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 scripts/configure-codex-model-route.py /usr/local/lib/configure-codex-model-route.py
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile docker/harness/Dockerfile.overlay docker/harness/Dockerfile.model-route-fallback docker/harness/image-build-inputs.json /usr/local/share/forge-image-build/
+# This is a Host-operated tool. Its Python consumer is verified on the Host;
+# the Harness image carries its reviewed bytes without another runtime install.
+LABEL com.forge-delivery.model-route-fallback.version="2026.09.22.1"
+USER 1000:1000

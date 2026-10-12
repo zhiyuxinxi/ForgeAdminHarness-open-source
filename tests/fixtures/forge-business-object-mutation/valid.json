@@ -1,0 +1,28 @@
+{
+  "snapshot": {
+    "schemaVersion": 1,
+    "snapshotType": "forge-business-object/snapshot",
+    "projectSlug": "forge-admin",
+    "objectType": "supplier",
+    "objectId": "supplier-9",
+    "tenantId": "tenant-7",
+    "fields": [
+      { "field": "id", "valueSha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "mutable": false },
+      { "field": "status", "valueSha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "mutable": true },
+      { "field": "remark", "valueSha256": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "mutable": true }
+    ],
+    "concurrency": { "mode": "version", "token": "17" },
+    "source": { "head": "dddddddddddddddddddddddddddddddddddddddd", "fingerprint": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" },
+    "observedAt": "2026-09-01T00:00:00.000Z"
+  },
+  "patch": {
+    "schemaVersion": 1,
+    "planType": "forge-business-object/mutation-plan",
+    "planId": "123e4567-e89b-42d3-a456-426614174100",
+    "mode": "patch",
+    "patchChanges": [
+      { "field": "status", "beforeSha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "afterSha256": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }
+    ],
+    "replacementFields": null
+  }
+}

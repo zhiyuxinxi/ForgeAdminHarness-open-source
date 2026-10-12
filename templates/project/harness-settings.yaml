@@ -1,0 +1,49 @@
+llm-pi-ai:
+  providers:
+    openai-codex:
+      apiKeyEnv: FORGE_CODEX_CLI_ACCESS_TOKEN
+      transport: sse
+      models:
+        - id: gpt-5.3-codex-spark
+        - id: gpt-5.4
+        - id: gpt-5.4-mini
+        - id: gpt-5.5
+        - id: gpt-5.6-luna
+        - id: gpt-5.6-sol
+        - id: gpt-5.6-terra
+        - id: gpt-6-sol
+          name: GPT-6 Sol
+          contextWindow: 1050000
+          # Client output cap; the documented model maximum is 128000.
+          maxTokens: 32768
+          input: [text, image]
+          reasoningEfforts:
+            off: none
+            low: low
+            medium: medium
+            high: high
+            xhigh: xhigh
+            max: max
+    kimi:
+      displayName: Kimi
+      apiKeyEnv: KIMI_API_KEY
+      api: openai-completions
+      baseURL: https://api.moonshot.cn/v1
+      models:
+        - id: kimi-k3
+          name: Kimi K3
+          contextWindow: 1000000
+          input: [text, image]
+    zhipu:
+      displayName: 智谱 GLM
+      apiKeyEnv: GLM_API_KEY
+      api: openai-completions
+      baseURL: https://open.bigmodel.cn/api/paas/v4
+      models:
+        # GLM-5.3 is owner-supplied but absent from the current public model
+        # list. Use a conservative client context limit until the provider
+        # publishes its model-specific contract and account access is tested.
+        - id: glm-5.3
+          name: GLM-5.3
+          contextWindow: 128000
+          input: [text]

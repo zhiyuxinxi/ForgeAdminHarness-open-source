@@ -1,0 +1,10 @@
+# Reuse the deployed scoped-verification image, dependencies, Host and Skills.
+# Base: sha256:7674f9be7d30c038be39a46c08e662aec4672f522541651e14eb1c4bd76eb0a2
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 docker/harness/forge-phase-budget-guard.mjs /usr/local/lib/forge-phase-budget-guard.mjs
+COPY --chmod=0644 docker/harness/Dockerfile.task-preparation-feedback /usr/local/share/forge-image-build/Dockerfile.task-preparation-feedback
+RUN --network=none node --check /usr/local/lib/forge-phase-budget-guard.mjs
+LABEL com.forge-delivery.task-preparation-feedback.version="2026.09.22.1"
+USER 1000:1000

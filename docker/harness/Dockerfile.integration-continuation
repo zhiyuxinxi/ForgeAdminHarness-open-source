@@ -1,0 +1,29 @@
+# Reuse the prepared dependencies and unchanged Host .6 bundle.
+# Reviewed base ID: sha256:a422f9d5c55beadcf5830e5446d0925c50d091700865d75d844ddcf7a69476a3
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+ARG SKILL_BUNDLE_MANIFEST_SHA256
+COPY --chmod=0644 docker/harness/forge-protected-acceptance-service.mjs docker/harness/forge-phase-budget-guard.mjs docker/harness/forge-production-task-grant.mjs docker/harness/forge-execution-context.mjs docker/harness/taskspace-broker.mjs /usr/local/lib/
+COPY skill-bundle/ /opt/forge-skill-bundles/versions/2026.09.21.3/
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.integration-continuation /usr/local/share/forge-image-build/Dockerfile.integration-continuation
+RUN --network=none node --input-type=module -e '\
+  import fs from "node:fs"; import crypto from "node:crypto"; \
+  import {validateSkillBundle} from "/usr/local/lib/validate-skill-bundle.mjs"; \
+  const digest=(p)=>crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex"); \
+  const root="/opt/forge-skill-bundles/versions/2026.09.21.3"; \
+  if(digest(root+"/bundle.manifest.json")!==process.argv[1])throw Error("Skill manifest mismatch"); \
+  const manifest=JSON.parse(fs.readFileSync(root+"/bundle.manifest.json")); \
+  if(manifest.bundleVersion!=="2026.09.21.3")throw Error("Skill version mismatch"); \
+  for(const entry of manifest.files){const p=root+"/"+entry.path;if(fs.statSync(p).size!==entry.bytes||digest(p)!==entry.sha256)throw Error("Skill payload mismatch");} \
+  await validateSkillBundle({skillsRoot:root+"/skills",catalogPath:root+"/catalog.json",strict:true}); \
+  const current="/opt/forge-skill-bundles/current"; \
+  if(fs.lstatSync(current,{throwIfNoEntry:false})){if(!fs.lstatSync(current).isSymbolicLink())throw Error("Skill current is not a symlink");fs.unlinkSync(current);} \
+  fs.symlinkSync("versions/2026.09.21.3",current); \
+  for(const name of ["forge-protected-acceptance-service","forge-production-task-grant","forge-execution-context","taskspace-broker"])await import("/usr/local/lib/"+name+".mjs"); \
+  ' "${SKILL_BUNDLE_MANIFEST_SHA256}" && node --check /usr/local/lib/forge-phase-budget-guard.mjs
+ENV FORGE_HARNESS_SKILL_BUNDLE_VERSION=2026.09.21.3
+LABEL com.forge-delivery.harness-skill-bundle="2026.09.21.3"
+LABEL com.forge-delivery.integration-continuation.version="2026.09.21.1"
+USER 1000:1000

@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "2026.09.03.1",
+  "profile": "forge-admin-canonical-ui",
+  "scope": {
+    "newFilesOnly": true,
+    "businessViewPrefix": "forge-admin-ui/src/views/business/",
+    "businessApiPrefix": "forge-admin-ui/src/api/business/",
+    "sharedComponentPrefixes": [
+      "forge-admin-ui/src/components/business/",
+      "forge-admin-ui/src/components/common/"
+    ],
+    "sourceExtensions": [".vue", ".js", ".mjs", ".ts", ".tsx"]
+  },
+  "canonicalOwners": {
+    "AiCrudPage": {
+      "owner": "forge-admin-ui/src/components/ai-form/AiCrudPage.vue",
+      "allowedVariants": ["AiCrudPage"]
+    },
+    "AiForm": {
+      "owner": "forge-admin-ui/src/components/ai-form/AiForm.vue",
+      "allowedVariants": ["AiForm", "useAiForm"]
+    },
+    "DictSelect/DictTag": {
+      "owner": "forge-admin-ui/src/components/dict/",
+      "allowedVariants": ["DictSelect", "DictTag", "useDict"]
+    },
+    "AuthImage": {
+      "owner": "forge-admin-ui/src/components/common/AuthImage.vue",
+      "allowedVariants": ["AuthImage", "authenticatedFileUrl"]
+    },
+    "request": {
+      "owner": "forge-admin-ui/src/utils/request",
+      "allowedVariants": ["@/utils/request", "@/utils/request/index"]
+    },
+    "v-hasPermi": {
+      "owner": "forge-admin-ui/src/directives/permission/hasPermi",
+      "allowedVariants": ["v-hasPermi"]
+    },
+    "dangerousConfirmation": {
+      "owner": "forge-admin-ui/src/components/feedback/danger-confirm",
+      "allowedVariants": ["NPopconfirm", "n-popconfirm", "useDangerConfirm", "$dialog.warning"]
+    },
+    "token": {
+      "owner": "forge-admin-ui/src/utils/auth",
+      "allowedVariants": ["getToken", "setToken", "removeToken"]
+    },
+    "loading-empty-error-busy": {
+      "owner": "forge-admin-ui/src/components/feedback/async-state",
+      "allowedVariants": ["AiCrudPage", "loading", "empty", "error", "busy"]
+    },
+    "upload": {
+      "owner": "forge-admin-ui/src/components/upload/",
+      "allowedVariants": ["UploadFile", "UploadImage", "custom-request", "useUpload"]
+    }
+  },
+  "contracts": [
+    {
+      "id": "UI-DESIGN-001",
+      "enforcement": "block",
+      "owner": "AiCrudPage",
+      "summary": "New business UI uses Forge tokens and the canonical Naive UI owner; raw colors and Element Plus are forbidden."
+    },
+    {
+      "id": "UI-HTTP-001",
+      "enforcement": "block",
+      "owner": "request",
+      "summary": "Business views call src/api adapters; only API adapters depend on the canonical request owner, never axios or fetch."
+    },
+    {
+      "id": "UI-DIALOG-001",
+      "enforcement": "block",
+      "owner": "dangerousConfirmation",
+      "summary": "Browser alert, confirm, and prompt dialogs are forbidden."
+    },
+    {
+      "id": "UI-A11Y-001",
+      "enforcement": "block",
+      "owner": "loading-empty-error-busy",
+      "summary": "Clickable div and span elements provide button role, focusability, and keyboard activation."
+    },
+    {
+      "id": "UI-PERMI-001",
+      "enforcement": "block",
+      "owner": "v-hasPermi",
+      "summary": "Obvious mutation buttons carry the canonical permission directive."
+    },
+    {
+      "id": "UI-DANGER-001",
+      "enforcement": "block",
+      "owner": "dangerousConfirmation",
+      "summary": "Obvious destructive actions use the canonical dangerous confirmation owner."
+    },
+    {
+      "id": "UI-IMAGE-001",
+      "enforcement": "block",
+      "owner": "AuthImage",
+      "summary": "Protected images are rendered by AuthImage or the authenticated file adapter."
+    },
+    {
+      "id": "UI-PAGE-001",
+      "enforcement": "block",
+      "owner": "AiCrudPage",
+      "summary": "Ordinary business pages do not hand-roll pagination."
+    },
+    {
+      "id": "UI-FORM-001",
+      "enforcement": "block",
+      "owner": "AiForm",
+      "summary": "Ordinary business forms reuse AiForm instead of introducing a page-local form owner."
+    },
+    {
+      "id": "UI-DICT-001",
+      "enforcement": "block",
+      "owner": "DictSelect/DictTag",
+      "summary": "Business dictionary options and labels use DictSelect, DictTag, and useDict rather than page-local maps."
+    },
+    {
+      "id": "UI-TOKEN-001",
+      "enforcement": "block",
+      "owner": "token",
+      "summary": "Business code does not read or write authentication tokens through browser storage directly."
+    },
+    {
+      "id": "UI-UPLOAD-001",
+      "enforcement": "block",
+      "owner": "upload",
+      "summary": "Uploads use the canonical authenticated upload owner rather than a direct action URL."
+    },
+    {
+      "id": "UI-STATE-001",
+      "enforcement": "obligation",
+      "owner": "loading-empty-error-busy",
+      "summary": "Custom business views identify loading, empty, error, and busy state ownership."
+    }
+  ],
+  "reuseRequirements": {
+    "apiAdapter": {
+      "id": "UI-API-CONSUMER-001",
+      "minimumConsumers": 1,
+      "enforcement": "obligation"
+    },
+    "sharedComponent": {
+      "id": "UI-SHARED-CONSUMER-001",
+      "minimumConsumers": 2,
+      "enforcement": "obligation"
+    }
+  }
+}

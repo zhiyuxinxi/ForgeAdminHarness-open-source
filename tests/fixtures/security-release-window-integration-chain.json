@@ -1,0 +1,46 @@
+{
+  "evidence": "security-window-authority-20261010-protected-01.remote.result.json",
+  "source": {
+    "head": "5f1073d18c43dbfea77e3f50fa413cec6b2859f6",
+    "fingerprint": "59e2ab9b0bd5b4d552b914d3a93a9b11be479b365995419a9bfe049a8b30a56b"
+  },
+  "originalSource": {
+    "head": "0a560fec4118c2a5f83fbdda72d2a98d18be0041",
+    "fingerprint": "123757b9502d640212fb569cd0d19fb2fe5e3bc95d81dbeb24d8a63820969097"
+  },
+  "chain": [
+    {
+      "from": {
+        "head": "45b7c282714e4e8aa3e20ed65cb5ad65a82783b8",
+        "fingerprint": "ff43b1734bd10d97717147d8e7772ded104656f1139a24418c9e64fbdc575b1c"
+      },
+      "to": {
+        "head": "5f1073d18c43dbfea77e3f50fa413cec6b2859f6",
+        "fingerprint": "59e2ab9b0bd5b4d552b914d3a93a9b11be479b365995419a9bfe049a8b30a56b"
+      },
+      "canonicalHead": "2ff546d87447bd65121ed648378b2ab82725756b"
+    },
+    {
+      "from": {
+        "head": "8c4aab3c8f42f45cb034e81755e337daad745fcd",
+        "fingerprint": "43e8d39ca495743e38c1383edb9c38f040352537996425bdbeb56a44000a30a3"
+      },
+      "to": {
+        "head": "45b7c282714e4e8aa3e20ed65cb5ad65a82783b8",
+        "fingerprint": "ff43b1734bd10d97717147d8e7772ded104656f1139a24418c9e64fbdc575b1c"
+      },
+      "canonicalHead": "bdcb505b72773efffdeaf8e0bd572523c5fe2137"
+    },
+    {
+      "from": {
+        "head": "0a560fec4118c2a5f83fbdda72d2a98d18be0041",
+        "fingerprint": "123757b9502d640212fb569cd0d19fb2fe5e3bc95d81dbeb24d8a63820969097"
+      },
+      "to": {
+        "head": "8c4aab3c8f42f45cb034e81755e337daad745fcd",
+        "fingerprint": "43e8d39ca495743e38c1383edb9c38f040352537996425bdbeb56a44000a30a3"
+      },
+      "canonicalHead": "20d05949cef26a68aef92b927d3529da669f1b42"
+    }
+  ]
+}

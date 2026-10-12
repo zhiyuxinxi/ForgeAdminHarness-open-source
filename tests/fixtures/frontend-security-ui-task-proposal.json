@@ -1,0 +1,59 @@
+{
+  "description": "Recorded Security prompt and model proposal, event 28037. Reference hashes are synthetic fixture bindings, not runtime read evidence.",
+  "promptText": "请实现并提交、发布安保管理 PC 前端标准化的剩余工作，保留本对话已经保存的20个前端修改文件及相关专项测试，不重新生成模块，不回滚另一位 AI 的后端成果。\n\n公共附件代码已由操作员以e051d813正常合入项目canonical，后续还可能有他方合法增量；不要把该提交当作必须回退到的固定HEAD。保留当前全部业务修改，重新读取现役forge-taskspace-collaboration与forge-controlled-release Skill，并读取一次forge-release status。若尚未包含当前canonical且没有待续集成，沿受控integrate start保存完整dirty并合入最新canonical，不要先checkpoint；参数、完整路径列表只能取当前status。已有待续集成按其真实operation和状态正常处理。不要直接执行Git同步、全选ours/theirs或清理他人锁。集成成功只证明源码同步，随后才修本次业务接线，并补受影响的必要检查；不得把旧候选READY挪作新源码通过。\n\n你上一轮称治理已通过，但 frontend-admin-lint 提交等待超时且没有拿到可查询 jobId。操作员21:52:25Z读取 Host activeJobs=0；这只能说明当时没有在途作业，不能证明原 lint 通过、失败或未接收。请先用现有支持的原请求/幂等提交记录或回执恢复入口确认该检查，避免重复投递已有作业。确认已有有效回执就复用；确实缺少证明的必要前端检查再正常执行，不伪造完成。\n\n先读取当前实际安装的 forge-frontend-admin/references/page-patterns.md 中既有模块标准化要求。继续按原生页面完整规范完成当前已生成页面：列表默认多选批删、查询重置和按钮顺序一致，普通新增编辑使用公共modal，可读详情保留业务信息，提交防重与失败保留输入。地图、防范主从、审批等真实业务结构保留；不要因字段多或已有路由继续任意使用独立编辑页。\n\n只读源码审阅已确认三项具体缺口，请在原候选修复并补直接交互验证：\n- SecurityChemicalPage的详情先开窗但不清理旧detail，也没有错误态及请求归属保护。A加载成功后查看B、B请求失败或A/B响应乱序时，不能把A的库存/流水/流程当作B内容展示；关闭和再次打开也不能串记录。\n- 库存详情把chemicalCode配置为“化学品名称”，standard-config把select改为只读时丢了options映射。用现有真实chemicalName或已解析的字典名称展示业务名称，保留真实编码字段含义，不靠改标签掩盖。\n- standard-config过滤fileUpload、档案/卷宗详情字段又遗漏fileIds，同时hideDefaultDetailContent=true。公共组件不会自动补附件，这些详情必须接回真实附件字段、文件名及受保护下载；使用实际已合并的公共只读附件能力，不直接显示IDs，不为每页复制下载逻辑。公共能力由操作员处理，你只负责业务接线；如当前舱尚缺公共变更，沿现有源码同步机制保留dirty成果后接入，不虚构属性或slot。\n\n通过正常 prepare_task、当前来源验收、checkpoint/integrate/release 完成 main 和必要 UI 发布。只检查当前修改及有事实依据的直接影响，不夹带无关后端/数据库测试，不重做有效上游或历史全检。逐项运行必要 profile，保留后台 jobId，查询同一作业的实际终态；不在检查期间修改其输入。\n\n发布授权一直有效，无需再次确认。共享发布按正常锁串行，不清理别人锁/代码/镜像。若出现直接平台阻塞，给实际工具错误与原请求或 job 信息，保留已完成候选等待操作员解阻；业务修复仍由你在本对话完成。最终简明报告真实检查、main、UI运行版本和未验范围，勿将模型说明或源码检查当成浏览器验收。\n",
+  "promptTextSha256": "8da2c72e82e52f715e0fa8ab427b339d84fbbe57bf36dae9501d4b947fc73849",
+  "originalProposal": {
+    "goal": "Preserve and complete the existing Security PC frontend standardization candidate, first integrate all current dirty Security files with the latest canonical shared attachment capability, then fix chemical detail request isolation/error/reset behavior and readable chemical/attachment details, add focused frontend interaction regressions, verify the current source, checkpoint/integrate to main, and release only forge-ui.",
+    "ownedPaths": [
+      "forge-admin-ui/src/views/security",
+      "forge-admin-ui/src/views/security-guard"
+    ],
+    "taskProfiles": [
+      "frontend-admin"
+    ],
+    "references": [
+      "forge-admin-ui/src/views/security/components/SecurityChemicalPage.vue",
+      "forge-admin-ui/src/views/security/standard-config.js",
+      "forge-admin-ui/src/views/security/contract.js",
+      "forge-admin-ui/src/views/security/__tests__/security-chemical-page.test.js",
+      "forge-admin-ui/src/views/security/__tests__/security-archive-page.test.js",
+      "forge-admin-ui/src/views/security/__tests__/security-dossier-page.test.js"
+    ]
+  },
+  "proposal": {
+    "goal": "Preserve and complete the existing Security PC frontend standardization candidate, first integrate all current dirty Security files with the latest canonical shared attachment capability, then fix chemical detail request isolation/error/reset behavior and readable chemical/attachment details, add focused frontend interaction regressions, verify the current source, checkpoint/integrate to main, and release only forge-ui.",
+    "ownedPaths": [
+      "forge-admin-ui/src/views/security",
+      "forge-admin-ui/src/views/security-guard"
+    ],
+    "taskProfiles": [
+      "frontend-admin"
+    ],
+    "references": [
+      {
+        "path": "forge-admin-ui/src/views/security/components/SecurityChemicalPage.vue",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        "path": "forge-admin-ui/src/views/security/standard-config.js",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        "path": "forge-admin-ui/src/views/security/contract.js",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        "path": "forge-admin-ui/src/views/security/__tests__/security-chemical-page.test.js",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        "path": "forge-admin-ui/src/views/security/__tests__/security-archive-page.test.js",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        "path": "forge-admin-ui/src/views/security/__tests__/security-dossier-page.test.js",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    ]
+  }
+}

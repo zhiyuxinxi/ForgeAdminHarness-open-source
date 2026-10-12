@@ -1,0 +1,18 @@
+{
+  "session": {
+    "schemaVersion": 1,
+    "sessionType": "forge-ui/edit-session",
+    "sessionId": "123e4567-e89b-42d3-a456-426614174401",
+    "recordId": "order-1",
+    "fields": [
+      {
+        "field": "name",
+        "valueSha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        "field": "status",
+        "valueSha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    ]
+  }
+}

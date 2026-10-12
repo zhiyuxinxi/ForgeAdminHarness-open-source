@@ -1,0 +1,11 @@
+# Preserve the already deployed frontend scope fix, Host bundle and all caches.
+# Base: sha256:175e59272f7925ff2c8da90d51f039d71d581df82d5b1a7f3a237387b5c7a10e
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 docker/harness/forge-protected-acceptance-service.mjs /usr/local/lib/forge-protected-acceptance-service.mjs
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.recovered-task-continuation /usr/local/share/forge-image-build/Dockerfile.recovered-task-continuation
+RUN --network=none node --input-type=module -e 'await import("/usr/local/lib/forge-protected-acceptance-service.mjs"); await import("/usr/local/lib/conversation-manager.mjs");'
+LABEL com.forge-delivery.recovered-task-continuation.version="2026.09.22.3"
+USER 1000:1000

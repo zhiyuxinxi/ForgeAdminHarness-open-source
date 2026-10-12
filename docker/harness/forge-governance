@@ -1,0 +1,25 @@
+#!/usr/bin/env node
+
+(async () => {
+  const { existsSync } = require('node:fs');
+  const path = require('node:path');
+  const { pathToFileURL } = require('node:url');
+  const candidates = [
+    path.join(__dirname, 'forge-governance.mjs'),
+    path.resolve(__dirname, '../lib/forge-governance.mjs'),
+    '/usr/local/lib/forge-governance.mjs',
+  ];
+  const modulePath = candidates.find((candidate) => existsSync(candidate));
+  if (modulePath === undefined) throw new Error('forge-governance.mjs is not installed in a supported location.');
+  const { main } = await import(pathToFileURL(modulePath).href);
+  process.exitCode = await main(process.argv.slice(2), process);
+})().catch((error) => {
+  process.stderr.write(`${JSON.stringify({
+    ok: false,
+    error: {
+      code: 'FORGE_GOVERNANCE_BOOTSTRAP_FAILED',
+      message: typeof error?.message === 'string' ? error.message.slice(0, 1000) : 'Forge governance CLI failed to start.',
+    },
+  }, null, 2)}\n`);
+  process.exitCode = 1;
+});

@@ -1,0 +1,360 @@
+#!/usr/bin/env node
+
+const { TextDecoder } = require('node:util');
+
+const CHECKPOINT_PATH_PATTERN = /^[A-Za-z0-9_./@=,+#\[\]-]{1,512}$/u;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+const CHECKPOINT_IGNORED_PATH_PARTS = new Set([
+  '.git', '.forge-cache', 'node_modules', 'target', 'dist', 'build', 'coverage', '.pnpm-store',
+]);
+
+const usage = () => {
+  process.stdout.write([
+    'Usage:',
+    '  forge-release contract',
+    '  forge-release capability',
+    '  forge-release diagnose',
+    '  forge-release preflight',
+    '  forge-release status [--operation-id <UUID>]',
+    '  forge-release prepare --expected-head <40lowerhex> --expected-fingerprint <64lowerhex> --plan-base64 <base64url-utf8-json>',
+    "  forge-release prepare --expected-head <40lowerhex> --expected-fingerprint <64lowerhex> --plan-json '<single-line-json-object>'",
+    '  forge-release checkpoint --path <repo-relative-path> [--path <repo-relative-path> ...] --message-base64 <base64url-utf8> --expected-head <40lowerhex> --expected-fingerprint <64lowerhex>',
+    '  forge-release integrate --mode start --expected-head <40lowerhex> --expected-fingerprint <64lowerhex> --canonical-head <40lowerhex> [--path <repo-relative-path> ...]',
+    '  forge-release integrate --mode continue --operation-id <UUID> --expected-head <40lowerhex> --expected-fingerprint <64lowerhex> --canonical-head <40lowerhex> [--path <repo-relative-path> ...]',
+    '  forge-release release [--version <tag>] [--services forge-admin,forge-app,forge-flow,forge-ui] [--approval-ref <text>]',
+    '',
+    'Only the project-scoped controlled release runner can execute Docker actions.',
+    'Workspace docker-compose files, database/cache services, host changes and destructive actions are never accepted.',
+    '',
+  ].join('\n'));
+};
+
+const TASKSPACE_BROKER_URL = 'http://taskspace-broker:3100';
+const TASKSPACE_TOKEN_FILE = '/run/forge-taskspace/broker-token';
+
+function resolveTaskspaceTransport(environment = process.env) {
+  const taskspaceId = environment.FORGE_TASKSPACE_ID;
+  if (typeof taskspaceId === 'string' && taskspaceId.length > 0) {
+    return {
+      brokerUrlValue: TASKSPACE_BROKER_URL,
+      tokenFile: TASKSPACE_TOKEN_FILE,
+    };
+  }
+  const brokerUrlValue = environment.FORGE_TASKSPACE_BROKER_URL;
+  const tokenFile = environment.FORGE_TASKSPACE_TOKEN_FILE;
+  if ((brokerUrlValue && !tokenFile) || (!brokerUrlValue && tokenFile)) {
+    throw new Error('TaskSpace release requires both FORGE_TASKSPACE_BROKER_URL and FORGE_TASKSPACE_TOKEN_FILE.');
+  }
+  return { brokerUrlValue, tokenFile };
+}
+
+async function parseArguments(argv) {
+  const command = argv.shift();
+  if (command === 'prepare') {
+    const { existsSync } = require('node:fs');
+    const path = require('node:path');
+    const { pathToFileURL } = require('node:url');
+    const policyPath = [path.join(__dirname, 'forge-controlled-command.mjs'),
+      path.join(__dirname, '../lib/forge-controlled-command.mjs')].find(value => existsSync(value));
+    if (!policyPath) throw new Error('forge-controlled-command.mjs is not installed in a supported location.');
+    const { parseControlledReleasePreparationArguments } = await import(pathToFileURL(policyPath).href);
+    const parsed = parseControlledReleasePreparationArguments(['forge-release', command, ...argv]);
+    if (!parsed) throw new Error("prepare requires exact --expected-head, --expected-fingerprint and exactly one of canonical --plan-base64 or --plan-json '<single-line-json-object>' (UTF-8 object, at most 32 KiB); no other arguments are allowed.");
+    return { command, expectedHead: parsed.options['--expected-head'],
+      expectedFingerprint: parsed.options['--expected-fingerprint'], probePlan: parsed.probePlan };
+  }
+  if (command === '--help' && argv.length === 0) {
+    usage();
+    return null;
+  }
+  if (!['contract', 'capability', 'diagnose', 'preflight', 'status', 'release', 'checkpoint', 'integrate'].includes(command)) {
+    usage();
+    process.exitCode = 2;
+    return null;
+  }
+  if (!['release', 'checkpoint', 'integrate'].includes(command)) {
+    if (command === 'status' && argv.length === 2 && argv[0] === '--operation-id' && UUID_PATTERN.test(argv[1])) {
+      return { command, operationId: argv[1] };
+    }
+    if (argv.length > 0) throw new Error(`${command} does not accept options.`);
+    return { command };
+  }
+  if (command === 'checkpoint') {
+    const options = {};
+    const paths = [];
+    while (argv.length > 0) {
+      const option = argv.shift();
+      const value = argv.shift();
+      if (!value) throw new Error(`${option} requires a value.`);
+      if (option === '--path') paths.push(value);
+      else if (['--message-base64', '--expected-head', '--expected-fingerprint'].includes(option)) {
+        if (options[option] !== undefined) throw new Error(`${option} may only be provided once.`);
+        options[option] = value;
+      } else throw new Error(`Unknown option: ${option}`);
+    }
+    if (paths.length < 1) {
+      throw new Error('checkpoint requires at least one --path value.');
+    }
+    if (new Set(paths).size !== paths.length) throw new Error('checkpoint --path values must be unique.');
+    for (const checkpointPath of paths) {
+      const segments = checkpointPath.split('/');
+      const testSourcePrefix = /^forge-server\/(?:[^/]+\/)*src\/test\/(?:java|resources)\//u.exec(checkpointPath);
+      const testSourceDepth = testSourcePrefix ? testSourcePrefix[0].split('/').length - 1 : Infinity;
+      if (!CHECKPOINT_PATH_PATTERN.test(checkpointPath)
+        || checkpointPath.startsWith('/')
+        || segments.some((segment, index) => segment === ''
+          || segment === '.'
+          || segment === '..'
+          || (CHECKPOINT_IGNORED_PATH_PARTS.has(segment)
+            && !(segment === 'coverage' && index >= testSourceDepth && index < segments.length - 1)))) {
+        throw new Error(`Invalid checkpoint path: ${checkpointPath}`);
+      }
+    }
+    const encodedMessage = options['--message-base64'];
+    if (typeof encodedMessage !== 'string' || !/^[A-Za-z0-9_-]{2,667}$/u.test(encodedMessage)) {
+      throw new Error('checkpoint --message-base64 is invalid.');
+    }
+    const messageBytes = Buffer.from(encodedMessage, 'base64url');
+    if (messageBytes.length < 1
+      || messageBytes.length > 500
+      || messageBytes.toString('base64url') !== encodedMessage) {
+      throw new Error('checkpoint --message-base64 is invalid.');
+    }
+    let message;
+    try {
+      message = new TextDecoder('utf-8', { fatal: true }).decode(messageBytes);
+    } catch {
+      throw new Error('checkpoint --message-base64 must contain valid UTF-8.');
+    }
+    if (!Buffer.from(message, 'utf8').equals(messageBytes) || /[\p{Cc}]/u.test(message)) {
+      throw new Error('checkpoint message contains forbidden control characters.');
+    }
+    if (!/^[0-9a-f]{40}$/u.test(options['--expected-head'] ?? '')) {
+      throw new Error('checkpoint --expected-head is invalid.');
+    }
+    if (!/^[0-9a-f]{64}$/u.test(options['--expected-fingerprint'] ?? '')) {
+      throw new Error('checkpoint --expected-fingerprint is invalid.');
+    }
+    return {
+      command,
+      paths,
+      message,
+      expectedHead: options['--expected-head'],
+      expectedWorkspaceFingerprint: options['--expected-fingerprint'],
+    };
+  }
+  if (command === 'integrate') {
+    const options = {};
+    const paths = [];
+    while (argv.length > 0) {
+      const option = argv.shift();
+      const value = argv.shift();
+      if (!value) throw new Error(`${option} requires a value.`);
+      if (option === '--path') paths.push(value);
+      else if (['--mode', '--expected-head', '--expected-fingerprint', '--canonical-head', '--operation-id'].includes(option)) {
+        if (options[option] !== undefined) throw new Error(`${option} may only be provided once.`);
+        options[option] = value;
+      } else throw new Error(`Unknown option: ${option}`);
+    }
+    const mode = options['--mode'];
+    if (!['start', 'continue'].includes(mode)) {
+      throw new Error('integrate --mode must be start or continue.');
+    }
+    if (new Set(paths).size !== paths.length) throw new Error('integrate --path values must be unique.');
+    for (const integratePath of paths) {
+      const segments = integratePath.split('/');
+      const testSourcePrefix = /^forge-server\/(?:[^/]+\/)*src\/test\/(?:java|resources)\//u.exec(integratePath);
+      const testSourceDepth = testSourcePrefix ? testSourcePrefix[0].split('/').length - 1 : Infinity;
+      if (!CHECKPOINT_PATH_PATTERN.test(integratePath)
+        || integratePath.startsWith('/')
+        || segments.some((segment, index) => segment === ''
+          || segment === '.'
+          || segment === '..'
+          || (CHECKPOINT_IGNORED_PATH_PARTS.has(segment)
+            && !(segment === 'coverage' && index >= testSourceDepth && index < segments.length - 1)))) {
+        throw new Error(`Invalid integrate path: ${integratePath}`);
+      }
+    }
+    if (!/^[0-9a-f]{40}$/u.test(options['--expected-head'] ?? '')) {
+      throw new Error('integrate --expected-head is invalid.');
+    }
+    if (!/^[0-9a-f]{64}$/u.test(options['--expected-fingerprint'] ?? '')) {
+      throw new Error('integrate --expected-fingerprint is invalid.');
+    }
+    if (!/^[0-9a-f]{40}$/u.test(options['--canonical-head'] ?? '')) {
+      throw new Error('integrate --canonical-head is invalid.');
+    }
+    const operationId = options['--operation-id'];
+    if (mode === 'start' && operationId !== undefined) {
+      throw new Error('integrate --operation-id is only accepted with --mode continue.');
+    }
+    if (mode === 'continue' && !UUID_PATTERN.test(operationId ?? '')) {
+      throw new Error('integrate --operation-id is required and must be a UUID with --mode continue.');
+    }
+    return {
+      command,
+      mode,
+      paths,
+      expectedHead: options['--expected-head'],
+      expectedWorkspaceFingerprint: options['--expected-fingerprint'],
+      canonicalHead: options['--canonical-head'],
+      ...(operationId === undefined ? {} : { operationId }),
+    };
+  }
+  const result = {
+    command,
+    services: ['forge-admin', 'forge-app', 'forge-flow', 'forge-ui'],
+    approvalRef: 'User requested release in the current Harness conversation.',
+  };
+  while (argv.length > 0) {
+    const option = argv.shift();
+    const value = argv.shift();
+    if (!value) throw new Error(`${option} requires a value.`);
+    if (option === '--version') result.version = value;
+    else if (option === '--services') result.services = value.split(',').filter(Boolean);
+    else if (option === '--approval-ref') result.approvalRef = value;
+    else throw new Error(`Unknown option: ${option}`);
+  }
+  return result;
+}
+
+async function main() {
+  const parsed = await parseArguments(process.argv.slice(2));
+  if (!parsed) return;
+  const socketPath = process.env.FORGE_RELEASE_RUNNER_SOCKET ?? '/run/forge-release/runner.sock';
+  const http = await import('node:http');
+  const fs = await import('node:fs/promises');
+  const body = parsed.command === 'capability'
+    ? null
+    : parsed.command === 'prepare'
+    ? { action: 'prepare', expectedHead: parsed.expectedHead,
+        expectedFingerprint: parsed.expectedFingerprint, probePlan: parsed.probePlan }
+    : parsed.command === 'release'
+    ? {
+        action: 'release',
+        services: parsed.services,
+        approvalRef: parsed.approvalRef,
+        ...(parsed.version ? { version: parsed.version } : {}),
+      }
+    : parsed.command === 'checkpoint'
+    ? {
+        action: 'checkpoint',
+        paths: parsed.paths,
+        message: parsed.message,
+        expectedHead: parsed.expectedHead,
+        expectedWorkspaceFingerprint: parsed.expectedWorkspaceFingerprint,
+      }
+    : parsed.command === 'integrate'
+    ? {
+        action: 'integrate',
+        mode: parsed.mode,
+        expectedHead: parsed.expectedHead,
+        expectedWorkspaceFingerprint: parsed.expectedWorkspaceFingerprint,
+        canonicalHead: parsed.canonicalHead,
+        paths: parsed.paths,
+        ...(parsed.operationId === undefined ? {} : { operationId: parsed.operationId }),
+      }
+    : { action: parsed.command, ...(parsed.operationId === undefined ? {} : { operationId: parsed.operationId }) };
+  const { brokerUrlValue, tokenFile } = resolveTaskspaceTransport();
+  // Old clients omit this field and retain synchronous completion. The direct
+  // Runner transport also stays synchronous; only Broker owns the operation.
+  if (parsed.operationId && !brokerUrlValue && parsed.command === 'status') {
+    throw new Error('status --operation-id requires the TaskSpace Broker transport.');
+  }
+  if (['prepare', 'checkpoint', 'integrate'].includes(parsed.command) && !brokerUrlValue) {
+    throw new Error(`${parsed.command} requires the TaskSpace Broker transport.`);
+  }
+  let brokerUrl;
+  let taskspaceToken;
+  if (brokerUrlValue) {
+    brokerUrl = new URL(brokerUrlValue);
+    if (brokerUrl.protocol !== 'http:'
+      || brokerUrl.username
+      || brokerUrl.password
+      || brokerUrl.search
+      || brokerUrl.hash
+      || !['', '/'].includes(brokerUrl.pathname)) {
+      throw new Error('FORGE_TASKSPACE_BROKER_URL must be a credential-free internal HTTP origin.');
+    }
+    taskspaceToken = (await fs.readFile(tokenFile, 'utf8')).trim();
+    if (taskspaceToken.length < 32 || taskspaceToken.length > 256) {
+      throw new Error('TaskSpace token file is invalid.');
+    }
+  }
+  const sendAction = (requestBody) => {
+    const payload = requestBody === null ? null : Buffer.from(JSON.stringify(requestBody));
+    return new Promise((resolve, reject) => {
+    const requestOptions = {
+      ...(brokerUrl === undefined
+        ? { socketPath }
+        : {
+            hostname: brokerUrl.hostname,
+            port: brokerUrl.port || 80,
+          }),
+      path: requestBody === null ? '/healthz' : '/v1/actions',
+      method: requestBody === null ? 'GET' : 'POST',
+      headers: {
+        ...(requestBody === null ? {} : {
+          'content-type': 'application/json',
+          'content-length': payload.length,
+        }),
+        ...(taskspaceToken === undefined ? {} : {
+          'x-forge-taskspace-token': taskspaceToken,
+        }),
+      },
+    };
+    const request = http.request(requestOptions, (response) => {
+      const chunks = [];
+      let responseBytes = 0;
+      response.on('data', (chunk) => {
+        responseBytes += chunk.length;
+        if (responseBytes > 2 * 1024 * 1024) {
+          response.destroy(new Error('Release runner response exceeded the client limit.'));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      response.once('error', reject);
+      response.once('end', () => resolve({
+        statusCode: response.statusCode ?? 500,
+        responseBody: Buffer.concat(chunks).toString('utf8'),
+      }));
+    });
+    request.once('error', (error) => {
+      if (['ENOENT', 'ECONNREFUSED', 'EACCES'].includes(error.code)) {
+        reject(new Error(
+          `Controlled release is unavailable because the project ${brokerUrl ? 'TaskSpace Broker' : 'capability socket'} is not ready. `
+          + 'Do not search for credentials or ask the user for a token; report this as a platform configuration fault.',
+        ));
+        return;
+      }
+      reject(error);
+    });
+    request.end(payload ?? undefined);
+    });
+  };
+  if (brokerUrl && (parsed.command === 'release' || (parsed.command === 'status' && parsed.operationId))) {
+    // Negotiate before the single mutation. Never retry release to discover
+    // support: an older Broker may already have accepted the original request.
+    const capability = await sendAction(null);
+    const supportsTracking = capability.statusCode === 200
+      && JSON.parse(capability.responseBody)?.capabilities?.releaseOperationTracking === 1;
+    if (parsed.command === 'release' && supportsTracking) body.executionMode = 'background';
+    if (parsed.command === 'status' && !supportsTracking) {
+      throw new Error('This Broker does not support exact release operation status; observe existing status/diagnose without resubmitting release.');
+    }
+  }
+  const { statusCode, responseBody } = await sendAction(body);
+  const result = JSON.parse(responseBody);
+  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  if (statusCode < 200 || statusCode >= 300 || !result.ok) process.exitCode = 1;
+}
+
+module.exports = { resolveTaskspaceTransport };
+
+if (require.main === module) {
+  main().catch((error) => {
+    process.stderr.write(`forge-release: ${error.message}\n`);
+    process.exitCode = 1;
+  });
+}

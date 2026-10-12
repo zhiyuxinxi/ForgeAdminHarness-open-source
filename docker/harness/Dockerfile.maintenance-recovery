@@ -1,0 +1,7 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 docker/harness/tcp-proxy.mjs /usr/local/lib/harness-tcp-proxy.mjs
+RUN --network=none node --check /usr/local/lib/harness-tcp-proxy.mjs
+LABEL com.forge-delivery.maintenance-recovery.version="2026.09.20.1"
+USER 1000:1000

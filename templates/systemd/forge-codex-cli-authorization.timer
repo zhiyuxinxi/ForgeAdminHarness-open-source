@@ -1,0 +1,11 @@
+[Unit]
+Description=Keep Harness conversations synchronized with the server Codex CLI login
+
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=60s
+AccuracySec=5s
+Unit=forge-codex-cli-authorization.service
+
+[Install]
+WantedBy=timers.target

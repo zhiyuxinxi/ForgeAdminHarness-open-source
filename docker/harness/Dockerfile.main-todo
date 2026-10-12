@@ -1,0 +1,25 @@
+# Reuse the verified dependency-preload image and its immutable dependency layers.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+ARG HOST_RUNNER_MANIFEST_SHA256
+COPY --chmod=0644 docker/harness/conversation-gateway.mjs /usr/local/lib/conversation-gateway.mjs
+COPY --chmod=0644 docker/harness/conversation-manager.mjs /usr/local/lib/conversation-manager.mjs
+COPY --chmod=0644 docker/harness/forge-controlled-command.mjs /usr/local/lib/forge-controlled-command.mjs
+COPY --chmod=0644 docker/harness/host-verification-runner.mjs /usr/local/lib/host-verification-runner.mjs
+COPY --chmod=0644 docker/harness/conversation-gateway/gateway.js /usr/local/share/conversation-gateway/gateway.js
+COPY host-runner-bundle/ /opt/forge-host-runner-bundle/
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.main-todo /usr/local/share/forge-image-build/Dockerfile.main-todo
+RUN --network=none node --input-type=module -e '\
+  import fs from "node:fs"; import crypto from "node:crypto"; \
+  import {validateHostRunnerBundle} from "/opt/forge-host-runner-bundle/bin/forge-host-runner-bundle.mjs"; \
+  const sha=b=>crypto.createHash("sha256").update(b).digest("hex"); \
+  const root="/opt/forge-host-runner-bundle"; \
+  if(!/^[a-f0-9]{64}$/.test(process.argv[1])||sha(fs.readFileSync(root+"/runner.manifest.json"))!==process.argv[1])throw Error("Host manifest mismatch"); \
+  const host=await validateHostRunnerBundle(root,{profileCatalogVersion:"2026.09.03.22"}); \
+  if(host.manifest.bundleVersion!=="2026.09.21.1-main-todo")throw Error("Host version mismatch"); \
+  if(sha(fs.readFileSync(root+"/lib/host-verification-runner.mjs"))!==sha(fs.readFileSync("/usr/local/lib/host-verification-runner.mjs")))throw Error("Host consumer mismatch"); \
+  if(sha(fs.readFileSync("/opt/forge-dependency-seed/manifest.json"))!=="471265af241ccc20423174e63a970727ac7b5b41a00e6dbc98206dde79de61eb")throw Error("Inherited seed mismatch"); \
+  ' "${HOST_RUNNER_MANIFEST_SHA256}"
+USER 1000:1000

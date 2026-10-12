@@ -1,0 +1,21 @@
+# Retain the F25 candidate and all existing dependency/Skill layers.
+# Base: sha256:eaf08e015805dba6a0359f9772e1cec2d0169f8ad4804677cc3e5d209d3a5155
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+ARG HOST_RUNNER_MANIFEST_SHA256
+COPY --chmod=0644 docker/harness/host-prepared-dependencies.mjs docker/harness/host-verification-runner.mjs /usr/local/lib/
+COPY host-runner-bundle/ /opt/forge-host-runner-bundle/
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.prepared-digest-reuse /usr/local/share/forge-image-build/Dockerfile.prepared-digest-reuse
+RUN --network=none node --input-type=module -e '\
+  import fs from "node:fs"; import crypto from "node:crypto"; \
+  import {validateHostRunnerBundle} from "/opt/forge-host-runner-bundle/bin/forge-host-runner-bundle.mjs"; \
+  const root="/opt/forge-host-runner-bundle"; \
+  if(crypto.createHash("sha256").update(fs.readFileSync(root+"/runner.manifest.json")).digest("hex")!==process.argv[1])throw Error("Host manifest mismatch"); \
+  const host=await validateHostRunnerBundle(root,{profileCatalogVersion:"2026.09.03.22"}); \
+  if(host.manifest.bundleVersion!=="2026.09.22.2-prepared-digest-reuse")throw Error("Host version mismatch"); \
+  for(const name of ["host-prepared-dependencies","host-verification-runner"])await import("/usr/local/lib/"+name+".mjs"); \
+  ' "${HOST_RUNNER_MANIFEST_SHA256}"
+LABEL com.forge-delivery.prepared-digest-reuse.version="2026.09.22.1"
+USER 1000:1000

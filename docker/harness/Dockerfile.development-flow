@@ -1,0 +1,29 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 \
+  docker/harness/forge-agent-preset-policy.mjs \
+  docker/harness/forge-controlled-command.mjs \
+  docker/harness/forge-execution-context.mjs \
+  docker/harness/forge-execution-state.mjs \
+  docker/harness/forge-governance.mjs \
+  docker/harness/forge-phase-budget-guard.mjs \
+  docker/harness/forge-production-task-grant.mjs \
+  docker/harness/forge-protected-acceptance-service.mjs \
+  docker/harness/taskspace-broker.mjs \
+  /usr/local/lib/
+COPY --chmod=0644 \
+  docker/harness/forge-governance-policy.json \
+  docker/harness/forge-governance-runtime.patch.yml \
+  /usr/local/share/
+COPY --chmod=0755 docker/harness/forge-verify /usr/local/bin/forge-verify
+RUN --network=none node /usr/local/lib/forge-agent-preset-policy.mjs upgrade \
+    --root /opt/forge-harness-runtime/node_modules/@deepseek-ai/dsh/config/agent-presets \
+    && node --check /usr/local/lib/taskspace-broker.mjs \
+    && node --check /usr/local/lib/forge-protected-acceptance-service.mjs \
+    && node --check /usr/local/lib/forge-phase-budget-guard.mjs \
+    && node --check /usr/local/bin/forge-verify
+ENV FORGE_HARNESS_SKILL_BUNDLE_VERSION=2026.09.20.1
+LABEL com.forge-delivery.harness-skill-bundle="2026.09.20.1"
+LABEL com.forge-delivery.development-flow.version="2026.09.20.1"
+USER 1000:1000

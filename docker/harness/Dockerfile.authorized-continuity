@@ -1,0 +1,28 @@
+# Retain the verified focused acceptance service and all installed dependency layers.
+# Base sha256:c2e4e50a54a0838e430d0c3e1566eafb46e5374baa592e9266bcf6aca03a1228.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+ARG SKILL_BUNDLE_MANIFEST_SHA256
+COPY --chmod=0644 docker/harness/forge-protected-acceptance-service.mjs docker/harness/forge-execution-context.mjs /usr/local/lib/
+COPY skill-bundle/ /opt/forge-skill-bundles/versions/2026.09.22.4/
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.authorized-continuity docker/harness/Dockerfile.overlay /usr/local/share/forge-image-build/
+RUN --network=none node --check /usr/local/bin/forge-verify && node --input-type=module -e '\
+  import fs from "node:fs"; import crypto from "node:crypto"; \
+  import {validateSkillBundle} from "/usr/local/lib/validate-skill-bundle.mjs"; \
+  const root="/opt/forge-skill-bundles/versions/2026.09.22.4"; \
+  const digest=(p)=>crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex"); \
+  if(digest(root+"/bundle.manifest.json")!==process.argv[1])throw Error("Skill manifest mismatch"); \
+  const manifest=JSON.parse(fs.readFileSync(root+"/bundle.manifest.json")); \
+  if(manifest.bundleVersion!=="2026.09.22.4")throw Error("Skill version mismatch"); \
+  for(const entry of manifest.files){const p=root+"/"+entry.path;if(fs.statSync(p).size!==entry.bytes||digest(p)!==entry.sha256)throw Error("Skill payload mismatch");} \
+  await validateSkillBundle({skillsRoot:root+"/skills",catalogPath:root+"/catalog.json",strict:true}); \
+  const current="/opt/forge-skill-bundles/current"; \
+  if(fs.lstatSync(current,{throwIfNoEntry:false})){if(!fs.lstatSync(current).isSymbolicLink())throw Error("Skill current is not a symlink");fs.unlinkSync(current);} \
+  fs.symlinkSync("versions/2026.09.22.4",current); \
+  ' "${SKILL_BUNDLE_MANIFEST_SHA256}"
+ENV FORGE_HARNESS_SKILL_BUNDLE_VERSION=2026.09.22.4
+LABEL com.forge-delivery.harness-skill-bundle="2026.09.22.4"
+LABEL com.forge-delivery.authorized-continuity.version="2026.09.22.4"
+USER 1000:1000

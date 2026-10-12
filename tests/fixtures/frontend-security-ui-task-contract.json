@@ -1,0 +1,57 @@
+{
+  "kind": "unsigned-test-fixture-not-runtime-authority",
+  "sourcePromptSha256": "8da2c72e82e52f715e0fa8ab427b339d84fbbe57bf36dae9501d4b947fc73849",
+  "purpose": "Installed validateForgeTaskExecutionContract consumption only; no request registration, grant or acceptance evidence.",
+  "contract": {
+    "schemaVersion": 1,
+    "contractId": "88fb678bb05fb1f85f30a3e4262631468397ae4ee0868ad727c212e269107800",
+    "taskProfiles": [
+      "dictionary",
+      "frontend-admin"
+    ],
+    "suspendedReviewObligations": [
+      "stable-dictionary-code-contract"
+    ],
+    "requiredSkills": [
+      "forge-task-contract",
+      "forge-task-router",
+      "forge-change-design",
+      "forge-frontend-admin",
+      "forge-dictionary-contract",
+      "forge-security-tenancy-permission",
+      "forge-testing-observability",
+      "forge-git-checkpoint",
+      "forge-controlled-release",
+      "forge-evidence-truth"
+    ],
+    "tddRequired": false,
+    "requiredVerificationProfiles": [
+      "governance",
+      "frontend-admin-lint",
+      "frontend-admin-test"
+    ],
+    "requiredRedProfiles": [],
+    "requiredObligations": [
+      "preserve-action-ceiling",
+      "repository-relative-owned-paths",
+      "report-evidence-boundaries",
+      "final-governance-audit",
+      "final-verification",
+      "no-implicit-git-or-release",
+      "loading-empty-error-and-busy-states",
+      "responsive-keyboard-and-browser-review",
+      "explicit-path-git-checkpoint",
+      "controlled-release-only"
+    ],
+    "semanticOwners": [
+      "dictionary-code-contract",
+      "frontend-admin-surface"
+    ],
+    "actionCeiling": "release",
+    "ownedPaths": [
+      "forge-admin-ui/src/views/security",
+      "forge-admin-ui/src/views/security-guard"
+    ],
+    "sourceFingerprint": "eafb29f1702afb602f6a35ef13dfba4b5413aa0eb4b08ffc78e1f6636a983609"
+  }
+}

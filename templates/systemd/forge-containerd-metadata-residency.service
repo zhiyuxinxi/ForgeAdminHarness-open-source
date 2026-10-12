@@ -1,0 +1,22 @@
+[Unit]
+Description=Keep the two containerd Bolt metadata files resident
+BindsTo=containerd.service
+PartOf=containerd.service
+After=containerd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/forge-delivery-platform/scripts/containerd-metadata-residency.py
+Restart=no
+TimeoutStopSec=30
+LimitMEMLOCK=1G
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ReadOnlyPaths=/var/lib/containerd/io.containerd.metadata.v1.bolt
+ReadOnlyPaths=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs
+
+[Install]
+WantedBy=containerd.service

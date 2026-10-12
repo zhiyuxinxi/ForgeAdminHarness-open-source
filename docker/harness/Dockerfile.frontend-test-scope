@@ -1,0 +1,21 @@
+# Retain the deployed F19 image and all dependency/Skill layers.
+# Base: sha256:1c2ac06e60a7c1ecfba059708a9acd30636e2545c9d8f99ad6a558ebe618b9fd
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+ARG HOST_RUNNER_MANIFEST_SHA256
+COPY --chmod=0644 docker/harness/forge-protected-acceptance-service.mjs docker/harness/host-verification-runner.mjs docker/harness/host-verify-policy.mjs docker/harness/verify-policy.mjs docker/harness/verification-runner.mjs /usr/local/lib/
+COPY host-runner-bundle/ /opt/forge-host-runner-bundle/
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.frontend-test-scope /usr/local/share/forge-image-build/Dockerfile.frontend-test-scope
+RUN --network=none node --input-type=module -e '\
+  import fs from "node:fs"; import crypto from "node:crypto"; \
+  import {validateHostRunnerBundle} from "/opt/forge-host-runner-bundle/bin/forge-host-runner-bundle.mjs"; \
+  const root="/opt/forge-host-runner-bundle"; \
+  if(crypto.createHash("sha256").update(fs.readFileSync(root+"/runner.manifest.json")).digest("hex")!==process.argv[1])throw Error("Host manifest mismatch"); \
+  const host=await validateHostRunnerBundle(root,{profileCatalogVersion:"2026.09.03.22"}); \
+  if(host.manifest.bundleVersion!=="2026.09.22.1-frontend-test-scope")throw Error("Host version mismatch"); \
+  for(const name of ["forge-protected-acceptance-service","host-verification-runner","host-verify-policy","verify-policy","verification-runner"])await import("/usr/local/lib/"+name+".mjs"); \
+  ' "${HOST_RUNNER_MANIFEST_SHA256}"
+LABEL com.forge-delivery.frontend-test-scope.version="2026.09.22.1"
+USER 1000:1000

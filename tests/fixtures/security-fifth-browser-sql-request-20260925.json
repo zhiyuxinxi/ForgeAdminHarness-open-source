@@ -1,0 +1,6 @@
+{
+  "prompt": "第五批版本 23092de3710c 已实际发布，浏览器验收未通过。请在本会话修复下面真实阻断并完成必要检查、受控提交、集成、发布，回收终态；保留其余已完成结果，不重新实施整批。\n\n实际浏览器从安保管理→治安与反恐档案→危险物品管理→易制毒化学品管理进入，页面有登记/台账/历史三个区域，但加载字典目录时弹“数据访问异常”，遮罩阻止新增。正常重载复现：GET /forge-api/business/security/chemical/drug/catalog/options 返回 HTTP 200 但业务 code=500；stock/page 和 stock/options 均 code=200。后台当前容器日志明确：SecurityChemicalMapper.selectCatalogOptions 的 SQL 使用 ORDER BY d.dict_sort, d.id，sys_dict_data 不存在 d.id，SQLSyntaxErrorException: Unknown column d.id in order clause。TraceId 179032163948183213。\n\n请核对本项目真实字典表结构，只修当前目录查询及直接相关的同类分支，确保易制毒、易制爆均可正常加载。不要仅凭 HTTP 200 当业务成功，不要修改旧迁移校验和，不补原型假数据。按实际修改范围做能发现这个 SQL 错误的必要验证，复用已有前端等未变结果，然后发布实际必要消费者。我会继续原浏览器页面的登记、入库/消耗审批、库存及导出验收。业务代码和测试必须仍由你在 Harness 完成；无需再次索要已有修复和发布授权。",
+  "observedSessionId": "session-4877e266-9407-4c8a-a0d0-6469a660a784",
+  "acceptedAt": 1790321689302,
+  "blockedCheckpointSeq": 68203
+}

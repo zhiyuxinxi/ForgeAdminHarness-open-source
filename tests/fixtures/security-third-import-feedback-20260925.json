@@ -1,0 +1,28 @@
+{
+  "prompt": "继续修复第三批人防管理的Excel导入，并提交、集成、发布到当前系统。实际浏览器已用一行虚构人员的xlsx完成导入预览，14个业务字段映射正确，18位身份证号保持文本；点击导入却显示“导入失败，请检查文件内容或联系管理员”，总行数、成功、失败均为0，刷新确认没有新增记录。POST /business/security/defense/civil/import返回HTTP及外层code200，内部success=false。只读运行日志已定位当前错误：java.lang.RuntimeException: 当前配置未开启导入: security_civil_defense_export，调用为ExcelImportServiceImpl.importData到SecurityDefenseController.importCivil。请按本批MD和现有Excel框架修复这个真实导入链路，核对实际字段校验、人员保存和登录人组织归属，不用改样本或隐藏失败来代替修复；测试由你完成，只覆盖修改和直接影响范围。原有前端候选与有效回执保留，不重做未变化的页面与检查。当前审批记录2103233946292453378保持，不创建或伪造审批结果；若从已有流程定义和正常角色配置能明确经理审批/抄送应如何进入，请给出实际正常入口；如果缺少真实业务人员或角色映射，只列明确需要业务决定的项，不任意赋权。当前只闭环第三批，第四至七批随后另做。必要检查、提交集成、回执复核、受控发布和终态回收连续完成；已授权不等重复确认，业务代码和测试均由你在本Harness对话完成。",
+  "proposal": {
+    "goal": "修复第三批人防Excel导入真实链路：新增向前Flyway迁移，将既有security_civil_defense_export配置明确开启导入（不改已发布V1.0.200），并补充回归测试验证配置修复以及导入人员字段、18位身份证文本和登录人组织归属的保存行为；完成必要验证、受控提交集成及发布。",
+    "ownedPaths": [
+      "forge-server/db/migration/V1.0.201__enable_security_civil_defense_import.sql",
+      "forge-server/forge-business/forge-business-core/src/test/java/com/mdframe/forge/business/core/securitydefense/SecurityDefenseMigrationContractTest.java",
+      "forge-server/forge-business/forge-business-core/src/test/java/com/mdframe/forge/business/core/securitydefense/SecurityDefenseServiceImplTest.java"
+    ],
+    "taskProfiles": [
+      "backend",
+      "migration"
+    ],
+    "references": [
+      "PROJECT_CONTEXT.md",
+      ".agents/skills/forge-codegen-crud/SKILL.md",
+      ".agents/skills/forge-codegen-crud/references/sql-seeds.md",
+      "forge-server/db/migration/V1.0.200__add_security_defense_third_batch.sql",
+      "forge-server/forge-framework/forge-starter-parent/forge-starter-excel/src/main/java/com/mdframe/forge/starter/excel/service/impl/ExcelImportServiceImpl.java",
+      "forge-server/forge-framework/forge-plugin-parent/forge-plugin-system/src/main/java/com/mdframe/forge/plugin/system/service/impl/SystemExcelMetadataProvider.java",
+      "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/securitydefense/controller/SecurityDefenseController.java",
+      "forge-server/forge-business/forge-business-core/src/main/java/com/mdframe/forge/business/core/securitydefense/service/impl/SecurityDefenseServiceImpl.java",
+      "forge-server/forge-business/forge-business-core/src/test/java/com/mdframe/forge/business/core/securitydefense/SecurityDefenseMigrationContractTest.java",
+      "forge-server/forge-business/forge-business-core/src/test/java/com/mdframe/forge/business/core/securitydefense/SecurityDefenseServiceImplTest.java",
+      "forge-server/forge-business/forge-business-core/pom.xml"
+    ]
+  }
+}

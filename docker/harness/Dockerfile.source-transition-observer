@@ -1,0 +1,11 @@
+# Reuse the current image, Host bundle, Skills and dependency layers.
+# Base: sha256:ea7772fa7e987528ead416331e4ccf02a9802b38d3df7a5e56ba81e39a11990f
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 docker/harness/forge-phase-budget-guard.mjs /usr/local/lib/forge-phase-budget-guard.mjs
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.source-transition-observer /usr/local/share/forge-image-build/Dockerfile.source-transition-observer
+RUN --network=none node --check /usr/local/lib/forge-phase-budget-guard.mjs
+LABEL com.forge-delivery.source-transition-observer.version="2026.09.22.1"
+USER 1000:1000

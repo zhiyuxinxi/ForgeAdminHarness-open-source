@@ -1,0 +1,23 @@
+# Reuse all prepared dependency layers. Only the Maven consumer changes;
+# no dependency directory is copied into this overlay.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+ARG HOST_RUNNER_MANIFEST_SHA256
+COPY --chmod=0644 docker/harness/host-verification-runner.mjs /usr/local/lib/
+COPY host-runner-bundle/ /opt/forge-host-runner-bundle/
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.maven-origin /usr/local/share/forge-image-build/Dockerfile.maven-origin
+RUN --network=none node --input-type=module -e '\
+  import fs from "node:fs"; import crypto from "node:crypto"; \
+  import {validateHostRunnerBundle} from "/opt/forge-host-runner-bundle/bin/forge-host-runner-bundle.mjs"; \
+  import {mavenSettingsForReadOnlySeed} from "/usr/local/lib/host-verification-runner.mjs"; \
+  const sha=b=>crypto.createHash("sha256").update(b).digest("hex"), root="/opt/forge-host-runner-bundle"; \
+  if(sha(fs.readFileSync(root+"/runner.manifest.json"))!==process.argv[1])throw Error("Host manifest mismatch"); \
+  const host=await validateHostRunnerBundle(root,{profileCatalogVersion:"2026.09.03.22"}); \
+  if(host.manifest.bundleVersion!=="2026.09.21.3-maven-origin")throw Error("Host version mismatch"); \
+  for(const name of ["host-verification-runner.mjs","host-dependency-seed.mjs"]){if(sha(fs.readFileSync(root+"/lib/"+name))!==sha(fs.readFileSync("/usr/local/lib/"+name)))throw Error("Host consumer mismatch");} \
+  const settings=mavenSettingsForReadOnlySeed(fs.readFileSync(root+"/lib/maven-verification-settings.xml","utf8")); \
+  if(!settings.includes("<mirrorOf>forge-prepared-central</mirrorOf>"))throw Error("Maven origin alias missing"); \
+  ' "${HOST_RUNNER_MANIFEST_SHA256}"
+USER 1000:1000

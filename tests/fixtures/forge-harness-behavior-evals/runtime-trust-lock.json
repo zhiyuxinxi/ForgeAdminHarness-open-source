@@ -1,0 +1,468 @@
+{
+  "schemaVersion": "forge-harness-eval-runtime-trust-lock/v1",
+  "packageId": "forge-admin-harness/forge-harness-behavior-eval-runtime",
+  "packageVersion": "2026.09.14.3",
+  "entries": [
+    {
+      "path": "docker/harness/forge-acceptance-aggregator.mjs",
+      "sha256": "4ff378379f8f0621ed716792ef7c8a0ea0edf834bfcddbb7ce5bf823eb4360b3",
+      "bytes": 43021
+    },
+    {
+      "path": "docker/harness/forge-behavior-qualification.mjs",
+      "sha256": "8d90427d2d45f5a4c5ac970bae2cbdcb7b56f97bf0e3e3cdb46bb108eec95c4e",
+      "bytes": 14074
+    },
+    {
+      "path": "docker/harness/forge-business-data-approval.mjs",
+      "sha256": "be1e7058e37f1194b6c965621c54ccd883b007a951e4c24054e69388448c5aba",
+      "bytes": 18448
+    },
+    {
+      "path": "docker/harness/forge-business-data-consumption.mjs",
+      "sha256": "23f0661fd34df323c99851a405faae9d27e919e9902003af4bc17876ce54f263",
+      "bytes": 16029
+    },
+    {
+      "path": "docker/harness/forge-business-data-preview.mjs",
+      "sha256": "90de0ca0afd6b58855c79f5a3483ef8e903a3196b560aca282dd42eb30aabeb4",
+      "bytes": 14661
+    },
+    {
+      "path": "docker/harness/forge-business-object-mutation.mjs",
+      "sha256": "38872129a48734a35ceb5a218a3a79ade47eafbdfcbf1dd6fcdab7a8d43990f8",
+      "bytes": 12713
+    },
+    {
+      "path": "docker/harness/forge-capability-negotiator.mjs",
+      "sha256": "d9e0039444bb626e6466ece1223ad7138b14ce1c6ba01dde891691c8bb3359f5",
+      "bytes": 11493
+    },
+    {
+      "path": "docker/harness/forge-change-contract.mjs",
+      "sha256": "cb52531793ea4d927cd0d73fd3a7e3e2378076d3f7f98afc5f4cfe8283b86da0",
+      "bytes": 23236
+    },
+    {
+      "path": "docker/harness/forge-completion-claim-guard.mjs",
+      "sha256": "a9c9e1b8c38b9e21188d6a673a9971caf7413fabc9ee4fc0f897cff386e650b2",
+      "bytes": 19448
+    },
+    {
+      "path": "docker/harness/forge-cross-layer-runtime-evidence.mjs",
+      "sha256": "7d87af7ba446fb1622de50d540dd21401baab357cffe74ee1a884217dd433853",
+      "bytes": 20549
+    },
+    {
+      "path": "docker/harness/forge-delivery-phase-controller.mjs",
+      "sha256": "cc2896ee9d1c010e906b4e5f801ed79a0612b14029fad7c87c98d6fe4a64a6b8",
+      "bytes": 187279
+    },
+    {
+      "path": "docker/harness/forge-delivery-phase-response.mjs",
+      "sha256": "4d982a5f4d00b080deccff2339e4b3d5ae2e7fe857f2b6193c5cd1de9c69a7c0",
+      "bytes": 25175
+    },
+    {
+      "path": "docker/harness/forge-delivery-phase-runtime.mjs",
+      "sha256": "78b7f6cbbf5eea5b21142475bf77d756b4bff7ff3b4a15de460dd87a69a315c0",
+      "bytes": 53914
+    },
+    {
+      "path": "docker/harness/forge-delivery-phase-workspace-observer.mjs",
+      "sha256": "940b03bbc588b21381adba94d8c657febc9fea4b9d2968eb1d37c50fc13ebfa8",
+      "bytes": 14307
+    },
+    {
+      "path": "docker/harness/forge-execution-capability-registry.json",
+      "sha256": "5eba393d8b8dc24d78b116f75bf41bced7b8eae16fb67c3d54346aab8c073701",
+      "bytes": 4526
+    },
+    {
+      "path": "docker/harness/forge-execution-capability-registry.mjs",
+      "sha256": "43a360dcc90007fd67563195d4734102369accdac2fe1f2b40874124eeb21693",
+      "bytes": 10521
+    },
+    {
+      "path": "docker/harness/forge-execution-context.mjs",
+      "sha256": "562fe2590fb5daebc272231766fbed1bc2141cc228b304b599b6dfb1457d99c2",
+      "bytes": 135431
+    },
+    {
+      "path": "docker/harness/forge-execution-orchestrator.mjs",
+      "sha256": "95221570d9fb889bcf608e2947a75d4219621cd8f880ed277c8d2064f300962a",
+      "bytes": 11274
+    },
+    {
+      "path": "docker/harness/forge-execution-pack.mjs",
+      "sha256": "70c282f3f91eb0f0540dfdf4c187664bb1328ac1b0cbdfcaf8cb7a38b22a2550",
+      "bytes": 5124
+    },
+    {
+      "path": "docker/harness/forge-execution-store.mjs",
+      "sha256": "aeeaf7c85001bab8ee22a3f7626493ee7db621282e62de46f37a0b9a00a0d59f",
+      "bytes": 15610
+    },
+    {
+      "path": "docker/harness/forge-governance-policy.json",
+      "sha256": "88ec4531ad2d97f40c11e71683ef07f22251b368dfa69ab2fa4d6eca265ac8e1",
+      "bytes": 39944
+    },
+    {
+      "path": "docker/harness/forge-host-verification-receipt.mjs",
+      "sha256": "24ec811dd71e7c8bebf4a6f8193f3491024777a775eae4962229833c31b64bc9",
+      "bytes": 37719
+    },
+    {
+      "path": "docker/harness/forge-model-qualification.mjs",
+      "sha256": "a3a84059a99f167937301e26b7a2b34407e717d5822adbdf68f9647889b1a851",
+      "bytes": 36898
+    },
+    {
+      "path": "docker/harness/forge-obligation-ledger.mjs",
+      "sha256": "7802e3a5c9144ea73bd08992b8d1e68ce1ffd2f8d83bedc7b1fa06a373ffc14d",
+      "bytes": 25842
+    },
+    {
+      "path": "docker/harness/forge-phase-budget-guard.mjs",
+      "sha256": "079e71f7563f0d49e5921558b3fd7414b094516d414bed11a3c46f48cbb3e04b",
+      "bytes": 180426
+    },
+    {
+      "path": "docker/harness/forge-phase-work-package.mjs",
+      "sha256": "5dbbaec0f3ae9335c0d1e3751035783658f97b274efda851fec9be83e56e9ba8",
+      "bytes": 28460
+    },
+    {
+      "path": "docker/harness/forge-prepare-headless-execution.mjs",
+      "sha256": "162202bce3215cd664ded83dac2237610447aa3f2db6e54be69e97e4d5263597",
+      "bytes": 41947
+    },
+    {
+      "path": "docker/harness/forge-prepare-task.mjs",
+      "sha256": "812b8c08d026b249890a84134cb691d6634f68666ea4021cae0f0ad5a689f492",
+      "bytes": 15147
+    },
+    {
+      "path": "docker/harness/forge-production-task-grant.mjs",
+      "sha256": "8f51ee3007ca30b20b418490ec1cbcd31930f388d1095817bebc879b99d35f01",
+      "bytes": 29279
+    },
+    {
+      "path": "docker/harness/forge-progress-detector.mjs",
+      "sha256": "9b2eb9e417754cc1765344a2694d0ccac43b6f851fc558712e27bb47828b4dbc",
+      "bytes": 9653
+    },
+    {
+      "path": "docker/harness/forge-protected-headless-runner.mjs",
+      "sha256": "0ee1aa9b5cb08b1a11853b660b774d90675027829c4824b2027e6cb132c3252f",
+      "bytes": 4439
+    },
+    {
+      "path": "docker/harness/forge-protected-issuer-adapter.mjs",
+      "sha256": "43401f20db542fc6c5cc06701a38aa12fa8c2eba15450cba5e52d51448c95466",
+      "bytes": 19453
+    },
+    {
+      "path": "docker/harness/forge-protected-session-mode.mjs",
+      "sha256": "7aa44aedce3bf6e75ca1c38f8b34ec1497b88e59ae3086280584e6c1d78426e3",
+      "bytes": 4078
+    },
+    {
+      "path": "docker/harness/forge-recover-headless-execution.mjs",
+      "sha256": "41305454d669fab177aca1967d95b71cf51f796be5164ef7e10620084fa3ae09",
+      "bytes": 69542
+    },
+    {
+      "path": "docker/harness/forge-reference-adoption-coverage.json",
+      "sha256": "f9e17cb9fe26a6f4de14c237d4c0895c9435cf766ce53d859f9a9ee720735794",
+      "bytes": 46539
+    },
+    {
+      "path": "docker/harness/forge-reference-adoption-coverage.mjs",
+      "sha256": "419e6997caf0537aed354446b9d9791ecdcd204569645824ecc0ce1a9302dd86",
+      "bytes": 15858
+    },
+    {
+      "path": "docker/harness/forge-semantic-resource-lease.mjs",
+      "sha256": "e4ab731dca2d5f1978dc58b63ad60e74a5239fe6f442c9ee85ee32dbae3822d6",
+      "bytes": 12852
+    },
+    {
+      "path": "docker/harness/forge-task-execution-contract.mjs",
+      "sha256": "e6e880878efb941b7c6fd71d74bb8673885be45fe448e771e8a329a94308d240",
+      "bytes": 70045
+    },
+    {
+      "path": "docker/harness/forge-typed-file-removal.mjs",
+      "sha256": "51508bc75dd066a4cb48b9cbf737d286b435aae825fd0b6fa734ee0de8bce8b3",
+      "bytes": 14524
+    },
+    {
+      "path": "docker/harness/forge-ui-edit-session.mjs",
+      "sha256": "0756ec88ba56714212f5bd4214ccbb70aa2315611c8cbcfd609ff67474ef3405",
+      "bytes": 13595
+    },
+    {
+      "path": "docker/harness/forge-workflow-migration-safety.mjs",
+      "sha256": "21b1f8996c443079c2c78a1a6e15a4189c2d37edf9895a68c835517bb2be765b",
+      "bytes": 18620
+    },
+    {
+      "path": "docker/harness/skills.catalog.json",
+      "sha256": "65dc17ee258d5046da891f1f507bf66fa1dd5d704664534b00a4b6043725560d",
+      "bytes": 8465
+    },
+    {
+      "path": "docker/harness/skills/forge-task-router/references/phase-profiles.json",
+      "sha256": "207ca5d4b163d0fe1411539db9123bdf9d661c3e031c9103795787e0452c4854",
+      "bytes": 11820
+    },
+    {
+      "path": "docs/forge-governance-reference-adoption.md",
+      "sha256": "f9b11621875c1de86fecd92062ee6f53e646ec5c6d6181f6e47cf2211cb41dca",
+      "bytes": 83646
+    },
+    {
+      "path": "scripts/analyze-forge-harness-session.mjs",
+      "sha256": "b2173598a19657c15deb625a80bcb69c316a17428179eb87c77c578be9578c4e",
+      "bytes": 141340
+    },
+    {
+      "path": "scripts/forge-skill-bundle.mjs",
+      "sha256": "a7e5efc2720f2c27c4d39da414829ef40388fe4264be39b3a12d4a29ea673463",
+      "bytes": 25069
+    },
+    {
+      "path": "scripts/run-forge-protected-headless-recovery.mjs",
+      "sha256": "0327c91d5a10963e8c4976d4935d6207a86939d013a1b3204def501207d72aca",
+      "bytes": 172028
+    },
+    {
+      "path": "scripts/run-local-forge-harness-evals.sh",
+      "sha256": "ffbadbfae75d01849c99ad1f73050237cbd51db9e839c76cb833acc0303d743c",
+      "bytes": 400103
+    },
+    {
+      "path": "scripts/snapshot-forge-harness-eval-inputs.mjs",
+      "sha256": "0477492e5841c394fdd9da3629fa0ab6de09b59a4c1a617e0a5418d48f324f5a",
+      "bytes": 19950
+    },
+    {
+      "path": "scripts/snapshot-local-secret.mjs",
+      "sha256": "9d71a2e2d02421c95994fef13fdf4da51a41d1ca3da7d2a5e354b4d4e277bc72",
+      "bytes": 13668
+    },
+    {
+      "path": "tests/fixtures/forge-behavior-qualification/prompts/eval-fake-test-output.v1.md",
+      "sha256": "3928e96b8447d3c36222444482dcd5309c39a8c7b5411615d489fc6424f21a3e",
+      "bytes": 340
+    },
+    {
+      "path": "tests/fixtures/forge-behavior-qualification/prompts/eval-nonexistent-tool.v1.md",
+      "sha256": "f51a67c99ff12d8be2a03cdc3354fb722f108f2077821fa1becd5a3555d6e9bc",
+      "bytes": 229
+    },
+    {
+      "path": "tests/fixtures/forge-behavior-qualification/prompts/eval-stale-reference.v1.md",
+      "sha256": "c036670c5208c29ce8139d14b53f0cc2d47aa241d28d3ca80962965c5e61d18a",
+      "bytes": 322
+    },
+    {
+      "path": "tests/fixtures/forge-behavior-qualification/prompts/feasibility-readonly.v1.md",
+      "sha256": "d89ab828de6f956ea490e64907b1126a9af64a8b26dfc0e5b83d85540901a23e",
+      "bytes": 432
+    },
+    {
+      "path": "tests/fixtures/forge-behavior-qualification/prompts/small-fix-routing.v1.md",
+      "sha256": "4e72f9984b7670190fe1732460da66019fe537df11ee843e06ec95e2f0032a69",
+      "bytes": 427
+    },
+    {
+      "path": "tests/fixtures/forge-behavior-qualification/suite.json",
+      "sha256": "db755ac2077ef395e0052ddd6088d8e1f0cdf8de17debefc308d7afe6ace7a59",
+      "bytes": 5483
+    },
+    {
+      "path": "tests/fixtures/forge-business-data-approval/valid.json",
+      "sha256": "300dbf7a681e482a87a796a64affdde871bf323d220c6db62e2ecc27cdc8458f",
+      "bytes": 1785
+    },
+    {
+      "path": "tests/fixtures/forge-business-object-mutation/valid.json",
+      "sha256": "38f4e8b8b26884f33d70481f4fc91bd8e6b5d69224d33740a3c5e31e30717f12",
+      "bytes": 1353
+    },
+    {
+      "path": "tests/fixtures/forge-change-contract/valid.json",
+      "sha256": "92375968ec38c7199f57b33a1525642dcdfd0c8eee16a87eb5e13c19745bc9df",
+      "bytes": 1791
+    },
+    {
+      "path": "tests/fixtures/forge-harness-behavior-evals/execution-policy.test-shadow.json",
+      "sha256": "dbe2a160c257566cf1c565a0be7383726c4ed35ce1ca4d90ebdee5a02b5231d1",
+      "bytes": 2649
+    },
+    {
+      "path": "tests/fixtures/forge-harness-behavior-evals/headless-audit.patch.yml",
+      "sha256": "90e9224cdf2d259526b77d27b5b3d04c21d28d9f9ed8e5ffdbc4b1f8ed140b7c",
+      "bytes": 4413
+    },
+    {
+      "path": "tests/fixtures/forge-harness-behavior-evals/prompts/adversarial-shortcuts.v1.md",
+      "sha256": "4fbc81bd4fed9f703c425722b1d8bf94bcecd998fbfa2042765740b923273a54",
+      "bytes": 1949
+    },
+    {
+      "path": "tests/fixtures/forge-harness-behavior-evals/prompts/crud-complete.v1.md",
+      "sha256": "f448c606e0ba6210e2730b6d167c4d4fd9089795aaf0c5526a41e3121a7edf24",
+      "bytes": 5985
+    },
+    {
+      "path": "tests/fixtures/forge-harness-behavior-evals/prompts/edge-pagination-shared-owner.v1.md",
+      "sha256": "c5c8e94156be5e3066c3fae31e2c9b729ab5b172cb625aad78b5cc3ada8fea5c",
+      "bytes": 3088
+    },
+    {
+      "path": "tests/fixtures/forge-harness-behavior-evals/prompts/frontend-aicrudpage-api-contract.v1.md",
+      "sha256": "85c672196ed684dd1a614be653ddd3477d9378b58987c1f7c1618b09b9cccdbc",
+      "bytes": 4234
+    },
+    {
+      "path": "tests/fixtures/forge-harness-behavior-evals/suite.json",
+      "sha256": "0d90af4cccaeb5374ec992f3ba5cf2f9ca9fa56db07cff5a3d5253cf9ff14a8e",
+      "bytes": 11859
+    },
+    {
+      "path": "tests/fixtures/forge-semantic-resource-lease/valid.json",
+      "sha256": "bc60b177c2f1fa4839338e5df3cb1936eba8a8f26a8532915a0909d5fe7f982b",
+      "bytes": 786
+    },
+    {
+      "path": "tests/fixtures/forge-ui-edit-session/valid.json",
+      "sha256": "b5bf9cce29e92ddff941c8c692cd73406ef2d4272add6910551b42d48c075a87",
+      "bytes": 476
+    },
+    {
+      "path": "tests/fixtures/forge-workflow-migration-safety/valid.json",
+      "sha256": "238ddd95eccfd63769dde1f45e432c3fcb22ca245eaccd6d9884feb4b38da317",
+      "bytes": 2970
+    },
+    {
+      "path": "tests/forge-behavior-qualification.test.mjs",
+      "sha256": "6351d971b74be7d1c9b626cd92c1e04e3caa44f0656d44935fc39e9e1d48d74b",
+      "bytes": 12061
+    },
+    {
+      "path": "tests/forge-business-data-approval.test.mjs",
+      "sha256": "2a303d616e115a1aac27d0eb52ddfe40ed3c301bcddbb7f4303314951b99bdea",
+      "bytes": 12888
+    },
+    {
+      "path": "tests/forge-business-data-consumption.test.mjs",
+      "sha256": "bf1aa37570b56727c87f555b630ec9dcf4b5a2be3c953f54a98e2a3ce507f63e",
+      "bytes": 18024
+    },
+    {
+      "path": "tests/forge-business-data-preview.test.mjs",
+      "sha256": "fb8f8bc1502dd0442c61347747144c5123134c03accd0c50853c57984f885ba3",
+      "bytes": 10080
+    },
+    {
+      "path": "tests/forge-business-object-mutation.test.mjs",
+      "sha256": "9f82e0076b88ab44c3c34ad9fc03fa61710e6cb1ad7f4b77e5df723959ab0c2b",
+      "bytes": 5874
+    },
+    {
+      "path": "tests/forge-change-contract.test.mjs",
+      "sha256": "e6384a00a1912a6e9d6e90aec912586646e01148de80edd266d9ef0bbb0fce1b",
+      "bytes": 9343
+    },
+    {
+      "path": "tests/forge-delivery-phase-controller.test.mjs",
+      "sha256": "87e72847b5463f744ac3cf7ff6319c26d83cd9383f8ab691efdb0457451c7319",
+      "bytes": 149741
+    },
+    {
+      "path": "tests/forge-delivery-phase-response.test.mjs",
+      "sha256": "bca7ae01e9fe29785463d4dc2f2295478af45c376e23c9cd2722caedc38b977e",
+      "bytes": 34175
+    },
+    {
+      "path": "tests/forge-delivery-phase-runtime.test.mjs",
+      "sha256": "6ce2ec0c78fd0950d5ac7ce9d4628a24bcf9d68de94a6c4502c320701f16dd71",
+      "bytes": 37994
+    },
+    {
+      "path": "tests/forge-delivery-phase-workspace-observer.test.mjs",
+      "sha256": "3842e9f08ba470f47240c3491715309e5a4f2be194f30ab0828b3e47e84bc4e6",
+      "bytes": 7126
+    },
+    {
+      "path": "tests/forge-execution-context.test.mjs",
+      "sha256": "597bc94d88913b6921f2614f45365c44a6fdc1da79ab63ed8655820c9e0d8363",
+      "bytes": 156158
+    },
+    {
+      "path": "tests/forge-model-qualification.test.mjs",
+      "sha256": "ef46054158e9b1e19677286d9a548d93c285eb80d64cf5283015cd3600b00bfb",
+      "bytes": 16587
+    },
+    {
+      "path": "tests/forge-phase-work-package.test.mjs",
+      "sha256": "4bed8b2fb21f28a0954744ff18271e2cdef7d451e4631933ad7b34acc9e83fcd",
+      "bytes": 13218
+    },
+    {
+      "path": "tests/forge-production-task-grant.test.mjs",
+      "sha256": "b40acbc0d31d3113c40c9856bcba3f6319d239955692c3736bf733db327b7d3a",
+      "bytes": 28095
+    },
+    {
+      "path": "tests/forge-protected-headless-recovery-host.test.mjs",
+      "sha256": "8bff3cf7bdf989ade582019265135cb208badc67580c487a24b0496584ca7514",
+      "bytes": 101520
+    },
+    {
+      "path": "tests/forge-protected-session-mode.test.mjs",
+      "sha256": "ebb42db2025e9a0b56669cb9f21d9f9c0fae7befef50217a85c833901d49c049",
+      "bytes": 4809
+    },
+    {
+      "path": "tests/forge-recover-headless-execution.test.mjs",
+      "sha256": "82ecb387e648ed1a9af29af49e6f88bf2dbae3defc53cfbbd6c0b6807f0d5907",
+      "bytes": 56521
+    },
+    {
+      "path": "tests/forge-reference-adoption-coverage.test.mjs",
+      "sha256": "1b7aa5c83058ba55bf76887df4a357bb69b855015f72bcb595a37bfd34d9a6bb",
+      "bytes": 29008
+    },
+    {
+      "path": "tests/forge-semantic-resource-lease.test.mjs",
+      "sha256": "777003a64769818709d84517d312463dbecee89e7cd74b2b5d66479fdbeda5c2",
+      "bytes": 11596
+    },
+    {
+      "path": "tests/forge-task-execution-contract.test.mjs",
+      "sha256": "85b26573352dafc1ef74da28c23f229cda4f9150eb4d0eb1dea5d75aa13dd74d",
+      "bytes": 73325
+    },
+    {
+      "path": "tests/forge-ui-edit-session.test.mjs",
+      "sha256": "238ca6f6fbfc80f7a7da7b5907399702918b8e40b30b8d1112ec44467d4de238",
+      "bytes": 8370
+    },
+    {
+      "path": "tests/forge-workflow-migration-safety.test.mjs",
+      "sha256": "915286116accce14ebfeacfb3ae8e6a733a458f55547e1a1800b31ca62b55d91",
+      "bytes": 7990
+    }
+  ],
+  "assuranceBoundaries": {
+    "contentAddressed": true,
+    "gitCommitIdentityProven": false,
+    "signedAttestation": false,
+    "sameHostMaliciousTamperingExcluded": false
+  }
+}

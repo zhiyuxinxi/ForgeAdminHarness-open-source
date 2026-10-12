@@ -1,0 +1,10 @@
+# Reuse a113a592 dependencies, Host bundle and Skills without rebuilding them.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 docker/harness/forge-conversation-task-proposal.mjs /usr/local/lib/forge-conversation-task-proposal.mjs
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.layer-scope /usr/local/share/forge-image-build/Dockerfile.layer-scope
+RUN --network=none node --check /usr/local/lib/forge-conversation-task-proposal.mjs
+LABEL com.forge-delivery.layer-scope.version="2026.09.22.1"
+USER 1000:1000

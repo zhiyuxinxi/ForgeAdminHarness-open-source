@@ -1,0 +1,10 @@
+# Retain the verified lint, wakeup, Skills, Host and dependency layers.
+# Base: sha256:1dc0a8da524bd11abeb93e3d97faf8811b893049b12bfde297b53de90d7deb10
+ARG BASE_IMAGE=forge-delivery/deepseek-harness:0.1.1-rc.2-lint-format-scope-20260922-1
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 docker/harness/forge-task-execution-contract.mjs /usr/local/lib/
+COPY --chmod=0644 config/versions.env docker/harness/Dockerfile.frontend-negation-scope /usr/local/share/forge-image-build/
+RUN --network=none node --check /usr/local/lib/forge-task-execution-contract.mjs
+LABEL com.forge-delivery.frontend-negation-scope.version="2026.09.22.1"
+USER 1000:1000

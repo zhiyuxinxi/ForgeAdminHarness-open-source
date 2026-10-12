@@ -1,0 +1,369 @@
+{
+  "schemaVersion": "forge-delivery-phase-catalog/v1",
+  "catalogVersion": "2026.09.03.22",
+  "workflows": [
+    {
+      "id": "crud-production",
+      "caseFamilies": [
+        "crud-complete",
+        "adversarial-shortcuts"
+      ],
+      "phases": [
+        {
+          "id": "requirements",
+          "index": 0,
+          "sessionMode": "create",
+          "actionCeiling": "read-only",
+          "taskProfiles": ["requirements"],
+          "ownedPaths": [],
+          "sourceMutation": false,
+          "patchScope": "none",
+          "artifactKind": "requirements-contract",
+          "requiresArtifacts": [],
+          "requiredPayloadKeys": [
+            "actors",
+            "useCases",
+            "businessRules",
+            "acceptanceCriteria",
+            "nonGoals",
+            "dataOwnership",
+            "permissionMatrix",
+            "requirementTrace"
+          ],
+          "requiredSkills": [
+            "forge-task-contract",
+            "forge-task-router",
+            "forge-change-design",
+            "forge-requirement-coverage",
+            "forge-evidence-truth"
+          ],
+          "contractVerificationProfiles": [],
+          "hostVerificationProfiles": [],
+          "maxAttempts": 2
+        },
+        {
+          "id": "domain-contract",
+          "index": 1,
+          "sessionMode": "resume",
+          "actionCeiling": "read-only",
+          "taskProfiles": ["domain-contract"],
+          "ownedPaths": [],
+          "sourceMutation": false,
+          "patchScope": "none",
+          "artifactKind": "domain-api-contract",
+          "requiresArtifacts": ["requirements-contract"],
+          "requiredPayloadKeys": [
+            "businessEntities",
+            "commands",
+            "queries",
+            "apiContracts",
+            "permissionCodes",
+            "dictionaries",
+            "validationRules",
+            "concurrencyRules"
+          ],
+          "requiredSkills": [
+            "forge-task-contract",
+            "forge-task-router",
+            "forge-change-design",
+            "forge-crud-production",
+            "forge-dictionary-contract",
+            "forge-security-tenancy-permission",
+            "forge-evidence-truth"
+          ],
+          "contractVerificationProfiles": [],
+          "hostVerificationProfiles": [],
+          "maxAttempts": 2
+        },
+        {
+          "id": "database",
+          "index": 2,
+          "sessionMode": "resume",
+          "actionCeiling": "workspace-write",
+          "taskProfiles": ["migration", "database", "security"],
+          "ownedPaths": [
+            "forge-server/db/migration",
+            "forge-server/forge-business/forge-business-core/src/test/java"
+          ],
+          "sourceMutation": true,
+          "patchScope": "phase",
+          "artifactKind": "database-implementation",
+          "requiresArtifacts": ["requirements-contract", "domain-api-contract"],
+          "requiredPayloadKeys": [
+            "migrationVersion",
+            "tables",
+            "indexes",
+            "tenantAuditDeleteContract",
+            "dictionaryExcelSeed",
+            "migrationTest",
+            "changedPaths"
+          ],
+          "requiredSkills": [
+            "forge-task-contract",
+            "forge-task-router",
+            "forge-change-design",
+            "forge-database-migration",
+            "forge-backend-architecture",
+            "forge-security-tenancy-permission",
+            "forge-testing-observability",
+            "forge-evidence-truth"
+          ],
+          "contractVerificationProfiles": [
+            "governance",
+            "backend-module-test",
+            "changed-safe",
+            "full-regression"
+          ],
+          "hostVerificationProfiles": [
+            "governance",
+            "backend-module-test"
+          ],
+          "maxAttempts": 2
+        },
+        {
+          "id": "ui-design",
+          "index": 3,
+          "sessionMode": "resume",
+          "actionCeiling": "read-only",
+          "taskProfiles": ["ui-design"],
+          "ownedPaths": [],
+          "sourceMutation": false,
+          "patchScope": "none",
+          "artifactKind": "ui-interaction-contract",
+          "requiresArtifacts": ["requirements-contract", "domain-api-contract"],
+          "requiredPayloadKeys": [
+            "pageMode",
+            "canonicalOwners",
+            "fields",
+            "actions",
+            "states",
+            "responsiveRules",
+            "accessibilityRules",
+            "apiBindings",
+            "permissionBindings"
+          ],
+          "requiredSkills": [
+            "forge-task-contract",
+            "forge-task-router",
+            "forge-change-design",
+            "forge-frontend-admin",
+            "forge-dictionary-contract",
+            "forge-security-tenancy-permission",
+            "forge-ui-consistency-review",
+            "forge-evidence-truth"
+          ],
+          "contractVerificationProfiles": [],
+          "hostVerificationProfiles": [],
+          "maxAttempts": 2
+        },
+        {
+          "id": "backend",
+          "index": 4,
+          "sessionMode": "resume",
+          "actionCeiling": "workspace-write",
+          "taskProfiles": ["backend", "security"],
+          "ownedPaths": [
+            "forge-server/forge-business/forge-business-core/src/main",
+            "forge-server/forge-business/forge-business-core/src/test"
+          ],
+          "sourceMutation": true,
+          "patchScope": "phase",
+          "artifactKind": "backend-implementation",
+          "requiresArtifacts": [
+            "requirements-contract",
+            "domain-api-contract",
+            "database-implementation",
+            "ui-interaction-contract"
+          ],
+          "requiredPayloadKeys": [
+            "redTests",
+            "productionOwners",
+            "apiImplementation",
+            "persistenceOutcomeHandling",
+            "permissionEnforcement",
+            "changedPaths"
+          ],
+          "requiredSkills": [
+            "forge-task-contract",
+            "forge-task-router",
+            "forge-change-design",
+            "forge-backend-architecture",
+            "forge-security-tenancy-permission",
+            "forge-testing-observability",
+            "forge-evidence-truth"
+          ],
+          "contractVerificationProfiles": [
+            "governance",
+            "backend-module-test",
+            "changed-safe",
+            "full-regression"
+          ],
+          "hostVerificationProfiles": [
+            "governance",
+            "backend-module-compile",
+            "backend-module-test"
+          ],
+          "maxAttempts": 2
+        },
+        {
+          "id": "frontend",
+          "index": 5,
+          "sessionMode": "resume",
+          "actionCeiling": "workspace-write",
+          "taskProfiles": ["dictionary", "frontend-admin", "security"],
+          "ownedPaths": [
+            "forge-admin-ui/src/api",
+            "forge-admin-ui/src/views",
+            "forge-admin-ui/package.json",
+            "forge-admin-ui/pnpm-lock.yaml",
+            "forge-admin-ui/jsconfig.json"
+          ],
+          "sourceMutation": true,
+          "patchScope": "phase",
+          "artifactKind": "frontend-implementation",
+          "requiresArtifacts": [
+            "requirements-contract",
+            "domain-api-contract",
+            "database-implementation",
+            "ui-interaction-contract",
+            "backend-implementation"
+          ],
+          "requiredPayloadKeys": [
+            "redTests",
+            "canonicalComponentOwners",
+            "apiAdapter",
+            "pageImplementation",
+            "longIdContract",
+            "interactionStates",
+            "changedPaths"
+          ],
+          "requiredSkills": [
+            "forge-task-contract",
+            "forge-task-router",
+            "forge-change-design",
+            "forge-frontend-admin",
+            "forge-dictionary-contract",
+            "forge-security-tenancy-permission",
+            "forge-testing-observability",
+            "forge-evidence-truth"
+          ],
+          "contractVerificationProfiles": [
+            "governance",
+            "backend-module-test",
+            "frontend-admin-lint",
+            "frontend-admin-test",
+            "frontend-admin-typecheck",
+            "frontend-admin-build",
+            "changed-safe",
+            "full-regression"
+          ],
+          "hostVerificationProfiles": [
+            "governance",
+            "frontend-admin-lint",
+            "frontend-admin-test",
+            "frontend-admin-typecheck",
+            "frontend-admin-build"
+          ],
+          "maxAttempts": 2
+        },
+        {
+          "id": "access-wiring",
+          "index": 6,
+          "sessionMode": "resume",
+          "actionCeiling": "workspace-write",
+          "taskProfiles": ["migration", "security"],
+          "ownedPaths": [
+            "forge-server/db/migration",
+            "forge-server/forge-business/forge-business-core/src/test/java"
+          ],
+          "sourceMutation": true,
+          "patchScope": "phase",
+          "artifactKind": "access-wiring-implementation",
+          "requiresArtifacts": [
+            "requirements-contract",
+            "domain-api-contract",
+            "database-implementation",
+            "ui-interaction-contract",
+            "backend-implementation",
+            "frontend-implementation"
+          ],
+          "requiredPayloadKeys": [
+            "migrationVersion",
+            "menuSeed",
+            "buttonSeed",
+            "apiResourceSeed",
+            "roleVisibilityContract",
+            "permissionCoherence",
+            "changedPaths"
+          ],
+          "requiredSkills": [
+            "forge-task-contract",
+            "forge-task-router",
+            "forge-change-design",
+            "forge-database-migration",
+            "forge-backend-architecture",
+            "forge-security-tenancy-permission",
+            "forge-testing-observability",
+            "forge-evidence-truth"
+          ],
+          "contractVerificationProfiles": [
+            "governance",
+            "backend-module-test",
+            "changed-safe",
+            "full-regression"
+          ],
+          "hostVerificationProfiles": [
+            "governance",
+            "backend-module-test"
+          ],
+          "maxAttempts": 2
+        },
+        {
+          "id": "cross-layer-acceptance",
+          "index": 7,
+          "sessionMode": "resume",
+          "actionCeiling": "read-only",
+          "taskProfiles": ["cross-layer-acceptance"],
+          "ownedPaths": [],
+          "sourceMutation": false,
+          "patchScope": "cumulative",
+          "artifactKind": "cross-layer-acceptance",
+          "requiresArtifacts": [
+            "requirements-contract",
+            "domain-api-contract",
+            "database-implementation",
+            "ui-interaction-contract",
+            "backend-implementation",
+            "frontend-implementation",
+            "access-wiring-implementation"
+          ],
+          "requiredPayloadKeys": [
+            "requirementCoverage",
+            "permissionCoherence",
+            "tenantAuditDeleteEvidence",
+            "apiUiCoherence",
+            "longIdEvidence",
+            "testEvidence",
+            "runtimeEvidenceDigest",
+            "semanticReview",
+            "cannotClaim"
+          ],
+          "requiredSkills": [
+            "forge-task-contract",
+            "forge-task-router",
+            "forge-ui-consistency-review",
+            "forge-testing-observability",
+            "forge-evidence-truth"
+          ],
+          "contractVerificationProfiles": [],
+          "hostVerificationProfiles": [
+            "governance",
+            "changed-safe",
+            "full-regression"
+          ],
+          "maxAttempts": 1
+        }
+      ]
+    }
+  ]
+}

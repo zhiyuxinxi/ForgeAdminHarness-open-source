@@ -1,0 +1,10 @@
+# Retain the verified Runner reuse fix, runtime and installed dependencies.
+# Base: sha256:52905a5d32a4379dba2b7714d2880f0afaf2eaceb45fce9d3a4c06427b842845
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 docker/harness/release-runner.mjs /usr/local/lib/release-runner.mjs
+COPY --chmod=0644 docker/harness/Dockerfile.ui-only-db-scope /usr/local/share/forge-image-build/
+RUN --network=none node --check /usr/local/lib/release-runner.mjs
+LABEL com.forge-delivery.ui-only-db-scope.version="2026.09.22.1"
+USER 1000:1000

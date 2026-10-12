@@ -1,0 +1,60 @@
+name: ${CONVERSATION_CONTROL_PLANE_COMPOSE_PROJECT_NAME:-forge-conversation-control-plane}
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 20m
+    max-file: "5"
+
+services:
+  conversation-gateway:
+    image: ${HARNESS_IMAGE:?HARNESS_IMAGE is required}
+    restart: unless-stopped
+    command: ["node", "/usr/local/lib/conversation-gateway.mjs"]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    environment:
+      CONVERSATION_GATEWAY_STATE_ROOT: /var/lib/forge-conversation
+      CONVERSATION_GATEWAY_STATIC_ROOT: /usr/local/share/conversation-gateway
+      CONVERSATION_GATEWAY_PUBLIC_ORIGIN: http://${CONVERSATION_GATEWAY_BIND_ADDRESS:?CONVERSATION_GATEWAY_BIND_ADDRESS is required}:${CONVERSATION_GATEWAY_PORT:?CONVERSATION_GATEWAY_PORT is required}/
+      CONVERSATION_GATEWAY_BIND_ADDRESS: ${CONVERSATION_GATEWAY_BIND_ADDRESS:?CONVERSATION_GATEWAY_BIND_ADDRESS is required}
+      CONVERSATION_GATEWAY_PUBLIC_PORT: "3080"
+      CONVERSATION_GATEWAY_INTERNAL_SOCKET: /run/forge-conversation-auth/authorize.sock
+      CONVERSATION_PROJECT_REGISTRY_FILE: /etc/forge-delivery/projects.tsv
+      CONVERSATION_PROJECT_CAPABILITY_ROOT: /run/forge-projects
+      CONVERSATION_OPERATOR_TOKEN_FILE: /run/forge-conversation/operator-token
+      CONVERSATION_OPERATOR_SOCKET: /run/forge-conversation/operator.sock
+      CONVERSATION_GATEWAY_MAINTENANCE_FENCE_FILE: /run/forge-maintenance/gateway-fence.json
+      CONVERSATION_GATEWAY_COOKIE_SECURE: ${CONVERSATION_GATEWAY_COOKIE_SECURE:-false}
+      TZ: ${TZ:-Asia/Shanghai}
+    ports:
+      - "${CONVERSATION_GATEWAY_BIND_ADDRESS:?CONVERSATION_GATEWAY_BIND_ADDRESS is required}:${CONVERSATION_GATEWAY_PORT:?CONVERSATION_GATEWAY_PORT is required}:3080"
+    volumes:
+      - ${CONVERSATION_CONTROL_PLANE_ROOT:?CONVERSATION_CONTROL_PLANE_ROOT is required}/state:/var/lib/forge-conversation
+      - ${CONVERSATION_CONTROL_PLANE_ROOT:?CONVERSATION_CONTROL_PLANE_ROOT is required}/ipc:/run/forge-conversation
+      - ${CONVERSATION_CONTROL_PLANE_ROOT:?CONVERSATION_CONTROL_PLANE_ROOT is required}/auth-ipc:/run/forge-conversation-auth
+      - ${CONVERSATION_CONTROL_PLANE_ROOT:?CONVERSATION_CONTROL_PLANE_ROOT is required}/maintenance:/run/forge-maintenance:ro
+      - ${CONVERSATION_CONTROL_PLANE_ROOT:?CONVERSATION_CONTROL_PLANE_ROOT is required}/projects:/run/forge-projects:ro
+      - ${CONVERSATION_CONTROL_PLANE_ROOT:?CONVERSATION_CONTROL_PLANE_ROOT is required}/operator-token:/run/forge-conversation/operator-token:ro
+      - ${PLATFORM_PROJECT_REGISTRY_FILE:?PLATFORM_PROJECT_REGISTRY_FILE is required}:/etc/forge-delivery/projects.tsv:ro
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 768m
+    cpus: "1.0"
+    logging: *default-logging
+    networks: [conversation-ingress]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3080/healthz').then(async r=>{let v={};try{v=await r.json()}catch{};if((r.status===200&&v.ok===true&&v.status==='open')||(r.status===503&&v.ok===false&&v.status==='maintenance'&&v.code==='GATEWAY_MAINTENANCE'))return;process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+
+networks:
+  conversation-ingress:
+    driver: bridge
+    internal: false

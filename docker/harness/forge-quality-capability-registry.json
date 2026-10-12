@@ -1,0 +1,608 @@
+{
+  "schemaVersion": 2,
+  "registryVersion": "2026.09.03.2",
+  "requirements": [
+    {
+      "requirementId": "REQ-DATABASE",
+      "summary": "Database changes preserve the Forge data, tenancy, audit, query, and migration contracts.",
+      "acceptanceCriteria": [
+        { "criterionId": "AC-DATABASE", "statement": "All declared database capabilities have governed implementation and evidence coverage.", "excluded": false }
+      ]
+    },
+    {
+      "requirementId": "REQ-BACKEND",
+      "summary": "Backend changes preserve layering, API, reliability, permission, and shared-owner contracts.",
+      "acceptanceCriteria": [
+        { "criterionId": "AC-BACKEND", "statement": "All declared backend capabilities have governed implementation and evidence coverage.", "excluded": false }
+      ]
+    },
+    {
+      "requirementId": "REQ-FRONTEND",
+      "summary": "Frontend changes preserve canonical ownership, contracts, states, accessibility, and browser behavior.",
+      "acceptanceCriteria": [
+        { "criterionId": "AC-FRONTEND", "statement": "All declared frontend capabilities have governed implementation and evidence coverage.", "excluded": false }
+      ]
+    },
+    {
+      "requirementId": "REQ-SECURITY",
+      "summary": "Security boundaries and governed source fail closed.",
+      "acceptanceCriteria": [
+        { "criterionId": "AC-SECURITY", "statement": "Authorization and source-safety capabilities have governed implementation and evidence coverage.", "excluded": false }
+      ]
+    },
+    {
+      "requirementId": "REQ-WORKFLOW",
+      "summary": "Workflow behavior uses the production state-machine contract.",
+      "acceptanceCriteria": [
+        { "criterionId": "AC-WORKFLOW", "statement": "Workflow state-machine behavior has governed implementation and evidence coverage.", "excluded": false }
+      ]
+    },
+    {
+      "requirementId": "REQ-QUALITY",
+      "summary": "Testing and observability claims are tied to executable or reviewed evidence.",
+      "acceptanceCriteria": [
+        { "criterionId": "AC-QUALITY", "statement": "Testing and logging capabilities have governed implementation and evidence coverage.", "excluded": false }
+      ]
+    },
+    {
+      "requirementId": "REQ-OPERATIONS",
+      "summary": "Governance, verification, and release remain bounded operational authorities.",
+      "acceptanceCriteria": [
+        { "criterionId": "AC-OPERATIONS", "statement": "Operational control capabilities have governed implementation and evidence coverage.", "excluded": false }
+      ]
+    },
+    {
+      "requirementId": "REQ-DELIVERY-GOVERNANCE",
+      "summary": "Project context, phased work packages, and requirement-to-acceptance orchestration are explicit before delivery.",
+      "acceptanceCriteria": [
+        { "criterionId": "AC-DELIVERY-GOVERNANCE", "statement": "Project-task context, phased work packages, and delivery orchestration have governed implementation and evidence coverage.", "excluded": false }
+      ]
+    },
+    {
+      "requirementId": "REQ-AUTHORITY-BOUNDARY",
+      "summary": "This local quality registry does not grant deployment authority.",
+      "acceptanceCriteria": [
+        { "criterionId": "AC-NO-SERVER-DEPLOYMENT", "statement": "Server deployment remains outside local toolkit acceptance and requires separate owner authorization.", "excluded": true }
+      ]
+    }
+  ],
+  "routingProfiles": [
+    { "routingProfileId": "route-database", "requiredSkills": ["forge-database-migration", "forge-backend-architecture", "forge-change-design", "forge-security-tenancy-permission", "forge-testing-observability"], "verificationProfiles": ["governance", "changed-safe", "backend-module-test", "full-regression"] },
+    { "routingProfileId": "route-backend", "requiredSkills": ["forge-backend-architecture", "forge-change-design", "forge-crud-production", "forge-security-tenancy-permission", "forge-testing-observability"], "verificationProfiles": ["governance", "backend-module-compile", "backend-module-test", "backend-test-class", "full-regression"] },
+    { "routingProfileId": "route-frontend", "requiredSkills": ["forge-frontend-admin", "forge-ui-consistency-review", "forge-dictionary-contract", "forge-security-tenancy-permission", "forge-testing-observability", "forge-change-design", "forge-evidence-truth"], "verificationProfiles": ["governance", "changed-safe", "frontend-admin-lint", "frontend-admin-test", "frontend-admin-typecheck", "frontend-admin-build", "frontend-h5-test", "frontend-h5-build", "full-regression"] },
+    { "routingProfileId": "route-security", "requiredSkills": ["forge-security-tenancy-permission", "forge-testing-observability"], "verificationProfiles": ["governance", "backend-module-test", "full-regression"] },
+    { "routingProfileId": "route-workflow", "requiredSkills": ["forge-workflow-production", "forge-security-tenancy-permission", "forge-testing-observability"], "verificationProfiles": ["governance", "full-regression"] },
+    { "routingProfileId": "route-quality", "requiredSkills": ["forge-testing-observability", "forge-evidence-truth", "forge-backend-architecture"], "verificationProfiles": ["governance", "backend-module-test", "frontend-admin-test", "frontend-admin-typecheck", "frontend-h5-test", "full-regression"] },
+    { "routingProfileId": "route-operations", "requiredSkills": ["forge-task-router", "forge-evidence-truth", "forge-testing-observability", "forge-controlled-release", "forge-git-checkpoint"], "verificationProfiles": ["governance", "backend-module-test", "frontend-admin-lint", "frontend-admin-test", "frontend-h5-test", "full-regression"] },
+    { "routingProfileId": "route-delivery-governance", "requiredSkills": ["project-document-reader", "forge-taskspace-collaboration", "forge-task-contract", "forge-task-router", "forge-phase-work-package", "forge-delivery-orchestrator", "forge-requirement-coverage", "forge-release-acceptance", "forge-crud-production", "forge-evidence-truth"], "verificationProfiles": ["governance", "changed-safe", "full-regression"] }
+  ],
+  "evidenceContracts": [
+    { "evidenceContractId": "evidence-static-governance", "proofLevel": "static", "availability": "available", "receiptType": "governance-report", "verificationProfiles": ["governance"] },
+    { "evidenceContractId": "evidence-semantic-review", "proofLevel": "semantic", "availability": "planned", "receiptType": "reviewed-semantic-receipt", "verificationProfiles": ["governance", "changed-safe"] },
+    { "evidenceContractId": "evidence-controlled-runtime", "proofLevel": "runtime", "availability": "planned", "receiptType": "source-bound-runner-receipt", "verificationProfiles": ["backend-module-test", "frontend-admin-test", "frontend-admin-typecheck", "frontend-h5-test", "full-regression"] },
+    { "evidenceContractId": "evidence-independent-acceptance", "proofLevel": "independent", "availability": "planned", "receiptType": "independent-review-receipt", "verificationProfiles": ["changed-safe", "full-regression"] }
+  ],
+  "coverageEdges": [
+    { "criterionId": "AC-DATABASE", "capabilityIds": ["database.audit-columns", "database.soft-delete", "database.tenant-isolation", "database.index-design", "database.migration", "database.table-baseline"], "evidenceContractIds": ["evidence-static-governance", "evidence-semantic-review", "evidence-controlled-runtime", "evidence-independent-acceptance"], "routingProfileId": "route-database" },
+    { "criterionId": "AC-BACKEND", "capabilityIds": ["backend.entity-dto", "backend.layering", "backend.utility-ownership", "backend.pagination", "backend.permission", "backend.idempotency", "backend.transaction", "backend.error-contract", "backend.crud-http-contract"], "evidenceContractIds": ["evidence-semantic-review", "evidence-controlled-runtime", "evidence-independent-acceptance"], "routingProfileId": "route-backend" },
+    { "criterionId": "AC-FRONTEND", "capabilityIds": ["frontend.canonical-components", "frontend.api", "frontend.permission", "frontend.long-id", "frontend.dictionary", "frontend.forms", "frontend.table", "frontend.tokens", "frontend.responsive", "frontend.accessibility", "frontend.states", "frontend.danger-actions", "frontend.upload", "frontend.browser-visual", "frontend.menu-view-binding", "frontend.shared-component-ownership"], "evidenceContractIds": ["evidence-semantic-review", "evidence-controlled-runtime", "evidence-independent-acceptance"], "routingProfileId": "route-frontend" },
+    { "criterionId": "AC-SECURITY", "capabilityIds": ["security.authorization", "security.source-safety"], "evidenceContractIds": ["evidence-static-governance", "evidence-controlled-runtime"], "routingProfileId": "route-security" },
+    { "criterionId": "AC-WORKFLOW", "capabilityIds": ["workflow.state-machine"], "evidenceContractIds": ["evidence-controlled-runtime"], "routingProfileId": "route-workflow" },
+    { "criterionId": "AC-QUALITY", "capabilityIds": ["observability.logging", "quality.testing"], "evidenceContractIds": ["evidence-semantic-review", "evidence-controlled-runtime"], "routingProfileId": "route-quality" },
+    { "criterionId": "AC-OPERATIONS", "capabilityIds": ["ops.governance-scope", "ops.controlled-verification", "ops.controlled-release"], "evidenceContractIds": ["evidence-static-governance", "evidence-controlled-runtime", "evidence-independent-acceptance"], "routingProfileId": "route-operations" },
+    { "criterionId": "AC-DELIVERY-GOVERNANCE", "capabilityIds": ["governance.project-task-context", "delivery.requirement-acceptance-orchestration", "delivery.phase-work-package"], "evidenceContractIds": ["evidence-semantic-review", "evidence-independent-acceptance"], "routingProfileId": "route-delivery-governance" }
+  ],
+  "capabilities": [
+    {
+      "capabilityId": "database.audit-columns",
+      "domain": "database",
+      "summary": "Forge business tables declare the required tenant and audit columns.",
+      "requiredSkills": ["forge-database-migration"],
+      "ruleIds": ["DB-SCHEMA-001", "DB-SCHEMA-003"],
+      "verificationProfiles": ["governance"],
+      "proofLevel": "static",
+      "status": "enforced",
+      "gap": null
+    },
+    {
+      "capabilityId": "database.soft-delete",
+      "domain": "database",
+      "summary": "Logical deletion and active-row uniqueness use the Forge tombstone contract.",
+      "requiredSkills": ["forge-database-migration", "forge-backend-architecture"],
+      "ruleIds": ["DB-DELETE-001", "BE-ENTITY-002"],
+      "verificationProfiles": ["governance", "backend-module-test"],
+      "proofLevel": "runtime",
+      "status": "partial",
+      "gap": "No typed real-MySQL delete-and-reuse profile proves tombstone behavior and active-key reuse."
+    },
+    {
+      "capabilityId": "database.tenant-isolation",
+      "domain": "database",
+      "summary": "Tenant context is explicit and persistence fails closed when it is unavailable.",
+      "requiredSkills": ["forge-security-tenancy-permission", "forge-backend-architecture"],
+      "ruleIds": ["BE-TENANT-001", "BE-TENANT-002"],
+      "verificationProfiles": ["governance", "backend-module-test"],
+      "proofLevel": "runtime",
+      "status": "partial",
+      "gap": "Static tenant guards exist, but no typed cross-tenant real-database negative-test profile exists."
+    },
+    {
+      "capabilityId": "database.index-design",
+      "domain": "database",
+      "summary": "Index and uniqueness design matches table category, query shape, and rollback needs.",
+      "requiredSkills": ["forge-database-migration", "forge-change-design"],
+      "ruleIds": ["DB-REVIEW-001", "DB-QUERY-001"],
+      "verificationProfiles": ["governance"],
+      "proofLevel": "independent",
+      "status": "partial",
+      "gap": "The policy requires review, but no independent query-plan and index-review receipt is typed."
+    },
+    {
+      "capabilityId": "database.migration",
+      "domain": "database",
+      "summary": "Flyway changes are append-only, monotonic, bounded, and safe to upgrade.",
+      "requiredSkills": ["forge-database-migration", "forge-testing-observability"],
+      "ruleIds": ["DB-MIGRATION-001", "DB-MIGRATION-002", "DB-SEED-001"],
+      "verificationProfiles": ["governance", "full-regression"],
+      "proofLevel": "runtime",
+      "status": "partial",
+      "gap": "No typed verification profile performs both empty-schema and previous-version MySQL migration assertions."
+    },
+    {
+      "capabilityId": "backend.entity-dto",
+      "domain": "backend",
+      "summary": "Entities retain persistence concerns while API DTO and VO boundaries remain explicit.",
+      "requiredSkills": ["forge-backend-architecture"],
+      "ruleIds": ["BE-ENTITY-001", "BE-ENTITY-002", "DESIGN-001"],
+      "verificationProfiles": ["governance", "backend-module-compile"],
+      "proofLevel": "semantic",
+      "status": "partial",
+      "gap": "Entity inheritance is checked, but entity leakage and DTO/VO business ownership still require semantic review."
+    },
+    {
+      "capabilityId": "backend.layering",
+      "domain": "backend",
+      "summary": "Controllers, services, and mappers retain their Forge responsibilities.",
+      "requiredSkills": ["forge-backend-architecture", "forge-change-design"],
+      "ruleIds": ["BE-CONTROLLER-001", "BE-QUERY-001"],
+      "verificationProfiles": ["governance", "backend-module-compile"],
+      "proofLevel": "semantic",
+      "status": "partial",
+      "gap": "Detectors cover common violations, but cross-module dependency direction is not completely machine-proven."
+    },
+    {
+      "capabilityId": "backend.utility-ownership",
+      "domain": "backend",
+      "summary": "Domain helpers stay local and shared technical utilities have one reviewed owner.",
+      "requiredSkills": ["forge-backend-architecture", "forge-change-design"],
+      "ruleIds": ["BE-UTILITY-001", "DESIGN-001"],
+      "verificationProfiles": ["governance", "backend-module-test"],
+      "proofLevel": "independent",
+      "status": "partial",
+      "gap": "No independent consumer-search receipt proves reuse demand and dependency direction for every shared utility."
+    },
+    {
+      "capabilityId": "backend.pagination",
+      "domain": "backend",
+      "summary": "Database paging, stable ordering, normalized aliases, and boundary values share one owner.",
+      "requiredSkills": ["forge-backend-architecture", "forge-testing-observability"],
+      "ruleIds": ["BE-PAGE-001", "BE-PAGE-002", "DB-QUERY-001"],
+      "verificationProfiles": ["governance", "backend-module-test"],
+      "proofLevel": "runtime",
+      "status": "partial",
+      "gap": "Boundary unit tests are available, but real-database ordering and query-plan evidence has no typed profile."
+    },
+    {
+      "capabilityId": "backend.permission",
+      "domain": "backend",
+      "summary": "Controller, resource, menu, role, tenant, and frontend permission contracts remain aligned.",
+      "requiredSkills": ["forge-security-tenancy-permission", "forge-backend-architecture"],
+      "ruleIds": ["PERMISSION-API-001", "PERMISSION-RESOURCE-001", "PERMISSION-CONTRACT-001", "PERMISSION-ROLE-001", "PERMISSION-001"],
+      "verificationProfiles": ["governance", "backend-module-test", "full-regression"],
+      "proofLevel": "runtime",
+      "status": "partial",
+      "gap": "No typed authenticated integration profile exercises wrong-role, wrong-tenant, and direct-call negatives."
+    },
+    {
+      "capabilityId": "backend.idempotency",
+      "domain": "backend",
+      "summary": "Commands and callbacks define duplicate, retry, and concurrency behavior.",
+      "requiredSkills": ["forge-backend-architecture", "forge-testing-observability"],
+      "ruleIds": ["BE-RELIABILITY-001"],
+      "verificationProfiles": ["governance", "backend-module-test"],
+      "proofLevel": "semantic",
+      "status": "partial",
+      "gap": "A review obligation exists, but idempotency-key ownership and concurrent duplicate tests are not typed."
+    },
+    {
+      "capabilityId": "backend.transaction",
+      "domain": "backend",
+      "summary": "Transaction boundaries preserve atomic state and explicit failure behavior.",
+      "requiredSkills": ["forge-backend-architecture", "forge-testing-observability"],
+      "ruleIds": ["BE-RELIABILITY-001", "BE-MUTATION-001"],
+      "verificationProfiles": ["governance", "backend-module-test"],
+      "proofLevel": "runtime",
+      "status": "partial",
+      "gap": "No typed real-database transaction profile proves rollback, isolation, and concurrent mutation outcomes."
+    },
+    {
+      "capabilityId": "backend.error-contract",
+      "domain": "backend",
+      "summary": "Errors are typed, stable, non-secret, and mapped through the public API contract.",
+      "requiredSkills": ["forge-backend-architecture", "forge-testing-observability"],
+      "ruleIds": ["BE-RELIABILITY-001", "BE-SAFETY-001"],
+      "verificationProfiles": ["governance", "backend-module-test"],
+      "proofLevel": "semantic",
+      "status": "partial",
+      "gap": "Static safety checks do not prove every HTTP status, error code, localization, and retry contract."
+    },
+    {
+      "capabilityId": "observability.logging",
+      "domain": "observability",
+      "summary": "Mutation and failure logs are structured, correlated, bounded, and secret-safe.",
+      "requiredSkills": ["forge-testing-observability", "forge-backend-architecture"],
+      "ruleIds": ["BE-CONTROLLER-001", "BE-SAFETY-001", "OBS-001"],
+      "verificationProfiles": ["governance", "backend-module-test"],
+      "proofLevel": "semantic",
+      "status": "partial",
+      "gap": "No runtime log-capture profile proves correlation continuity, masking, and low-cardinality fields."
+    },
+    {
+      "capabilityId": "quality.testing",
+      "domain": "quality",
+      "summary": "Changed behavior has test-first evidence and tests execute through enabled build paths.",
+      "requiredSkills": ["forge-testing-observability", "forge-evidence-truth"],
+      "ruleIds": ["QUALITY-TEST-001", "QUALITY-TDD-001", "QUALITY-TEST-002", "QUALITY-TEST-003", "QUALITY-TEST-004", "QUALITY-BUILD-001"],
+      "verificationProfiles": ["governance", "backend-module-test", "frontend-admin-test", "frontend-admin-typecheck", "frontend-h5-test", "full-regression"],
+      "proofLevel": "runtime",
+      "status": "partial",
+      "gap": "Typed runners exist, but cache availability, non-zero test selection, and change-to-test traceability remain execution evidence."
+    },
+    {
+      "capabilityId": "frontend.canonical-components",
+      "domain": "frontend",
+      "summary": "Admin pages use reviewed Forge page, dialog, form, table, image, and icon owners.",
+      "requiredSkills": ["forge-frontend-admin", "forge-ui-consistency-review"],
+      "ruleIds": ["FE-CRUD-001", "UI-DESIGN-001", "UI-DIALOG-001", "UI-FORM-001", "UI-IMAGE-001"],
+      "verificationProfiles": ["governance", "frontend-admin-lint", "frontend-admin-test", "frontend-admin-typecheck"],
+      "proofLevel": "semantic",
+      "status": "partial",
+      "gap": "Canonical-owner detectors do not prove that each component matches the intended business interaction."
+    },
+    {
+      "capabilityId": "frontend.api",
+      "domain": "frontend",
+      "summary": "Frontend views delegate transport to src/api modules, which use canonical request ownership and preserve backend contracts.",
+      "requiredSkills": ["forge-frontend-admin", "forge-testing-observability"],
+      "ruleIds": ["FE-API-001", "FE-HTTP-001", "UI-HTTP-001", "UI-API-CONSUMER-001"],
+      "verificationProfiles": ["governance", "frontend-admin-lint", "frontend-admin-test", "frontend-admin-typecheck"],
+      "proofLevel": "runtime",
+      "status": "partial",
+      "gap": "Adapter tests do not provide a typed live authenticated API compatibility profile."
+    },
+    {
+      "capabilityId": "frontend.permission",
+      "domain": "frontend",
+      "summary": "Mutation controls use canonical permission directives aligned with backend resources.",
+      "requiredSkills": ["forge-frontend-admin", "forge-security-tenancy-permission"],
+      "ruleIds": ["UI-PERMI-001", "PERMISSION-CONTRACT-001", "PERMISSION-001"],
+      "verificationProfiles": ["governance", "frontend-admin-test", "full-regression"],
+      "proofLevel": "runtime",
+      "status": "partial",
+      "gap": "No browser profile proves hidden controls and rejected direct API calls for unauthorized roles."
+    },
+    {
+      "capabilityId": "frontend.long-id",
+      "domain": "frontend",
+      "summary": "Long identifiers remain lossless strings across JavaScript, templates, stores, and API adapters.",
+      "requiredSkills": ["forge-frontend-admin", "forge-testing-observability"],
+      "ruleIds": ["FE-DATA-001"],
+      "verificationProfiles": ["governance", "frontend-admin-lint", "frontend-admin-test", "frontend-admin-typecheck"],
+      "proofLevel": "runtime",
+      "status": "partial",
+      "gap": "Static coercion detection exists, but no typed browser/API round-trip profile proves identifiers above Number.MAX_SAFE_INTEGER."
+    },
+    {
+      "capabilityId": "frontend.dictionary",
+      "domain": "frontend",
+      "summary": "Dictionary keys and canonical selectors/tags remain aligned across UI and API data.",
+      "requiredSkills": ["forge-frontend-admin", "forge-dictionary-contract"],
+      "ruleIds": ["FE-DICT-001", "UI-DICT-001"],
+      "verificationProfiles": ["governance", "frontend-admin-lint", "frontend-admin-test"],
+      "proofLevel": "semantic",
+      "status": "partial",
+      "gap": "No cross-layer dictionary fixture proves deployed key/value/label compatibility and unknown-value behavior."
+    },
+    {
+      "capabilityId": "frontend.forms",
+      "domain": "frontend",
+      "summary": "Forms use canonical owners and expose validation, submit, cancel, and failure behavior.",
+      "requiredSkills": ["forge-frontend-admin", "forge-ui-consistency-review"],
+      "ruleIds": ["UI-FORM-001", "FE-CRUD-001", "FE-UX-001"],
+      "verificationProfiles": ["governance", "frontend-admin-lint", "frontend-admin-test", "frontend-admin-build"],
+      "proofLevel": "runtime",
+      "status": "partial",
+      "gap": "No browser profile proves keyboard submission, server validation mapping, focus return, and dirty cancellation."
+    },
+    {
+      "capabilityId": "frontend.table",
+      "domain": "frontend",
+      "summary": "Tables use canonical pagination and stable loading, empty, error, and refresh behavior.",
+      "requiredSkills": ["forge-frontend-admin", "forge-ui-consistency-review"],
+      "ruleIds": ["FE-CRUD-001", "UI-PAGE-001", "UI-STATE-001"],
+      "verificationProfiles": ["governance", "frontend-admin-lint", "frontend-admin-test"],
+      "proofLevel": "runtime",
+      "status": "partial",
+      "gap": "Component tests do not prove large-data paging, column overflow, selection persistence, and live refresh."
+    },
+    {
+      "capabilityId": "frontend.tokens",
+      "domain": "frontend",
+      "summary": "Colors and UI values use the reviewed design-token owner.",
+      "requiredSkills": ["forge-frontend-admin", "forge-ui-consistency-review"],
+      "ruleIds": ["FE-DESIGN-001", "UI-TOKEN-001"],
+      "verificationProfiles": ["governance", "frontend-admin-lint", "frontend-admin-build"],
+      "proofLevel": "semantic",
+      "status": "partial",
+      "gap": "Token ownership is checked, but semantic token choice and theme contrast still require design review."
+    },
+    {
+      "capabilityId": "frontend.responsive",
+      "domain": "frontend",
+      "summary": "Admin layouts remain usable across reviewed wide and narrow viewports.",
+      "requiredSkills": ["forge-frontend-admin", "forge-ui-consistency-review"],
+      "ruleIds": ["FE-UX-001"],
+      "verificationProfiles": ["frontend-admin-build"],
+      "proofLevel": "independent",
+      "status": "planned",
+      "gap": "No typed browser viewport matrix or independent responsive-layout receipt exists."
+    },
+    {
+      "capabilityId": "frontend.accessibility",
+      "domain": "frontend",
+      "summary": "Interactive surfaces preserve keyboard operation, focus, names, and contrast.",
+      "requiredSkills": ["forge-frontend-admin", "forge-ui-consistency-review"],
+      "ruleIds": ["UI-A11Y-001", "FE-UX-001"],
+      "verificationProfiles": ["governance", "frontend-admin-lint", "frontend-admin-test"],
+      "proofLevel": "independent",
+      "status": "partial",
+      "gap": "No axe/browser/assistive-technology profile or independent accessibility review receipt exists."
+    },
+    {
+      "capabilityId": "frontend.states",
+      "domain": "frontend",
+      "summary": "Loading, empty, error, busy, retry, and success states are observable and bounded.",
+      "requiredSkills": ["forge-frontend-admin", "forge-testing-observability"],
+      "ruleIds": ["UI-STATE-001", "FE-UX-001"],
+      "verificationProfiles": ["governance", "frontend-admin-test"],
+      "proofLevel": "runtime",
+      "status": "partial",
+      "gap": "The review rule does not execute every async transition, duplicate-submit, retry, and cancellation state."
+    },
+    {
+      "capabilityId": "frontend.danger-actions",
+      "domain": "frontend",
+      "summary": "Destructive and irreversible actions use canonical confirmation ownership.",
+      "requiredSkills": ["forge-frontend-admin", "forge-security-tenancy-permission"],
+      "ruleIds": ["UI-DANGER-001"],
+      "verificationProfiles": ["governance", "frontend-admin-test"],
+      "proofLevel": "semantic",
+      "status": "partial",
+      "gap": "Confirmation ownership is checked, but impact wording, permission negatives, and irreversible backend effects need review."
+    },
+    {
+      "capabilityId": "frontend.upload",
+      "domain": "frontend",
+      "summary": "Uploads use canonical ownership and preserve authorization, limits, progress, and failure behavior.",
+      "requiredSkills": ["forge-frontend-admin", "forge-security-tenancy-permission"],
+      "ruleIds": ["UI-UPLOAD-001", "FE-RUNTIME-001"],
+      "verificationProfiles": ["governance", "frontend-admin-test", "frontend-admin-build"],
+      "proofLevel": "runtime",
+      "status": "partial",
+      "gap": "No browser upload profile proves authorization, size/type limits, cancellation, retry, and malicious-file rejection."
+    },
+    {
+      "capabilityId": "frontend.browser-visual",
+      "domain": "frontend",
+      "summary": "Rendered layout, interaction, and visual hierarchy receive independent browser review.",
+      "requiredSkills": ["forge-frontend-admin", "forge-ui-consistency-review", "forge-evidence-truth"],
+      "ruleIds": ["FE-UX-001", "UI-DESIGN-001"],
+      "verificationProfiles": ["frontend-admin-build"],
+      "proofLevel": "independent",
+      "status": "planned",
+      "gap": "No typed browser visual-regression profile, baseline artifact, or independent review receipt exists."
+    },
+    {
+      "capabilityId": "security.authorization",
+      "domain": "security",
+      "summary": "Authentication, tenant, role, resource, and direct-call boundaries fail closed.",
+      "requiredSkills": ["forge-security-tenancy-permission", "forge-testing-observability"],
+      "ruleIds": ["BE-TENANT-002", "PERMISSION-CONTRACT-001", "PERMISSION-ROLE-001", "PERMISSION-001"],
+      "verificationProfiles": ["governance", "backend-module-test", "full-regression"],
+      "proofLevel": "runtime",
+      "status": "partial",
+      "gap": "No typed authenticated security integration profile proves cross-role, cross-tenant, revoked-session, and direct-call negatives."
+    },
+    {
+      "capabilityId": "security.source-safety",
+      "domain": "security",
+      "summary": "Governed source rejects obvious secret, unsafe logging, runtime-supply, and Skill-content hazards.",
+      "requiredSkills": ["forge-security-tenancy-permission", "forge-testing-observability"],
+      "ruleIds": ["BE-SAFETY-001", "FE-RUNTIME-001", "SUPPLY-001", "SKILL-SAFETY-001"],
+      "verificationProfiles": ["governance"],
+      "proofLevel": "static",
+      "status": "enforced",
+      "gap": null
+    },
+    {
+      "capabilityId": "workflow.state-machine",
+      "domain": "workflow",
+      "summary": "Workflow behavior uses a real engine, reviewed transitions, history, callbacks, and permission boundaries.",
+      "requiredSkills": ["forge-workflow-production", "forge-security-tenancy-permission", "forge-testing-observability"],
+      "ruleIds": ["FLOW-001", "PERMISSION-001", "BE-RELIABILITY-001"],
+      "verificationProfiles": ["governance", "full-regression"],
+      "proofLevel": "runtime",
+      "status": "partial",
+      "gap": "No typed real-Flowable profile proves rejection, return, resubmit, duplicate callback, and immutable history."
+    },
+    {
+      "capabilityId": "ops.governance-scope",
+      "domain": "ops",
+      "summary": "Static governance reads a complete no-follow change and cannot be bypassed from source text.",
+      "requiredSkills": ["forge-task-router", "forge-evidence-truth"],
+      "ruleIds": ["GOV-PATH-001", "GOV-BYPASS-001", "GOV-SCOPE-001"],
+      "verificationProfiles": ["governance"],
+      "proofLevel": "static",
+      "status": "enforced",
+      "gap": null
+    },
+    {
+      "capabilityId": "ops.controlled-verification",
+      "domain": "ops",
+      "summary": "Verification executes typed commands in a bounded runner and binds evidence to the source fingerprint.",
+      "requiredSkills": ["forge-testing-observability", "forge-evidence-truth"],
+      "ruleIds": ["QUALITY-TEST-002", "QUALITY-TEST-004", "QUALITY-BUILD-001", "SUPPLY-001"],
+      "verificationProfiles": ["governance", "backend-module-test", "frontend-admin-lint", "frontend-admin-test", "frontend-h5-test", "full-regression"],
+      "proofLevel": "runtime",
+      "status": "partial",
+      "gap": "Runner enforcement exists, but a capability can remain blocked by a missing reviewed offline cache and therefore has no execution proof."
+    },
+    {
+      "capabilityId": "ops.controlled-release",
+      "domain": "ops",
+      "summary": "Git promotion, migration, deployment, smoke, and rollback remain a separate controlled-release authority.",
+      "requiredSkills": ["forge-controlled-release", "forge-git-checkpoint", "forge-evidence-truth"],
+      "ruleIds": ["SUPPLY-001", "GOV-SCOPE-001"],
+      "verificationProfiles": ["governance", "full-regression"],
+      "proofLevel": "independent",
+      "status": "partial",
+      "gap": "Quality profiles do not prove Broker promotion, real migration, deployment health, rollback, or post-release business acceptance."
+    },
+    {
+      "capabilityId": "database.table-baseline",
+      "domain": "database",
+      "summary": "New Forge business tables start from the reviewed table-category, key, tenant, audit, and comment baseline.",
+      "requiredSkills": ["forge-database-migration", "forge-change-design"],
+      "ruleIds": ["DB-SCHEMA-002"],
+      "verificationProfiles": ["governance", "changed-safe"],
+      "proofLevel": "semantic",
+      "status": "partial",
+      "gap": "Static schema shape is covered, but table category and index intent still require a reviewed design receipt."
+    },
+    {
+      "capabilityId": "backend.crud-http-contract",
+      "domain": "backend",
+      "summary": "A CRUD vertical slice preserves Forge controller, command, query, permission, response, and test contracts.",
+      "requiredSkills": ["forge-crud-production", "forge-backend-architecture", "forge-testing-observability"],
+      "ruleIds": ["BE-CRUD-001"],
+      "verificationProfiles": ["governance", "backend-test-class", "backend-module-test"],
+      "proofLevel": "runtime",
+      "status": "partial",
+      "gap": "Typed class and module tests exist, but no authenticated API profile proves the complete CRUD contract against real infrastructure."
+    },
+    {
+      "capabilityId": "frontend.menu-view-binding",
+      "domain": "frontend",
+      "summary": "Menus, routes, views, permission codes, and build targets remain one deployable contract.",
+      "requiredSkills": ["forge-frontend-admin", "forge-security-tenancy-permission"],
+      "ruleIds": ["FE-MENU-001"],
+      "verificationProfiles": ["governance", "frontend-admin-build", "frontend-h5-build"],
+      "proofLevel": "runtime",
+      "status": "partial",
+      "gap": "Build profiles prove compilation, but no browser receipt proves role-specific navigation and direct-route rejection."
+    },
+    {
+      "capabilityId": "frontend.shared-component-ownership",
+      "domain": "frontend",
+      "summary": "A shared UI component has evidence of multiple consumers, one owner, and valid dependency direction.",
+      "requiredSkills": ["forge-frontend-admin", "forge-change-design", "forge-ui-consistency-review"],
+      "ruleIds": ["UI-SHARED-CONSUMER-001"],
+      "verificationProfiles": ["governance", "changed-safe", "frontend-admin-test"],
+      "proofLevel": "independent",
+      "status": "partial",
+      "gap": "Consumer search is required, but independent ownership and reuse evidence is not yet a typed receipt."
+    },
+    {
+      "capabilityId": "governance.project-task-context",
+      "domain": "governance",
+      "summary": "Project authority, TaskSpace collaboration, and the task contract are loaded before mutation begins.",
+      "requiredSkills": ["project-document-reader", "forge-taskspace-collaboration", "forge-task-contract", "forge-task-router"],
+      "ruleIds": ["GOV-PATH-001", "GOV-SCOPE-001"],
+      "verificationProfiles": ["governance", "changed-safe"],
+      "proofLevel": "semantic",
+      "status": "partial",
+      "gap": "Routing traces prove declared Skill use, but cannot by themselves prove that every loaded project statement was interpreted correctly."
+    },
+    {
+      "capabilityId": "delivery.requirement-acceptance-orchestration",
+      "domain": "delivery",
+      "summary": "Implementation is driven from requirement coverage through bounded orchestration to independent release acceptance.",
+      "requiredSkills": ["forge-delivery-orchestrator", "forge-requirement-coverage", "forge-release-acceptance", "forge-crud-production", "forge-evidence-truth"],
+      "ruleIds": ["QUALITY-TDD-001", "QUALITY-TEST-003", "QUALITY-TEST-004", "GOV-SCOPE-001"],
+      "verificationProfiles": ["changed-safe", "full-regression"],
+      "proofLevel": "independent",
+      "status": "partial",
+      "gap": "The stages and evidence contract are routed, but requirement-by-requirement business acceptance still needs typed reviewer receipts."
+    },
+    {
+      "capabilityId": "delivery.phase-work-package",
+      "domain": "delivery",
+      "summary": "Each operator-controlled phase is sealed as a machine-bound, human-readable work package with process, verification, handoff, and review-only Memory candidate records.",
+      "requiredSkills": ["forge-phase-work-package", "forge-task-router", "forge-evidence-truth"],
+      "ruleIds": [],
+      "verificationProfiles": ["changed-safe", "full-regression"],
+      "proofLevel": "independent",
+      "status": "partial",
+      "gap": "Local controller and hash-closure tests prove deterministic package generation, but a real Harness-to-DeepSeek phase sequence and independent server canary review have not yet proven operational use."
+    }
+  ],
+  "structuredGaps": [
+    { "gapId": "gap.database.soft-delete", "capabilityId": "database.soft-delete", "status": "partial", "targetEvidenceContractId": "evidence-controlled-runtime" },
+    { "gapId": "gap.database.tenant-isolation", "capabilityId": "database.tenant-isolation", "status": "partial", "targetEvidenceContractId": "evidence-controlled-runtime" },
+    { "gapId": "gap.database.index-design", "capabilityId": "database.index-design", "status": "partial", "targetEvidenceContractId": "evidence-independent-acceptance" },
+    { "gapId": "gap.database.migration", "capabilityId": "database.migration", "status": "partial", "targetEvidenceContractId": "evidence-controlled-runtime" },
+    { "gapId": "gap.backend.entity-dto", "capabilityId": "backend.entity-dto", "status": "partial", "targetEvidenceContractId": "evidence-semantic-review" },
+    { "gapId": "gap.backend.layering", "capabilityId": "backend.layering", "status": "partial", "targetEvidenceContractId": "evidence-semantic-review" },
+    { "gapId": "gap.backend.utility-ownership", "capabilityId": "backend.utility-ownership", "status": "partial", "targetEvidenceContractId": "evidence-independent-acceptance" },
+    { "gapId": "gap.backend.pagination", "capabilityId": "backend.pagination", "status": "partial", "targetEvidenceContractId": "evidence-controlled-runtime" },
+    { "gapId": "gap.backend.permission", "capabilityId": "backend.permission", "status": "partial", "targetEvidenceContractId": "evidence-controlled-runtime" },
+    { "gapId": "gap.backend.idempotency", "capabilityId": "backend.idempotency", "status": "partial", "targetEvidenceContractId": "evidence-semantic-review" },
+    { "gapId": "gap.backend.transaction", "capabilityId": "backend.transaction", "status": "partial", "targetEvidenceContractId": "evidence-controlled-runtime" },
+    { "gapId": "gap.backend.error-contract", "capabilityId": "backend.error-contract", "status": "partial", "targetEvidenceContractId": "evidence-semantic-review" },
+    { "gapId": "gap.observability.logging", "capabilityId": "observability.logging", "status": "partial", "targetEvidenceContractId": "evidence-semantic-review" },
+    { "gapId": "gap.quality.testing", "capabilityId": "quality.testing", "status": "partial", "targetEvidenceContractId": "evidence-controlled-runtime" },
+    { "gapId": "gap.frontend.canonical-components", "capabilityId": "frontend.canonical-components", "status": "partial", "targetEvidenceContractId": "evidence-semantic-review" },
+    { "gapId": "gap.frontend.api", "capabilityId": "frontend.api", "status": "partial", "targetEvidenceContractId": "evidence-controlled-runtime" },
+    { "gapId": "gap.frontend.permission", "capabilityId": "frontend.permission", "status": "partial", "targetEvidenceContractId": "evidence-controlled-runtime" },
+    { "gapId": "gap.frontend.long-id", "capabilityId": "frontend.long-id", "status": "partial", "targetEvidenceContractId": "evidence-controlled-runtime" },
+    { "gapId": "gap.frontend.dictionary", "capabilityId": "frontend.dictionary", "status": "partial", "targetEvidenceContractId": "evidence-semantic-review" },
+    { "gapId": "gap.frontend.forms", "capabilityId": "frontend.forms", "status": "partial", "targetEvidenceContractId": "evidence-controlled-runtime" },
+    { "gapId": "gap.frontend.table", "capabilityId": "frontend.table", "status": "partial", "targetEvidenceContractId": "evidence-controlled-runtime" },
+    { "gapId": "gap.frontend.tokens", "capabilityId": "frontend.tokens", "status": "partial", "targetEvidenceContractId": "evidence-semantic-review" },
+    { "gapId": "gap.frontend.responsive", "capabilityId": "frontend.responsive", "status": "planned", "targetEvidenceContractId": "evidence-independent-acceptance" },
+    { "gapId": "gap.frontend.accessibility", "capabilityId": "frontend.accessibility", "status": "partial", "targetEvidenceContractId": "evidence-independent-acceptance" },
+    { "gapId": "gap.frontend.states", "capabilityId": "frontend.states", "status": "partial", "targetEvidenceContractId": "evidence-controlled-runtime" },
+    { "gapId": "gap.frontend.danger-actions", "capabilityId": "frontend.danger-actions", "status": "partial", "targetEvidenceContractId": "evidence-semantic-review" },
+    { "gapId": "gap.frontend.upload", "capabilityId": "frontend.upload", "status": "partial", "targetEvidenceContractId": "evidence-controlled-runtime" },
+    { "gapId": "gap.frontend.browser-visual", "capabilityId": "frontend.browser-visual", "status": "planned", "targetEvidenceContractId": "evidence-independent-acceptance" },
+    { "gapId": "gap.security.authorization", "capabilityId": "security.authorization", "status": "partial", "targetEvidenceContractId": "evidence-controlled-runtime" },
+    { "gapId": "gap.workflow.state-machine", "capabilityId": "workflow.state-machine", "status": "partial", "targetEvidenceContractId": "evidence-controlled-runtime" },
+    { "gapId": "gap.ops.controlled-verification", "capabilityId": "ops.controlled-verification", "status": "partial", "targetEvidenceContractId": "evidence-controlled-runtime" },
+    { "gapId": "gap.ops.controlled-release", "capabilityId": "ops.controlled-release", "status": "partial", "targetEvidenceContractId": "evidence-independent-acceptance" },
+    { "gapId": "gap.database.table-baseline", "capabilityId": "database.table-baseline", "status": "partial", "targetEvidenceContractId": "evidence-semantic-review" },
+    { "gapId": "gap.backend.crud-http-contract", "capabilityId": "backend.crud-http-contract", "status": "partial", "targetEvidenceContractId": "evidence-controlled-runtime" },
+    { "gapId": "gap.frontend.menu-view-binding", "capabilityId": "frontend.menu-view-binding", "status": "partial", "targetEvidenceContractId": "evidence-controlled-runtime" },
+    { "gapId": "gap.frontend.shared-component-ownership", "capabilityId": "frontend.shared-component-ownership", "status": "partial", "targetEvidenceContractId": "evidence-independent-acceptance" },
+    { "gapId": "gap.governance.project-task-context", "capabilityId": "governance.project-task-context", "status": "partial", "targetEvidenceContractId": "evidence-semantic-review" },
+    { "gapId": "gap.delivery.requirement-acceptance-orchestration", "capabilityId": "delivery.requirement-acceptance-orchestration", "status": "partial", "targetEvidenceContractId": "evidence-independent-acceptance" },
+    { "gapId": "gap.delivery.phase-work-package", "capabilityId": "delivery.phase-work-package", "status": "partial", "targetEvidenceContractId": "evidence-independent-acceptance" }
+  ],
+  "explicitExclusions": [
+    {
+      "exclusionId": "exclude.server-deployment-authority",
+      "criterionId": "AC-NO-SERVER-DEPLOYMENT",
+      "reason": "Local quality acceptance cannot authorize server deployment, merge, release, migration, or rollback.",
+      "authority": "separate-owner-authorized-deployment-closeout"
+    }
+  ]
+}

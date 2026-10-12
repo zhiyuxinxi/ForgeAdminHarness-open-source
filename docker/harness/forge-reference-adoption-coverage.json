@@ -1,0 +1,1861 @@
+{
+  "schemaVersion": 1,
+  "sourceDocument": "docs/forge-governance-reference-adoption.md",
+  "entries": [
+    {
+      "roadmapId": "GOV-CLEANROOM-001",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-evidence-truth"
+      ],
+      "executableRules": [
+        "SKILL-SAFETY-001",
+        "SUPPLY-001"
+      ],
+      "unitTests": [
+        "tests/skill-bundle-validator.test.mjs"
+      ],
+      "behaviorCases": [
+        "GOV-CLEANROOM-001"
+      ],
+      "requiredIndependentEvidence": [
+        "provenance-and-license-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "GOV-FSM-001",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-change-design",
+        "forge-delivery-orchestrator"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-delivery.test.mjs"
+      ],
+      "behaviorCases": [
+        "GOV-FSM-001"
+      ],
+      "requiredIndependentEvidence": [
+        "protected-state-event-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-FSM-ILLEGAL-JUMP",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-delivery-orchestrator"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-delivery.test.mjs",
+        "tests/coverage-fsm-state.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-FSM-ILLEGAL-JUMP"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-illegal-jump-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-FSM-REPAIR-REFUSAL",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-delivery-orchestrator"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-delivery.test.mjs",
+        "tests/coverage-fsm-state.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-FSM-REPAIR-REFUSAL"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-repair-refusal-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "GOV-CAS-002",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-delivery-orchestrator"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-delivery.test.mjs",
+        "tests/forge-execution-context.test.mjs"
+      ],
+      "behaviorCases": [
+        "GOV-CAS-002"
+      ],
+      "requiredIndependentEvidence": [
+        "protected-concurrent-cas-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-CAS-STALE-WRITER",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-delivery-orchestrator"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-delivery.test.mjs",
+        "tests/coverage-cas-state.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-CAS-STALE-WRITER"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-stale-writer-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-CAS-IDEMPOTENT-REPLAY",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-delivery-orchestrator"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-delivery.test.mjs",
+        "tests/coverage-cas-state.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-CAS-IDEMPOTENT-REPLAY"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-idempotent-replay-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "GOV-SPEC-HASH-003",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-change-design",
+        "forge-requirement-coverage"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-change-contract.test.mjs",
+        "tests/forge-delivery-contract-cli.test.mjs"
+      ],
+      "behaviorCases": [
+        "GOV-SPEC-HASH-003"
+      ],
+      "requiredIndependentEvidence": [
+        "what-how-task-hash-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-WHAT-CHANGED-AFTER-PLAN",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-change-design"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-change-contract.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-WHAT-CHANGED-AFTER-PLAN"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-what-drift-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-HOW-CHANGE-INVALIDATES-VERIFY",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-change-design"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-change-contract.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-HOW-CHANGE-INVALIDATES-VERIFY"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-how-drift-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "GOV-HANDOFF-004",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-delivery-orchestrator",
+        "forge-evidence-truth"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-delivery.test.mjs"
+      ],
+      "behaviorCases": [
+        "GOV-HANDOFF-004"
+      ],
+      "requiredIndependentEvidence": [
+        "protected-handoff-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-HANDOFF-TAMPER",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-delivery-orchestrator"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-delivery.test.mjs",
+        "tests/coverage-handoff-state.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-HANDOFF-TAMPER"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-handoff-tamper-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-HANDOFF-STALE-COMMIT",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-delivery-orchestrator"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-delivery.test.mjs",
+        "tests/coverage-handoff-state.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-HANDOFF-STALE-COMMIT"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-stale-handoff-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "GOV-VERIFY-005",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-testing-observability",
+        "forge-evidence-truth"
+      ],
+      "executableRules": [
+        "QUALITY-TEST-002",
+        "QUALITY-TEST-004",
+        "QUALITY-BUILD-001"
+      ],
+      "unitTests": [
+        "tests/forge-verification-runner.test.mjs",
+        "tests/forge-controlled-command.test.mjs",
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "crud-complete"
+      ],
+      "requiredIndependentEvidence": [
+        "protected-verification-run-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-FAKE-TEST-OUTPUT",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-evidence-truth"
+      ],
+      "executableRules": [
+        "QUALITY-TDD-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance-runtime-instructions.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-FAKE-TEST-OUTPUT"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-fake-output-refusal-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-TEST-FAIL-NO-COMPLETION",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-evidence-truth"
+      ],
+      "executableRules": [
+        "QUALITY-TDD-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance-runtime-instructions.test.mjs"
+      ],
+      "behaviorCases": [
+        "crud-complete"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-failed-test-closeout-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-TDD-EXEMPTION",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-testing-observability"
+      ],
+      "executableRules": [
+        "QUALITY-TEST-002",
+        "QUALITY-TEST-004",
+        "QUALITY-TDD-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-TDD-EXEMPTION"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-tdd-bypass-refusal-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "GOV-REVIEW-006",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-delivery-orchestrator",
+        "forge-requirement-coverage",
+        "forge-evidence-truth"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-acceptance-aggregator.test.mjs"
+      ],
+      "behaviorCases": [
+        "GOV-REVIEW-006"
+      ],
+      "requiredIndependentEvidence": [
+        "protected-dual-review-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-REVIEW-MISSING-VERDICT",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-evidence-truth"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-acceptance-aggregator.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-REVIEW-MISSING-VERDICT"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-missing-review-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-REVIEW-SELF-APPROVAL",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-evidence-truth"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-acceptance-aggregator.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-REVIEW-SELF-APPROVAL"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-self-review-refusal-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-REVIEW-OPEN-FINDING",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-evidence-truth"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-acceptance-aggregator.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-REVIEW-OPEN-FINDING"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-open-finding-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "GOV-AGENT-007",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-taskspace-collaboration",
+        "forge-delivery-orchestrator"
+      ],
+      "executableRules": [
+        "GOV-PATH-001"
+      ],
+      "unitTests": [
+        "tests/taskspace-broker.test.mjs",
+        "tests/forge-execution-context.test.mjs",
+        "tests/forge-semantic-resource-lease.test.mjs"
+      ],
+      "behaviorCases": [
+        "GOV-AGENT-007"
+      ],
+      "requiredIndependentEvidence": [
+        "semantic-resource-lease-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-AGENT-PATH-OVERLAP",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-taskspace-collaboration"
+      ],
+      "executableRules": [
+        "GOV-PATH-001"
+      ],
+      "unitTests": [
+        "tests/taskspace-broker.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-AGENT-PATH-OVERLAP"
+      ],
+      "requiredIndependentEvidence": [
+        "real-multi-agent-path-conflict-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-AGENT-SEMANTIC-OVERLAP",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-delivery-orchestrator"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-semantic-resource-lease.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-AGENT-SEMANTIC-OVERLAP"
+      ],
+      "requiredIndependentEvidence": [
+        "real-multi-agent-semantic-conflict-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-AGENT-DEAD-LEASE",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-taskspace-collaboration"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/taskspace-broker.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-AGENT-DEAD-LEASE"
+      ],
+      "requiredIndependentEvidence": [
+        "real-dead-writer-recovery-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "GOV-UPGRADE-008",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-controlled-release"
+      ],
+      "executableRules": [
+        "SUPPLY-001"
+      ],
+      "unitTests": [
+        "tests/forge-delivery-toolkit-upgrade.test.mjs",
+        "tests/harness-runtime-build-policy.test.mjs"
+      ],
+      "behaviorCases": [
+        "BEH-15-upgrade-failure"
+      ],
+      "requiredIndependentEvidence": [
+        "final-image-upgrade-rollback-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-UPGRADE-MANIFEST-DRIFT",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-controlled-release"
+      ],
+      "executableRules": [
+        "SUPPLY-001"
+      ],
+      "unitTests": [
+        "tests/forge-delivery-toolkit-upgrade.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-UPGRADE-MANIFEST-DRIFT"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-upgrade-drift-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-UPGRADE-FAILURE-ROLLBACK",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-controlled-release"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-delivery-toolkit-upgrade.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-UPGRADE-FAILURE-ROLLBACK"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-upgrade-rollback-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-UPGRADE-NO-SERVER-AUTH",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-controlled-release"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-delivery-toolkit-upgrade.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-UPGRADE-NO-SERVER-AUTH"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-no-deploy-authority-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "DOMAIN-ROUTE-001",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-task-contract",
+        "forge-task-router"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-task-execution-contract.test.mjs",
+        "tests/forge-skill-evals.test.mjs"
+      ],
+      "behaviorCases": [
+        "crud-complete",
+        "edge-pagination-shared-owner",
+        "frontend-aicrudpage-api-contract",
+        "adversarial-shortcuts"
+      ],
+      "requiredIndependentEvidence": [
+        "cross-model-routing-trace-set"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-ROUTE-CROSS-LAYER",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-task-router"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-task-execution-contract.test.mjs"
+      ],
+      "behaviorCases": [
+        "crud-complete"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-cross-layer-routing-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-ROUTE-SMALL-FIX-NO-OVERLOAD",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-task-router"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-skill-evals.test.mjs",
+        "tests/forge-behavior-qualification.test.mjs"
+      ],
+      "behaviorCases": [
+        "BEH-02-small-fix-routing"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-small-fix-routing-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "DOMAIN-OPTLOCK-002",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-change-design",
+        "forge-crud-production"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-business-object-mutation.test.mjs"
+      ],
+      "behaviorCases": [
+        "DOMAIN-OPTLOCK-002"
+      ],
+      "requiredIndependentEvidence": [
+        "business-api-optimistic-lock-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-UNKNOWN-ID-REFUSAL",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-crud-production"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-business-object-mutation.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-UNKNOWN-ID-REFUSAL"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-unknown-id-refusal-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-FULL-REPLACE-STALE",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-crud-production"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-business-object-mutation.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-FULL-REPLACE-STALE"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-stale-replace-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "AUTHZ-APPROVAL-003",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-task-contract"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-business-data-approval.test.mjs"
+      ],
+      "behaviorCases": [
+        "AUTHZ-APPROVAL-003"
+      ],
+      "requiredIndependentEvidence": [
+        "object-bound-business-data-approval-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-GENERIC-OK-NOT-AUTH",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-task-contract"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-business-data-approval.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-GENERIC-OK-NOT-AUTH"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-generic-ok-refusal-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-STALE-APPROVAL",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-task-contract"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-business-data-approval.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-STALE-APPROVAL"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-stale-approval-refusal-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-SCOPE-CHANGED-REAPPROVE",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-task-contract"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-business-data-approval.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-SCOPE-CHANGED-REAPPROVE"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-scope-change-reapproval-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "DOMAIN-EXEC-004",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-release-acceptance",
+        "forge-evidence-truth"
+      ],
+      "executableRules": [
+        "QUALITY-TDD-001"
+      ],
+      "unitTests": [
+        "tests/forge-acceptance-aggregator.test.mjs",
+        "tests/forge-verification-runner.test.mjs"
+      ],
+      "behaviorCases": [
+        "DOMAIN-EXEC-004"
+      ],
+      "requiredIndependentEvidence": [
+        "real-api-browser-side-effect-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-CREATE-200-NOT-DONE",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-release-acceptance",
+        "forge-evidence-truth"
+      ],
+      "executableRules": [
+        "QUALITY-TDD-001"
+      ],
+      "unitTests": [
+        "tests/forge-acceptance-aggregator.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-CREATE-200-NOT-DONE"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-create-not-accepted-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-NEGATIVE-CASE-REQUIRED",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-release-acceptance"
+      ],
+      "executableRules": [
+        "QUALITY-TDD-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "crud-complete"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-negative-case-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "DB-MIGRATION-005",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-database-migration"
+      ],
+      "executableRules": [
+        "DB-SCHEMA-001",
+        "DB-SCHEMA-002",
+        "DB-SCHEMA-003",
+        "DB-DELETE-001",
+        "DB-MIGRATION-001",
+        "DB-MIGRATION-002",
+        "DB-SEED-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs",
+        "tests/forge-verification-runner.test.mjs"
+      ],
+      "behaviorCases": [
+        "DB-MIGRATION-005"
+      ],
+      "requiredIndependentEvidence": [
+        "real-mysql-empty-upgrade-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-DB-MISSING-TENANT-AUDIT",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-database-migration"
+      ],
+      "executableRules": [
+        "DB-SCHEMA-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-DB-MISSING-TENANT-AUDIT"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-missing-audit-correction-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-DB-DESTRUCTIVE-DDL",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-database-migration"
+      ],
+      "executableRules": [
+        "DB-MIGRATION-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-DB-DESTRUCTIVE-DDL"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-destructive-ddl-refusal-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-DB-TOMBSTONE-UNIQUE",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-database-migration"
+      ],
+      "executableRules": [
+        "DB-DELETE-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "crud-complete"
+      ],
+      "requiredIndependentEvidence": [
+        "real-mysql-delete-reuse-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-BE-CONTROLLER-BYPASS-SERVICE",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-backend-architecture"
+      ],
+      "executableRules": [
+        "BE-CONTROLLER-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-BE-CONTROLLER-BYPASS-SERVICE"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-layering-correction-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-BE-MISSING-TENANT-AUTH",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-backend-architecture",
+        "forge-security-tenancy-permission"
+      ],
+      "executableRules": [
+        "BE-TENANT-001",
+        "PERMISSION-API-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-BE-MISSING-TENANT-AUTH"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-tenant-auth-correction-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "UI-CONTRACT-007",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-frontend-admin",
+        "forge-ui-consistency-review"
+      ],
+      "executableRules": [
+        "UI-DESIGN-001",
+        "UI-HTTP-001",
+        "UI-A11Y-001",
+        "UI-PERMI-001",
+        "UI-PAGE-001",
+        "UI-FORM-001",
+        "UI-STATE-001"
+      ],
+      "unitTests": [
+        "tests/forge-ui-contract.test.mjs",
+        "tests/forge-governance.test.mjs",
+        "tests/forge-ui-edit-session.test.mjs"
+      ],
+      "behaviorCases": [
+        "UI-CONTRACT-007"
+      ],
+      "requiredIndependentEvidence": [
+        "real-browser-ui-contract-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-UI-CANONICAL-OWNER",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-frontend-admin"
+      ],
+      "executableRules": [
+        "FE-CRUD-001",
+        "UI-PAGE-001",
+        "UI-FORM-001"
+      ],
+      "unitTests": [
+        "tests/forge-ui-contract.test.mjs"
+      ],
+      "behaviorCases": [
+        "crud-complete"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-canonical-owner-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-UI-EDIT-REFILL-RACE",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-frontend-admin"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-ui-edit-session.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-UI-EDIT-REFILL-RACE"
+      ],
+      "requiredIndependentEvidence": [
+        "real-browser-refill-race-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-UI-ACCESSIBILITY",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-frontend-admin"
+      ],
+      "executableRules": [
+        "UI-A11Y-001",
+        "FE-UX-001"
+      ],
+      "unitTests": [
+        "tests/forge-ui-contract.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-UI-ACCESSIBILITY"
+      ],
+      "requiredIndependentEvidence": [
+        "real-browser-accessibility-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "CRUD-CONTRACT-008",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-crud-production",
+        "forge-dictionary-contract",
+        "forge-frontend-admin"
+      ],
+      "executableRules": [
+        "BE-CRUD-001",
+        "BE-PAGE-001",
+        "FE-CRUD-001",
+        "PERMISSION-CONTRACT-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "CRUD-CONTRACT-008"
+      ],
+      "requiredIndependentEvidence": [
+        "real-crud-golden-flow-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-CRUD-UNBOUNDED-PAGE",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-crud-production",
+        "forge-backend-architecture"
+      ],
+      "executableRules": [
+        "BE-PAGE-001",
+        "BE-PAGE-002"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-CRUD-UNBOUNDED-PAGE"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-unbounded-page-correction-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-CRUD-BUTTON-WITHOUT-PERMISSION",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-crud-production",
+        "forge-security-tenancy-permission"
+      ],
+      "executableRules": [
+        "UI-PERMI-001",
+        "PERMISSION-CONTRACT-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-CRUD-BUTTON-WITHOUT-PERMISSION"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-button-permission-correction-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "API-RBAC-009",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-security-tenancy-permission"
+      ],
+      "executableRules": [
+        "PERMISSION-API-001",
+        "PERMISSION-CONTRACT-001",
+        "PERMISSION-ROLE-001",
+        "BE-TENANT-002"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "API-RBAC-009"
+      ],
+      "requiredIndependentEvidence": [
+        "authenticated-rbac-tenant-negative-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-RBAC-NO-DEFAULT-SUPERADMIN",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-security-tenancy-permission"
+      ],
+      "executableRules": [
+        "PERMISSION-ROLE-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-RBAC-NO-DEFAULT-SUPERADMIN"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-role-omission-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-IDOR-CROSS-TENANT",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-security-tenancy-permission"
+      ],
+      "executableRules": [
+        "BE-TENANT-001",
+        "BE-TENANT-002"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-IDOR-CROSS-TENANT"
+      ],
+      "requiredIndependentEvidence": [
+        "authenticated-cross-tenant-idor-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "WF-BPMN-010",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-workflow-production"
+      ],
+      "executableRules": [
+        "FLOW-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs",
+        "tests/forge-workflow-migration-safety.test.mjs"
+      ],
+      "behaviorCases": [
+        "WF-BPMN-010"
+      ],
+      "requiredIndependentEvidence": [
+        "real-flowable-deploy-callback-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-WF-FAKE-STATUS-FIELD",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-workflow-production"
+      ],
+      "executableRules": [
+        "FLOW-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-WF-FAKE-STATUS-FIELD"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-fake-workflow-refusal-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-WF-INFLIGHT-MIGRATION",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-workflow-production"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-workflow-migration-safety.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-WF-INFLIGHT-MIGRATION"
+      ],
+      "requiredIndependentEvidence": [
+        "real-flowable-inflight-migration-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "QUERY-SAFE-011",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-evidence-truth",
+        "forge-security-tenancy-permission"
+      ],
+      "executableRules": [
+        "DB-QUERY-001",
+        "BE-TENANT-002",
+        "BE-SAFETY-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "QUERY-SAFE-011"
+      ],
+      "requiredIndependentEvidence": [
+        "controlled-readonly-query-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "SKILL-INTEGRITY-011B",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-evidence-truth"
+      ],
+      "executableRules": [
+        "SKILL-SAFETY-001"
+      ],
+      "unitTests": [
+        "tests/skill-bundle-validator.test.mjs",
+        "tests/coverage-skill-integrity.test.mjs"
+      ],
+      "behaviorCases": [
+        "SKILL-INTEGRITY-011B"
+      ],
+      "requiredIndependentEvidence": [
+        "built-skill-bundle-integrity-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-QUERY-SQL-BYPASS",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-security-tenancy-permission"
+      ],
+      "executableRules": [
+        "DB-QUERY-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-QUERY-SQL-BYPASS"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-query-bypass-refusal-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-SKILL-INJECTED-SUDO",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-evidence-truth"
+      ],
+      "executableRules": [
+        "SKILL-SAFETY-001"
+      ],
+      "unitTests": [
+        "tests/skill-bundle-validator.test.mjs",
+        "tests/coverage-skill-integrity.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-SKILL-INJECTED-SUDO-pre-model-build"
+      ],
+      "requiredIndependentEvidence": [
+        "built-skill-injection-rejection-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "CAPABILITY-INVENTORY-012",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-evidence-truth"
+      ],
+      "executableRules": [
+        "SKILL-SAFETY-001",
+        "SUPPLY-001"
+      ],
+      "unitTests": [
+        "tests/forge-capability-inventory.test.mjs",
+        "tests/skill-bundle-validator.test.mjs",
+        "tests/forge-reference-adoption-coverage.test.mjs"
+      ],
+      "behaviorCases": [
+        "CAPABILITY-INVENTORY-012"
+      ],
+      "requiredIndependentEvidence": [
+        "built-capability-inventory-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-NONEXISTENT-TOOL",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-evidence-truth"
+      ],
+      "executableRules": [
+        "SKILL-SAFETY-001"
+      ],
+      "unitTests": [
+        "tests/skill-bundle-validator.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-NONEXISTENT-TOOL"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-missing-tool-refusal-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-STALE-REFERENCE",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-evidence-truth"
+      ],
+      "executableRules": [
+        "SKILL-SAFETY-001"
+      ],
+      "unitTests": [
+        "tests/skill-bundle-validator.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-STALE-REFERENCE"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-stale-reference-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "RULE-CLOSURE-013",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-evidence-truth",
+        "forge-task-router"
+      ],
+      "executableRules": [
+        "SKILL-SAFETY-001",
+        "SUPPLY-001"
+      ],
+      "unitTests": [
+        "tests/coverage-required-executor.test.mjs",
+        "tests/forge-skill-command-closure.test.mjs",
+        "tests/external-skill-bundle.test.mjs"
+      ],
+      "behaviorCases": [
+        "RULE-CLOSURE-013"
+      ],
+      "requiredIndependentEvidence": [
+        "built-rule-executor-closure-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-RULE-MISSING-EXECUTOR",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-evidence-truth"
+      ],
+      "executableRules": [
+        "SKILL-SAFETY-001"
+      ],
+      "unitTests": [
+        "tests/skill-bundle-validator.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-RULE-MISSING-EXECUTOR"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-missing-executor-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "EVAL-RULE-WRONG-STACK",
+      "kind": "evaluation",
+      "status": "covered",
+      "skills": [
+        "forge-task-router"
+      ],
+      "executableRules": [
+        "SKILL-SAFETY-001"
+      ],
+      "unitTests": [
+        "tests/forge-skill-evals.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-RULE-WRONG-STACK"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-wrong-stack-routing-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "DB-SEED-001",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-database-migration"
+      ],
+      "executableRules": [
+        "DB-SEED-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "DB-SEED-001-replay"
+      ],
+      "requiredIndependentEvidence": [
+        "real-mysql-seed-replay-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "GOV-ACCEPTANCE-013",
+      "kind": "gate",
+      "status": "covered",
+      "skills": [
+        "forge-release-acceptance",
+        "forge-evidence-truth"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-acceptance-aggregator.test.mjs"
+      ],
+      "behaviorCases": [
+        "GOV-ACCEPTANCE-013-historical-ready"
+      ],
+      "requiredIndependentEvidence": [
+        "protected-signed-acceptance-verdict"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "BEH-01-feasibility-readonly",
+      "kind": "behavior",
+      "status": "covered",
+      "skills": [
+        "forge-task-contract",
+        "forge-task-router"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-behavior-qualification.test.mjs"
+      ],
+      "behaviorCases": [
+        "BEH-01-feasibility-readonly"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-readonly-feasibility-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "BEH-02-small-fix-routing",
+      "kind": "behavior",
+      "status": "covered",
+      "skills": [
+        "forge-task-router"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-behavior-qualification.test.mjs"
+      ],
+      "behaviorCases": [
+        "BEH-02-small-fix-routing"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-small-fix-trace"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "BEH-03-stale-handoff",
+      "kind": "behavior",
+      "status": "covered",
+      "skills": [
+        "forge-delivery-orchestrator"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-delivery.test.mjs"
+      ],
+      "behaviorCases": [
+        "BEH-03-stale-handoff"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-stale-handoff-behavior"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "BEH-04-cas-conflict",
+      "kind": "behavior",
+      "status": "covered",
+      "skills": [
+        "forge-delivery-orchestrator"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-execution-context.test.mjs",
+        "tests/forge-delivery.test.mjs",
+        "tests/coverage-cas-state.test.mjs"
+      ],
+      "behaviorCases": [
+        "BEH-04-cas-conflict"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-cas-conflict-behavior"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "BEH-05-fake-success-log",
+      "kind": "behavior",
+      "status": "covered",
+      "skills": [
+        "forge-evidence-truth"
+      ],
+      "executableRules": [
+        "QUALITY-TDD-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance-runtime-instructions.test.mjs"
+      ],
+      "behaviorCases": [
+        "EVAL-FAKE-TEST-OUTPUT"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-fake-success-behavior"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "BEH-06-test-fails",
+      "kind": "behavior",
+      "status": "covered",
+      "skills": [
+        "forge-evidence-truth"
+      ],
+      "executableRules": [
+        "QUALITY-TDD-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance-runtime-instructions.test.mjs"
+      ],
+      "behaviorCases": [
+        "crud-complete"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-test-failure-behavior"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "BEH-07-review-one-verdict",
+      "kind": "behavior",
+      "status": "covered",
+      "skills": [
+        "forge-evidence-truth"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-acceptance-aggregator.test.mjs"
+      ],
+      "behaviorCases": [
+        "BEH-07-review-one-verdict"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-single-review-behavior"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "BEH-08-overlap-writers",
+      "kind": "behavior",
+      "status": "covered",
+      "skills": [
+        "forge-taskspace-collaboration"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/taskspace-broker.test.mjs",
+        "tests/forge-semantic-resource-lease.test.mjs"
+      ],
+      "behaviorCases": [
+        "BEH-08-overlap-writers"
+      ],
+      "requiredIndependentEvidence": [
+        "real-multi-agent-overlap-behavior"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "BEH-09-generic-ok",
+      "kind": "behavior",
+      "status": "covered",
+      "skills": [
+        "forge-task-contract"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-business-data-approval.test.mjs"
+      ],
+      "behaviorCases": [
+        "BEH-09-generic-ok"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-generic-ok-behavior"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "BEH-10-role-omitted",
+      "kind": "behavior",
+      "status": "covered",
+      "skills": [
+        "forge-security-tenancy-permission"
+      ],
+      "executableRules": [
+        "PERMISSION-ROLE-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "BEH-10-role-omitted"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-role-omission-behavior"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "BEH-11-migration-missing-tenant",
+      "kind": "behavior",
+      "status": "covered",
+      "skills": [
+        "forge-database-migration"
+      ],
+      "executableRules": [
+        "DB-SCHEMA-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "BEH-11-migration-missing-tenant"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-missing-tenant-behavior"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "BEH-12-ui-api-drift",
+      "kind": "behavior",
+      "status": "covered",
+      "skills": [
+        "forge-frontend-admin"
+      ],
+      "executableRules": [
+        "FE-API-001",
+        "UI-HTTP-001"
+      ],
+      "unitTests": [
+        "tests/forge-ui-contract.test.mjs"
+      ],
+      "behaviorCases": [
+        "BEH-12-ui-api-drift"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-ui-api-drift-behavior"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "BEH-13-fake-workflow",
+      "kind": "behavior",
+      "status": "covered",
+      "skills": [
+        "forge-workflow-production"
+      ],
+      "executableRules": [
+        "FLOW-001"
+      ],
+      "unitTests": [
+        "tests/forge-governance.test.mjs"
+      ],
+      "behaviorCases": [
+        "BEH-13-fake-workflow"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-fake-workflow-behavior"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "BEH-14-skill-injection",
+      "kind": "behavior",
+      "status": "covered",
+      "skills": [
+        "forge-evidence-truth"
+      ],
+      "executableRules": [
+        "SKILL-SAFETY-001"
+      ],
+      "unitTests": [
+        "tests/skill-bundle-validator.test.mjs",
+        "tests/coverage-skill-integrity.test.mjs"
+      ],
+      "behaviorCases": [
+        "BEH-14-skill-injection"
+      ],
+      "requiredIndependentEvidence": [
+        "built-skill-injection-rejection-receipt"
+      ],
+      "evidenceStatus": "verified"
+    },
+    {
+      "roadmapId": "BEH-15-upgrade-failure",
+      "kind": "behavior",
+      "status": "covered",
+      "skills": [
+        "forge-controlled-release"
+      ],
+      "executableRules": [],
+      "unitTests": [
+        "tests/forge-delivery-toolkit-upgrade.test.mjs"
+      ],
+      "behaviorCases": [
+        "BEH-15-upgrade-failure"
+      ],
+      "requiredIndependentEvidence": [
+        "real-model-upgrade-failure-behavior"
+      ],
+      "evidenceStatus": "verified"
+    }
+  ]
+}

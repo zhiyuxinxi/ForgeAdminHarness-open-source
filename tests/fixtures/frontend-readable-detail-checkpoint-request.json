@@ -1,0 +1,35 @@
+{
+  "prompt": "请提交当前任务的样本修改，保存受控检查点。此次提交仍限于下述已授权样本修复，继续原会话和原工作区。\n\n请继续完成当前独立页面样本的前端体验验收修复，并保存新的受控检查点。沿原任务、原会话和现有页面继续，保留其他 AI 的上游成果。\n\n浏览器已经验证当前 0cf8f9694f700c63b911c1abc5288329abaeb2fd 的两种台账查询/重置、新增、编辑回填、取消不保存、选择与批删、分类过滤、抽屉、页内表单、轻量任务弹窗失败保留和重试。不要重新实现这些已通过能力。\n\n本轮只补两项仍未达到已确认要求的内容：\n\n1. 两个台账的“查看详情”实际仍是灰色禁用输入框，并显示必填星号。请按最新 DESIGN 和 forge-frontend-admin 的 page-patterns，使用已有公共 descriptions 详情面板，完整展示分组字段、字典文字及分类名称，隐藏默认编辑表单。保持公共详情容器与动作，不自写另一套弹窗或虚构 API。公共 AiCrudPage 的 hideDefaultDetailContent 在普通 modal/flat 两处分支遗漏已由底座修复，先通过原有受控集成入口取得已发布的公共增量；出现真实冲突保留现场并按当前授权范围处理，不覆盖并行工作。详情、编辑使用各自适合阅读和录入的表达，业务含义一致。\n2. 当前内存样本删除路径全部成功，尚不能实际验证批删部分成功后的结果、失败项保留与重试。请在原 DEV 样本页提供清晰、仅影响内存样本的一次失败演示条件，沿真实公共批删流程显示成功/失败数量、保留失败记录，并允许正常重试。演示开关应与样本隔离提示放在一起，不进入业务页面。测试应验证实际状态变化，不能只检查源码字符串或按钮存在。\n\n可用修改范围为既有 page-pattern-ledger-config.js、PagePatternLedgerPreview.vue、page-pattern-ledger-mock.js 及同目录已有样本 spec；只在受控上游集成需要时处理已经明确的公共增量或真实冲突。不要新增生产路由或菜单，不扩大到其他模块，不改写真实业务记录；全部样本操作保持浏览器内存隔离。\n\n只执行本次修改及直接相关的必要检查，复用已通过且未受影响的检查和已准备依赖。完成后通过正常 checkpoint 入口保存并给出真实检查回执、检查点和操作说明。本轮到样本检查点为止，不发布生产版本。若工具或公共增量尚不可用，报告具体当前阻塞，保留原成果，不反复重发同一失败操作。\n",
+  "proposal": {
+    "goal": "继续现有 DEV 内存台账预览页：先受控集成最新公共 AiCrudPage 增量；为两个台账配置公共 descriptions 详情面板并隐藏默认只读编辑表单；增加仅影响内存样本的一次性批删失败演示条件，使真实公共批删流程展示部分成功/失败、保留失败记录并可重试；补充验证实际状态变化的聚焦测试，完成后保存受控 checkpoint，不发布。",
+    "ownedPaths": [
+      "forge-admin-ui/src/components/page-pattern-samples/PagePatternLedgerPreview.vue",
+      "forge-admin-ui/src/components/page-pattern-samples/page-pattern-ledger-config.js",
+      "forge-admin-ui/src/components/page-pattern-samples/page-pattern-ledger-mock.js",
+      "forge-admin-ui/src/components/page-pattern-samples/__tests__/page-pattern-ledger-samples.spec.js"
+    ],
+    "taskProfiles": [
+      "dictionary",
+      "frontend-admin",
+      "shared-owner"
+    ],
+    "references": [
+      "AGENTS.md",
+      "PROJECT_CONTEXT.md",
+      "forge-admin-ui/DESIGN.md",
+      "forge-admin-ui/src/components/ai-form/AiCrudPage.vue",
+      "forge-admin-ui/src/components/ai-form/ExpandPanelRenderer.vue",
+      "forge-admin-ui/src/components/ai-form/expand-renderers/ExpandDescriptionsPanel.vue",
+      "forge-admin-ui/src/components/page-pattern-samples/PagePatternLedgerPreview.vue",
+      "forge-admin-ui/src/components/page-pattern-samples/page-pattern-ledger-config.js",
+      "forge-admin-ui/src/components/page-pattern-samples/page-pattern-ledger-mock.js",
+      "forge-admin-ui/src/components/page-pattern-samples/__tests__/page-pattern-ledger-samples.spec.js"
+    ]
+  },
+  "provenance": {
+    "requestSha256": "2a8ed8882a167700da62d6ae28431a7343540e742ebe5da6ea10c6691e41858c",
+    "proposalSeq": 40993,
+    "actualLateContractId": "1a657cef23fc07b3b662a8d903f5e020109723be183857936ffc7a3f4f3f0817",
+    "actualLateActionCeiling": "workspace-write"
+  }
+}

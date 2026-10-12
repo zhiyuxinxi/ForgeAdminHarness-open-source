@@ -1,0 +1,10 @@
+# Retain the verified layer-scope image, dependencies, Host and Skills.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 docker/harness/forge-execution-context.mjs /usr/local/lib/forge-execution-context.mjs
+COPY --chmod=0644 config/versions.env /usr/local/share/forge-image-build/versions.env
+COPY --chmod=0644 docker/harness/Dockerfile.verification-intent /usr/local/share/forge-image-build/Dockerfile.verification-intent
+RUN --network=none node --check /usr/local/lib/forge-execution-context.mjs
+LABEL com.forge-delivery.verification-intent.version="2026.09.22.1"
+USER 1000:1000

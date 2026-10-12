@@ -1,0 +1,11 @@
+# Reuse the retained base; combine verified prototype overlays instead of extending 432 layers.
+ARG BASE_IMAGE=forge-delivery/deepseek-harness:0.1.1-rc.2-spec-profile-20260923-1
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY overlay/ /
+RUN test -L /opt/forge-skill-bundles/current && ln -sfn versions/2026.09.24.2 /opt/forge-skill-bundles/current
+ENV FORGE_HARNESS_SKILL_BUNDLE_VERSION=2026.09.24.2
+LABEL com.forge-delivery.harness-skill-bundle="2026.09.24.2"
+LABEL com.forge-delivery.prototype-fidelity.version="2026.09.24.2"
+LABEL com.forge-delivery.conjoined-release.version="2026.09.24.1"
+USER 1000:1000

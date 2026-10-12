@@ -1,0 +1,11 @@
+# Keep the verified runtime and installed dependency layers.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER 0:0
+COPY --chmod=0644 docker/harness/conversation-manager.mjs docker/harness/forge-protected-acceptance-service.mjs docker/harness/forge-task-execution-contract.mjs docker/harness/forge-production-task-grant.mjs docker/harness/forge-execution-context.mjs /usr/local/lib/
+COPY --chmod=0644 docker/harness/Dockerfile.ordinary-contract-compat /usr/local/share/forge-image-build/
+COPY --chmod=0644 scripts/ /usr/local/share/forge-image-build/platform/scripts/
+COPY --chmod=0644 templates/project/project.env.tpl /usr/local/share/forge-image-build/platform/templates/project/project.env.tpl
+RUN --network=none node --check /usr/local/lib/conversation-manager.mjs && node --check /usr/local/lib/forge-protected-acceptance-service.mjs && node --check /usr/local/lib/forge-task-execution-contract.mjs && node --check /usr/local/lib/forge-production-task-grant.mjs && node --check /usr/local/lib/forge-execution-context.mjs
+LABEL com.forge-delivery.ordinary-contract-compat.version="2026.09.22.1"
+USER 1000:1000

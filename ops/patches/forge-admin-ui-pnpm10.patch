@@ -1,0 +1,19 @@
+diff --git a/docker-forge-admin/Dockerfile.ui b/docker-forge-admin/Dockerfile.ui
+index e4335be..31b9135 100644
+--- a/docker-forge-admin/Dockerfile.ui
++++ b/docker-forge-admin/Dockerfile.ui
+@@ -4,10 +4,10 @@
+ # 构建上下文为项目根目录，docker compose 中 context 设为 ..
+ FROM node:23-alpine AS builder
+ WORKDIR /app
+-COPY forge-admin-ui/package.json ./
+-RUN npm config get registry https://registry.npmmirror.com
+-COPY forge-admin-ui/ .
+-RUN npm install -g pnpm@9 && pnpm install && pnpm run build
++COPY forge-admin-ui/package.json forge-admin-ui/pnpm-lock.yaml forge-admin-ui/pnpm-workspace.yaml ./
++RUN npm install -g pnpm@10 && pnpm install --frozen-lockfile
++COPY forge-admin-ui/ ./
++RUN pnpm run build
+ 
+ FROM nginx:1.25-alpine
+ COPY --from=builder /app/dist /usr/share/nginx/html/forge

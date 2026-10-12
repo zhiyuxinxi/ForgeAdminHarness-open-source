@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "registryVersion": "2026.09.01.2",
+  "proofLevels": ["declared", "static", "runtime", "independent"],
+  "blockingStages": ["DISCOVER", "MUTATE", "VERIFY", "ACCEPT", "CLOSEOUT", "RELEASE"],
+  "capabilities": [
+    {
+      "capabilityId": "contract.task-intent",
+      "summary": "The task intent, action ceiling, owned paths, and required evidence are compiled into a canonical contract.",
+      "dependsOn": [],
+      "minimumProofLevel": "static",
+      "blockingStage": "DISCOVER"
+    },
+    {
+      "capabilityId": "source.immutable-snapshot",
+      "summary": "Execution is bound to an immutable source fingerprint instead of a mutable path assumption.",
+      "dependsOn": ["contract.task-intent"],
+      "minimumProofLevel": "runtime",
+      "blockingStage": "MUTATE"
+    },
+    {
+      "capabilityId": "workspace.read",
+      "summary": "The project source can be read through the governed TaskSpace boundary.",
+      "dependsOn": ["contract.task-intent"],
+      "minimumProofLevel": "runtime",
+      "blockingStage": "DISCOVER"
+    },
+    {
+      "capabilityId": "execution.protected-context",
+      "summary": "A current protected execution context binds actor, conversation, task, source, contract, generation, and expiry.",
+      "dependsOn": ["contract.task-intent", "source.immutable-snapshot"],
+      "minimumProofLevel": "runtime",
+      "blockingStage": "MUTATE"
+    },
+    {
+      "capabilityId": "workspace.write",
+      "summary": "A writer reservation authorizes bounded mutation only inside contract-owned paths.",
+      "dependsOn": ["execution.protected-context", "workspace.read"],
+      "minimumProofLevel": "runtime",
+      "blockingStage": "MUTATE"
+    },
+    {
+      "capabilityId": "verification.batch-admission",
+      "summary": "The platform has admitted the complete required verification profile set against current runner and dependency facts.",
+      "dependsOn": ["source.immutable-snapshot"],
+      "minimumProofLevel": "runtime",
+      "blockingStage": "MUTATE"
+    },
+    {
+      "capabilityId": "verification.controlled-executor",
+      "summary": "Required verification profiles can execute in the controlled runner and emit source-bound receipts.",
+      "dependsOn": ["verification.batch-admission", "workspace.write"],
+      "minimumProofLevel": "runtime",
+      "blockingStage": "VERIFY"
+    },
+    {
+      "capabilityId": "verification.red-executor",
+      "summary": "Dedicated exact-selector RED profiles can emit source-bound failing-test expectation receipts without arbitrary execution.",
+      "dependsOn": ["verification.batch-admission", "workspace.write"],
+      "minimumProofLevel": "runtime",
+      "blockingStage": "MUTATE"
+    },
+    {
+      "capabilityId": "acceptance.independent-verdict",
+      "summary": "An independent acceptance authority can evaluate current source-bound evidence.",
+      "dependsOn": ["verification.controlled-executor"],
+      "minimumProofLevel": "independent",
+      "blockingStage": "ACCEPT"
+    },
+    {
+      "capabilityId": "evidence.truth-closeout",
+      "summary": "Closeout can prove that every required obligation is satisfied by current, typed, source-bound evidence.",
+      "dependsOn": ["acceptance.independent-verdict"],
+      "minimumProofLevel": "independent",
+      "blockingStage": "CLOSEOUT"
+    },
+    {
+      "capabilityId": "release.separate-authority",
+      "summary": "A separately authorized release boundary can consume an accepted immutable source revision.",
+      "dependsOn": ["evidence.truth-closeout"],
+      "minimumProofLevel": "independent",
+      "blockingStage": "RELEASE"
+    }
+  ],
+  "demandProfiles": [
+    {
+      "profileId": "read-only-analysis",
+      "capabilityIds": ["contract.task-intent", "workspace.read"]
+    },
+    {
+      "profileId": "workspace-change",
+      "capabilityIds": ["acceptance.independent-verdict", "contract.task-intent", "evidence.truth-closeout", "execution.protected-context", "source.immutable-snapshot", "verification.batch-admission", "verification.controlled-executor", "verification.red-executor", "workspace.read", "workspace.write"]
+    },
+    {
+      "profileId": "protected-release",
+      "capabilityIds": ["acceptance.independent-verdict", "contract.task-intent", "evidence.truth-closeout", "execution.protected-context", "release.separate-authority", "source.immutable-snapshot", "verification.batch-admission", "verification.controlled-executor", "verification.red-executor", "workspace.read", "workspace.write"]
+    }
+  ]
+}

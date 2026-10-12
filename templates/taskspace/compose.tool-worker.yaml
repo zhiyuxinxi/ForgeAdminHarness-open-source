@@ -1,0 +1,79 @@
+# Added only by the reviewed per-TaskSpace tool-worker contract. No credential
+# volume, credential environment, native PID namespace, or host socket is shared.
+services:
+  harness:
+    environment:
+      FORGE_TOOL_WORKER_SOCKET: /run/forge-tool-worker/worker.sock
+    volumes:
+      - type: bind
+        source: ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/tool-worker
+        target: /run/forge-tool-worker
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      harness-tool-worker:
+        condition: service_healthy
+
+  harness-tool-worker:
+    image: ${HARNESS_IMAGE:?HARNESS_IMAGE is required}
+    restart: unless-stopped
+    entrypoint: ["/usr/local/bin/node", "/usr/local/lib/forge-tool-worker-start.mjs"]
+    command: ["--config", "/usr/local/share/forge-tool-worker.json"]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    working_dir: /workspace
+    environment:
+      HOME: /tmp/forge-tool-home
+      DSH_PERMISSION_MODE: workspace-write
+      DSH_BUNDLED_SKILL_DIR: /opt/forge-skill-bundles/current/skills
+      MAVEN_CONFIG: /workspace/.forge-cache/m2
+      MAVEN_OPTS: -Dmaven.repo.local=/workspace/.forge-cache/m2/repository -Djansi.tmpdir=/workspace/.forge-cache/general/jansi
+      NPM_CONFIG_CACHE: /workspace/.forge-cache/npm
+      XDG_CACHE_HOME: /workspace/.forge-cache/general
+      XDG_DATA_HOME: /workspace/.forge-cache/pnpm/data
+      XDG_STATE_HOME: /workspace/.forge-cache/general/state
+      PNPM_HOME: /workspace/.forge-cache/pnpm/home
+      DSH_TELEMETRY_DISABLED: "1"
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/workspace:/workspace
+      - type: bind
+        source: ${PROJECT_ROOT:?PROJECT_ROOT is required}/governance/PROJECT_CONTEXT.md
+        target: /workspace/PROJECT_CONTEXT.md
+        read_only: true
+        bind:
+          create_host_path: false
+      - ${PROJECT_ROOT:?PROJECT_ROOT is required}/workspace:/integration:ro
+      - ${FORGE_SKILL_BUNDLE_ROOT:?FORGE_SKILL_BUNDLE_ROOT is required}:/opt/forge-skill-bundles:ro
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/uploads:/project-inputs:ro
+      - ${PROJECT_FTP_INPUT_ROOT:?PROJECT_FTP_INPUT_ROOT is required}:/project-ftp-inputs:ro
+      - ${PROJECT_SHARED_INPUT_ROOT:?PROJECT_SHARED_INPUT_ROOT is required}:/project-shared-inputs:ro
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/cache/m2:/workspace/.forge-cache/m2
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/cache/npm:/workspace/.forge-cache/npm
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/cache/pnpm:/workspace/.forge-cache/pnpm
+      - ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/cache/general:/workspace/.forge-cache/general
+      - type: bind
+        source: ${TASKSPACE_ROOT:?TASKSPACE_ROOT is required}/tool-worker
+        target: /run/forge-tool-worker
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=1g
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 1024
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "5"
+    networks: [project-application, project-taskspaces]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/node", "/usr/local/lib/forge-tool-worker-start.mjs", "--health", "/run/forge-tool-worker/worker.sock"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 2,
+  "bundleVersion": "2099.01.01.1",
+  "skills": [
+    {
+      "name": "fixture-read",
+      "maturity": "pilot",
+      "role": "safe-inspection",
+      "enforcement": "workflow-guidance",
+      "sideEffectClass": "read-only",
+      "contentSha256": "sha256:c0bb5bc135c44ed1d84ba3db83cebc249252205b77cd7a616ddff758ada23de9",
+      "treeSha256": "sha256:867adc81555c0d261ac3869ee56b42adb12b67a74a502cc093f88aa202d14a9a"
+    },
+    {
+      "name": "fixture-release",
+      "maturity": "stable",
+      "role": "release",
+      "enforcement": "runner-backed",
+      "sideEffectClass": "controlled-release",
+      "contentSha256": "sha256:c2bd61664fe5dfed328bfd979478a842a6f9b076ff11a316e57443e865d53beb",
+      "treeSha256": "sha256:10e2d885dc6d701d400663dbd1922516f16e8a7074b073e99cced9552b175cd8"
+    }
+  ]
+}

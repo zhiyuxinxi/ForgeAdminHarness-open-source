@@ -1,0 +1,16 @@
+Forge Admin Harness public distribution
+Maintained by zhiyuxinxi and contributors.
+
+Public-distribution changes: private operational records and deployment-specific
+scripts were excluded; internal examples and configuration were sanitized.
+This distribution has independent public Git history.
+
+Upstream and third-party attribution:
+- DeepSeek Harness: https://github.com/deepseek-ai/deepseek-harness (MIT).
+  Runtime source is fetched by the build definitions; license included in
+  third_party/deepseek-harness-LICENSE.
+- Forge Admin: https://github.com/yaomindong1996/forge-admin (Apache-2.0).
+- Mermaid: see docker/harness/conversation-gateway/mermaid/LICENSE (MIT).
+- SFTPGo is an optional separately obtained service; its upstream license applies.
+- Other dependencies retain their own licenses. This project's Apache-2.0
+  license does not replace third-party licenses.

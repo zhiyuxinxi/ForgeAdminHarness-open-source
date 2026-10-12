@@ -1,0 +1,48 @@
+* text=auto
+*.sh text eol=lf
+*.env text eol=lf
+*.env.example text eol=lf
+*.tpl text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.patch text eol=lf whitespace=-blank-at-eol
+# Preserve raw browser tool evidence; whitespace inside captured output is data.
+docs/validation-evidence/*-browser-*.result.txt -text -whitespace
+docs/validation-evidence/2026-09-23-current-release-continuation-*.txt -text -whitespace
+docs/validation-evidence/2026-09-23-toolchain-cache-reuse-*.txt -text -whitespace
+# Original prompt bytes are verified by SHA-256 in the checkpoint regression test.
+tests/fixtures/fire-checkpoint-quality-86-prompt.txt -text
+tests/fixtures/backend-fire-checkpoint-04.txt -text
+docker/harness/forge-release text eol=lf
+docker/harness/harness-document-extract text eol=lf
+docker/harness/** text eol=lf
+scripts/redis-logical-state.py text eol=lf
+scripts/activate-lyl-conversation-repair.py text eol=lf
+scripts/activate-lyl-release-guidance.py text eol=lf
+scripts/configure-host-inotify.py text eol=lf
+scripts/activate-conversation-archive.py text eol=lf
+scripts/activate-clean-a9-frontend-scope.py text eol=lf
+scripts/activate-clean-a9-capture.py text eol=lf
+scripts/activate-clean-a9-access-scope.py text eol=lf
+scripts/upgrade-taskspace-conversation-archive.py text eol=lf
+scripts/deploy-liuhc-semantic-review.py text eol=lf
+scripts/deploy-lyl-host-red-receipt.py text eol=lf
+scripts/deploy-liuhc-client-compat.py text eol=lf
+templates/systemd/forge-host-verification-bubblewrap.conf text eol=lf
+scripts/deploy-member03-client-compat.py text eol=lf
+scripts/部署-阶段20-历史回执复核.py text eol=lf
+scripts/deploy-admin-codex-proxy.py text eol=lf
+scripts/sync-codex-cli-authorization.py text eol=lf
+scripts/lib/sync-codex-credentials.mjs text eol=lf
+scripts/deploy-platform-codex.py text eol=lf
+templates/systemd/forge-codex-cli-authorization.service text eol=lf
+templates/systemd/forge-codex-cli-authorization.timer text eol=lf
+scripts/export-host-buildkit-dependencies.py text eol=lf
+scripts/prepare-host-pnpm-10.34.5.py text eol=lf
+scripts/deploy-fce722-dependency-preload.py text eol=lf
+# Pinned upstream distribution: preserve bytes covered by the vendor manifest.
+docker/harness/conversation-gateway/mermaid/** -text -whitespace

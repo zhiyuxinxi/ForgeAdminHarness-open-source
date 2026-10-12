@@ -1,0 +1,4 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY --chmod=0644 docker/harness/forge-phase-budget-guard.mjs docker/harness/forge-progress-detector.mjs /usr/local/lib/
+LABEL com.forge-delivery.progress-heuristics-suspension.version="2026.09.19.1"

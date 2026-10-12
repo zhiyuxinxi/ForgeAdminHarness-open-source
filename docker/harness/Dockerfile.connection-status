@@ -1,0 +1,10 @@
+ARG HARNESS_CONNECTION_BASE
+FROM ${HARNESS_CONNECTION_BASE}
+USER 0:0
+COPY --chmod=0644 docker/harness/forge-connection-status-patch.mjs /usr/local/lib/forge-connection-status-patch.mjs
+RUN node /usr/local/lib/forge-connection-status-patch.mjs /opt/forge-harness-runtime/node_modules \
+    && node /usr/local/lib/validate-runtime-dependencies.mjs \
+      --root /opt/forge-harness-runtime --smoke --json \
+      > /usr/local/share/forge-image-build/runtime-dependency-receipt.json
+LABEL com.forge-delivery.connection-status.version="2026.09.18.1"
+USER 1000:1000

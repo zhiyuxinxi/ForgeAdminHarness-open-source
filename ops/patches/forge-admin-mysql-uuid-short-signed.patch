@@ -1,0 +1,36 @@
+diff --git a/forge-server/db/migration/V1.0.27__add_business_application_aggregate.sql b/forge-server/db/migration/V1.0.27__add_business_application_aggregate.sql
+index bba7b3a..8864691 100644
+--- a/forge-server/db/migration/V1.0.27__add_business_application_aggregate.sql
++++ b/forge-server/db/migration/V1.0.27__add_business_application_aggregate.sql
+@@ -201,6 +201,6 @@ INSERT INTO ai_business_application (
+   create_by, create_time, create_dept, update_by, update_time
+ )
+-SELECT UUID_SHORT(), bo.tenant_id,
++SELECT (UUID_SHORT() & 0x7FFFFFFFFFFFFFFF), bo.tenant_id,
+        CONCAT('migrated_', LEFT(MD5(CONCAT(bo.tenant_id, ':', bo.suite_code, ':', bo.object_code)), 24)),
+        bo.object_name, bo.suite_code,
+        bo.icon, COALESCE(bo.description, CONCAT('由存量业务对象“', bo.object_name, '”整理生成')),
+@@ -237,6 +237,6 @@ INSERT INTO ai_business_application_object (
+   options, del_flag, create_by, create_time, create_dept, update_by, update_time
+ )
+-SELECT UUID_SHORT(), bo.tenant_id, application_row.id, bo.id, 'PRIMARY', 0,
++SELECT (UUID_SHORT() & 0x7FFFFFFFFFFFFFFF), bo.tenant_id, application_row.id, bo.id, 'PRIMARY', 0,
+        JSON_OBJECT('migrationSource', 'PRIMARY_OBJECT'), '0',
+        bo.create_by, NOW(), bo.create_dept, bo.update_by, NOW()
+ FROM ai_business_object bo
+@@ -262,6 +262,6 @@ INSERT INTO ai_business_application_object (
+   options, del_flag, create_by, create_time, create_dept, update_by, update_time
+ )
+-SELECT UUID_SHORT(), candidate.tenant_id, candidate.application_id, candidate.object_id,
++SELECT (UUID_SHORT() & 0x7FFFFFFFFFFFFFFF), candidate.tenant_id, candidate.application_id, candidate.object_id,
+        candidate.object_role, candidate.sort_order,
+        JSON_OBJECT('migrationSource', 'RELATED_OBJECT'), '0',
+        candidate.create_by, NOW(), candidate.create_dept, candidate.update_by, NOW()
+@@ -345,6 +345,6 @@ INSERT INTO ai_business_application_object (
+   options, del_flag, create_by, create_time, create_dept, update_by, update_time
+ )
+-SELECT UUID_SHORT(), pending.tenant_id,
++SELECT (UUID_SHORT() & 0x7FFFFFFFFFFFFFFF), pending.tenant_id,
+        pending.application_id, pending.object_id, pending.object_role, pending.sort_order,
+        JSON_OBJECT('migrationSource', 'BACKFILL_OBJECT'), '0',
+        pending.create_by, NOW(), pending.create_dept, pending.update_by, NOW()

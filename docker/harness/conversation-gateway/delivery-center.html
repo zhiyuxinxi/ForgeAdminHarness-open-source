@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>菜单管理 · 需求与交付中心</title>
+  <link rel="stylesheet" href="/forge-gateway/assets/gateway.css">
+  <link rel="stylesheet" href="/forge-gateway/assets/delivery-center.css">
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="/forge-gateway/?project=forge-base" aria-label="返回示例客户工作台"><span class="brand-mark" aria-hidden="true">F</span><span><strong>需求与交付中心</strong><small>示例客户 · 业务功能与交付过程</small></span></a>
+    <div class="identity-cluster"><span class="role-badge">共享只读</span><strong id="delivery-user">正在读取账号…</strong><a class="secondary-button" href="/forge-gateway/?project=forge-base">返回项目</a></div>
+  </header>
+  <main class="app-main delivery-main">
+    <h1 class="delivery-sr-only">示例客户需求与交付中心</h1>
+    <div id="delivery-start-error" class="form-message error" role="alert" hidden></div>
+    <button id="delivery-start-retry" class="secondary-button" type="button" hidden>重新加载项目</button>
+    <div class="delivery-layout">
+      <aside class="workspace-section delivery-navigation" aria-label="交付中心功能导航">
+        <div class="delivery-project-heading"><label for="delivery-project">当前项目</label><select id="delivery-project" disabled><option value="">正在读取项目…</option></select><p class="field-help">所有账号均可查看完整信息。</p></div>
+        <nav id="delivery-tabs" class="delivery-tabs" aria-label="管理模块">
+          <button type="button" data-delivery-tab="menus" aria-pressed="true">菜单管理</button>
+          <button type="button" data-delivery-tab="requirements" aria-pressed="false">需求与迭代</button>
+          <button type="button" data-delivery-tab="entities" aria-pressed="false">业务模型与关系</button>
+          <button type="button" data-delivery-tab="scenes" aria-pressed="false">业务场景与流程</button>
+          <button type="button" data-delivery-tab="database" aria-pressed="false">数据库设计</button>
+          <button type="button" data-delivery-tab="pages" aria-pressed="false">页面与前端</button>
+          <button type="button" data-delivery-tab="backend" aria-pressed="false">后端接口与调用</button>
+          <button type="button" data-delivery-tab="permissions" aria-pressed="false">业务权限</button>
+          <button type="button" data-delivery-tab="acceptance" aria-pressed="false">验收与测试</button>
+          <button type="button" data-delivery-tab="overview" aria-pressed="false">交付概览</button>
+          <button type="button" data-delivery-tab="releases" aria-pressed="false">版本与发布</button>
+        </nav>
+      </aside>
+      <section class="workspace-section delivery-workspace" aria-labelledby="delivery-list-title">
+        <div class="section-heading delivery-list-heading"><div><p class="section-kicker" id="delivery-context">完整业务结构</p><h2 id="delivery-list-title">菜单管理</h2><p id="delivery-list-help" class="section-help"></p></div><button id="delivery-refresh" class="secondary-button" type="button">刷新记录</button></div>
+        <nav id="delivery-subviews" class="delivery-subviews" aria-label="模块内视图" hidden></nav>
+        <div class="delivery-workspace-layout">
+          <details class="delivery-sidebar" id="delivery-menu-panel" open>
+            <summary class="delivery-sidebar-summary">业务菜单</summary>
+            <div class="delivery-tree-heading"><span class="field-help">按完整业务结构定位</span><button id="delivery-all-menus" class="text-button" type="button">全部菜单</button></div>
+            <div class="delivery-tree-controls" aria-label="菜单展开方式"><button id="delivery-expand-menus" class="text-button" type="button">展开全部</button><button id="delivery-collapse-menus" class="text-button" type="button">收起全部</button></div>
+            <label class="delivery-sr-only" for="delivery-menu-search">查找业务菜单</label>
+            <div class="delivery-search-input"><input id="delivery-menu-search" type="search" autocomplete="off" placeholder="查找一级、二级、三级菜单"><button id="delivery-menu-search-clear" class="icon-button" type="button" aria-label="清空菜单搜索" hidden>×</button></div>
+            <p id="delivery-menu-status" class="field-help" role="status">正在读取菜单…</p>
+            <nav id="delivery-menu-tree" aria-label="业务菜单层级"></nav>
+            <button id="delivery-project-retry" class="secondary-button" type="button" hidden>重新加载菜单</button>
+          </details>
+          <div class="delivery-content">
+            <p id="delivery-scope-note" class="delivery-scope-note" hidden></p>
+            <div id="delivery-scope-controls" class="delivery-filter-fields" aria-label="资料查看范围"></div>
+            <div id="delivery-scope-picker" class="delivery-scope-picker" hidden></div>
+            <nav id="delivery-quick-filters" class="delivery-subviews" aria-label="菜单关注范围" hidden></nav>
+            <div id="delivery-overview-panel" hidden><div id="delivery-overview" class="delivery-overview" aria-live="polite"></div><p id="delivery-coverage" class="section-help"></p><p id="delivery-observed" class="field-help"></p>
+              <details id="delivery-issues" class="delivery-issues" hidden><summary id="delivery-issues-summary">收录问题（0）</summary>
+                <div class="delivery-issues-table"><table aria-label="收录问题明细"><thead><tr><th scope="col">问题</th><th scope="col">来源提交</th><th scope="col">文件与块位置</th><th scope="col">处理提示</th></tr></thead><tbody id="delivery-issues-body"></tbody></table></div>
+                <div id="delivery-issues-pagination" class="delivery-pagination" aria-live="polite" hidden></div>
+              </details>
+            </div>
+            <form id="delivery-search-form" class="delivery-search" novalidate>
+              <div class="delivery-search-field"><label class="delivery-sr-only" for="delivery-search">查找记录</label><div class="delivery-search-input"><input id="delivery-search" type="search" autocomplete="off" placeholder="搜索业务菜单"><button id="delivery-search-clear" class="icon-button" type="button" aria-label="清空搜索" hidden>×</button></div></div>
+              <button class="primary-button" type="submit">查询</button><button id="delivery-reset" class="secondary-button" type="button">清除筛选</button>
+            </form>
+            <div class="delivery-table-tools">
+              <details id="delivery-advanced-filters" class="delivery-advanced-filters"><summary>更多筛选</summary><div id="delivery-filter-fields" class="delivery-filter-fields" aria-label="业务筛选"></div></details>
+              <details id="delivery-column-options"><summary>显示列</summary><div id="delivery-columns" class="delivery-column-options"></div></details>
+              <button id="delivery-export" class="secondary-button" type="button" hidden>导出需求矩阵 CSV</button>
+            </div>
+            <p id="delivery-export-status" class="field-help" role="status" hidden></p>
+            <div id="delivery-filters" class="section-help" aria-label="当前生效的筛选"></div>
+            <div class="delivery-results" id="delivery-results" aria-busy="false">
+              <div id="delivery-loading" class="loading-row" role="status" hidden>正在读取记录…</div>
+              <div id="delivery-list-error" class="delivery-error" hidden><p id="delivery-error-message" class="form-message error" role="alert"></p><button id="delivery-list-retry" class="secondary-button" type="button">重新加载列表</button></div>
+              <div id="delivery-empty" class="empty-state" hidden><strong id="delivery-empty-title">暂无记录</strong><p id="delivery-empty-help"></p><div id="delivery-empty-actions" class="delivery-detail-actions"></div></div>
+              <div id="delivery-table-wrap" class="table-scroll" tabindex="0" role="region" aria-label="业务记录表，可横向滚动" hidden><table><caption id="delivery-caption" class="delivery-sr-only">菜单管理</caption><thead id="delivery-table-head"></thead><tbody id="delivery-table-body"></tbody></table></div>
+            </div>
+            <div class="delivery-pagination"><p id="delivery-range" class="section-help" role="status"></p><div class="delivery-page-controls"><label for="delivery-page-size">每页</label><select id="delivery-page-size"><option value="20">20 条</option><option value="50">50 条</option><option value="100">100 条</option></select><button id="delivery-prev" class="secondary-button" type="button" disabled>上一页</button><button id="delivery-next" class="secondary-button" type="button" disabled>下一页</button></div></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+  <dialog id="delivery-detail" aria-labelledby="delivery-detail-title">
+    <div class="dialog-heading"><div><p id="delivery-detail-context" class="field-help"></p><h2 id="delivery-detail-title">记录详情</h2></div><button id="delivery-detail-close" class="icon-button" type="button" aria-label="关闭详情" autofocus>×</button></div>
+    <div id="delivery-detail-body"></div>
+    <div class="dialog-actions"><button id="delivery-detail-previous" class="secondary-button" type="button" hidden>返回上一条详情</button><button id="delivery-detail-back" class="secondary-button" type="button">返回列表</button></div>
+  </dialog>
+  <script type="module" src="/forge-gateway/assets/delivery-center.js"></script>
+</body>
+</html>

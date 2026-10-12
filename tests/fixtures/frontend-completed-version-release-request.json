@@ -1,0 +1,27 @@
+{
+  "prompt": "请继续发布已经完成的事故事件上报前端版本 `511a54974b155f8bbac4da33ba0fcac76afba654`，完成 `forge-admin`、`forge-ui` 的受控上线。发布沿用已经确认的授权，原七个事故前端文件范围、全部已实现的页面需求和其他 AI 的合法成果保持。\n\n请先按这个前端版本的实际范围，正常准备一次具有发布权限的任务，并沿同一份提案继续。通过正常 `forge-release status`、`forge-release diagnose` 检查当前候选、活动作业和环境条件；如已有作业推进，跟踪已有作业；如存在具体环境或保护阻塞，保留现场并返回直接错误及最小恢复条件。\n\n上轮 Runner 作业 `97a6922f-638c-40d5-b235-56b89c698e82` 的快照 EOF 失败和清理待办继续保留。保留现有镜像与构建缓存，正常复用仍有效的前端检查；该失败作业尚未达到 prepared，不能把它当成已验收候选直接复用。\n\n具备条件后，通过正常 `forge-release release --services forge-admin,forge-ui` 完成发布，跟进同一个实际发布作业到终态，报告真实运行版本和结果。本轮交付现有前端版本，不新增业务修改，不覆盖其他 AI 的内容；同一请求不重复修改提案，也不强制清理状态或反复重放失败发布。出现新的直接阻塞就保留原件并停止该路径。\n",
+  "proposal": {
+    "goal": "Publish the unchanged accident-report admin frontend candidate 511a54974b155f8bbac4da33ba0fcac76afba654 to forge-admin and forge-ui through the controlled release runner, preserving the seven reviewed frontend files, valid checks, current canonical integration, and all parallel AI work; make no source, backend, migration, database, infrastructure, H5, workflow, business-data, or feature changes.",
+    "ownedPaths": [
+      "forge-admin-ui/src/views/accident/__tests__/accident-report-designer-contract.test.js",
+      "forge-admin-ui/src/views/accident/__tests__/accident-report-form-contract.test.js",
+      "forge-admin-ui/src/views/accident/__tests__/accident-report-view-contract.test.js",
+      "forge-admin-ui/src/views/accident/accident-report-form-contract.js",
+      "forge-admin-ui/src/views/accident/accident-report-view-contract.js",
+      "forge-admin-ui/src/views/accident/report-form/[type].vue",
+      "forge-admin-ui/src/views/accident/report.vue"
+    ],
+    "taskProfiles": [
+      "frontend-admin"
+    ],
+    "references": [
+      "forge-admin-ui/src/views/accident/__tests__/accident-report-designer-contract.test.js",
+      "forge-admin-ui/src/views/accident/__tests__/accident-report-form-contract.test.js",
+      "forge-admin-ui/src/views/accident/__tests__/accident-report-view-contract.test.js",
+      "forge-admin-ui/src/views/accident/accident-report-form-contract.js",
+      "forge-admin-ui/src/views/accident/accident-report-view-contract.js",
+      "forge-admin-ui/src/views/accident/report-form/[type].vue",
+      "forge-admin-ui/src/views/accident/report.vue"
+    ]
+  }
+}

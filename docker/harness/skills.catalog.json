@@ -1,0 +1,195 @@
+{
+  "schemaVersion": 2,
+  "bundleVersion": "2026.10.10.94",
+  "skills": [
+    {
+      "name": "project-document-reader",
+      "maturity": "stable",
+      "role": "safe-input",
+      "enforcement": "bounded-tool-and-guidance",
+      "sideEffectClass": "bounded-derived-write",
+      "contentSha256": "sha256:ad0cda300c253ed86c62321c55acbf91ebb0faac9b9e5112824ae16076b74109",
+      "treeSha256": "sha256:e4603a588e2b9569cc5d29a14949cfa7cb2a4d128176e1548a50c9f00041da60"
+    },
+    {
+      "name": "forge-git-checkpoint",
+      "maturity": "stable",
+      "role": "recovery",
+      "enforcement": "workflow-guard",
+      "sideEffectClass": "git-write",
+      "contentSha256": "sha256:201037e1d849bf1c04274db884d320663b65a83153107fa5697d89febf3417d9",
+      "treeSha256": "sha256:c775e67ae98e4db9542ba9560b064810443df8a78985e515d575c5317ed471a8"
+    },
+    {
+      "name": "forge-controlled-release",
+      "maturity": "stable",
+      "role": "release",
+      "enforcement": "runner-backed",
+      "sideEffectClass": "controlled-release",
+      "contentSha256": "sha256:97d55f5b68d2c08158976346a9da4ce9e93ac7abd4b5e5d9a2fabbd072eeb715",
+      "treeSha256": "sha256:92d2bcd47f696fdf308bfad290b10447d527aa57ba9838d48b0ad9e68ab5829d"
+    },
+    {
+      "name": "forge-taskspace-collaboration",
+      "maturity": "stable",
+      "role": "multi-agent-isolation",
+      "enforcement": "broker-and-workspace-guard",
+      "sideEffectClass": "workspace-write",
+      "contentSha256": "sha256:a34f9d8e6ba8fefa29d42a55eda97ab9f0834665b873670130f85352b3e8c968",
+      "treeSha256": "sha256:d9a30461530638581824d01ec5538e9179118d0c2859efe287d0e36e83e2f33d"
+    },
+    {
+      "name": "forge-task-contract",
+      "maturity": "pilot",
+      "role": "scope-and-authorization",
+      "enforcement": "workflow-guidance",
+      "sideEffectClass": "read-only",
+      "contentSha256": "sha256:eafb4a981d6a6ab5163f54c5931d9a583a61135d626a76dd07a3d2389d76ab3f",
+      "treeSha256": "sha256:989bf3bedbc66c9e0688240ef010154acb6850c7d2c2216ee853d9ad31bad80e"
+    },
+    {
+      "name": "forge-change-design",
+      "maturity": "pilot",
+      "role": "change-design",
+      "enforcement": "workflow-guidance",
+      "sideEffectClass": "bounded-derived-write",
+      "contentSha256": "sha256:8c8a43f768489aa5e2b5572868a73ab2405660ecd22a51fea10031f3c455f1b2",
+      "treeSha256": "sha256:770eab6f4f0a8d8306cdbf6c8db1e8f13a9e3c53fc9a1d945f8d905efe207a9d"
+    },
+    {
+      "name": "forge-delivery-orchestrator",
+      "maturity": "pilot",
+      "role": "multi-agent-orchestration",
+      "enforcement": "workflow-guidance",
+      "sideEffectClass": "bounded-derived-write",
+      "contentSha256": "sha256:249d2f52f7b77b4e576b53fe53e685f1c519d2ae71132e022d90c059efdfacb9",
+      "treeSha256": "sha256:7d378e3934706367f4c9fa41a9ea413923cb8e439564be49b73c83fb44d60701"
+    },
+    {
+      "name": "forge-requirement-coverage",
+      "maturity": "pilot",
+      "role": "traceability",
+      "enforcement": "evidence-guidance",
+      "sideEffectClass": "read-only",
+      "contentSha256": "sha256:fe4ca32383b37cb99aa8feb302de3fd4a56aa149186f87d23ea248ec41b27c4e",
+      "treeSha256": "sha256:36f85e73ead74e9ac68f443245d6ab7d3fe9ac8f7bfcbfce83f29b039ca0525c"
+    },
+    {
+      "name": "forge-dictionary-contract",
+      "maturity": "pilot",
+      "role": "cross-layer-contract",
+      "enforcement": "workflow-guidance",
+      "sideEffectClass": "read-only",
+      "contentSha256": "sha256:9dbecdda2a5b9d1b12c42d8981603aba57082cff701b99256d44f81e1d11789a",
+      "treeSha256": "sha256:5e05699c342840029abda1c2544a74f3b04d8173c839047b4898003bfeb81c19"
+    },
+    {
+      "name": "forge-ui-consistency-review",
+      "maturity": "pilot",
+      "role": "ui-review",
+      "enforcement": "evidence-guidance",
+      "sideEffectClass": "read-only",
+      "contentSha256": "sha256:b74d3f3a315d180f02c3160bab1512405fbaff3805c4e2581593d57676768c0e",
+      "treeSha256": "sha256:4a6ff19e1782865c56cb7a775efb9a234ac350c6eeb4a374d6932bc72b13ca90"
+    },
+    {
+      "name": "forge-release-acceptance",
+      "maturity": "pilot",
+      "role": "business-uat",
+      "enforcement": "evidence-guidance",
+      "sideEffectClass": "bounded-derived-write",
+      "contentSha256": "sha256:231bef981b53b7d16758fd40ebb211395c8b0ecc327813f33cae61199ca102d2",
+      "treeSha256": "sha256:00fa782e4a6014471c50b412d5757a2ffb355a4e7276dda6434cf4e6f9b549df"
+    },
+    {
+      "name": "forge-evidence-truth",
+      "maturity": "pilot",
+      "role": "evidence-integrity",
+      "enforcement": "evidence-guidance",
+      "sideEffectClass": "bounded-derived-write",
+      "contentSha256": "sha256:ed97cad769117bcb339d3f7d524a0390eefd557b861cad44e618e8e319af4ff0",
+      "treeSha256": "sha256:db1ae49badcd076f240c59dc86fed8e8a42896a421e745df6526d600c78a25ac"
+    },
+    {
+      "name": "forge-task-router",
+      "maturity": "pilot",
+      "role": "domain-task-routing",
+      "enforcement": "policy-and-audit-guidance",
+      "sideEffectClass": "read-only",
+      "contentSha256": "sha256:e9686144985ba8744ab5e54e7dba003776a4780763a4feab123894ea4cadbb35",
+      "treeSha256": "sha256:71386677679135047927a6eb3c11de25998927ab96840ac1df234fd559c11a8d"
+    },
+    {
+      "name": "forge-phase-work-package",
+      "maturity": "pilot",
+      "role": "phase-documentation-and-archive",
+      "enforcement": "controller-backed",
+      "sideEffectClass": "bounded-derived-write",
+      "contentSha256": "sha256:dedddcbae07054f005780bd9411e91a4561938d892ce90cdb8973774841e60ce",
+      "treeSha256": "sha256:1d1ea561eca0c8d06fbf9471eaf0b571009cc60dd50b4a0d83a8c72877797844"
+    },
+    {
+      "name": "forge-database-migration",
+      "maturity": "pilot",
+      "role": "schema-and-migration",
+      "enforcement": "policy-and-audit-guidance",
+      "sideEffectClass": "workspace-write",
+      "contentSha256": "sha256:4179e7b98943bfbae790b8b7033f50116456848899a2628d3fe8c35cd65cdd30",
+      "treeSha256": "sha256:120b1f528b1546cf4e7b0e9d409fd3f287cd0efb9278d8ba71eb5632e4deb6f7"
+    },
+    {
+      "name": "forge-backend-architecture",
+      "maturity": "pilot",
+      "role": "backend-architecture",
+      "enforcement": "policy-and-audit-guidance",
+      "sideEffectClass": "workspace-write",
+      "contentSha256": "sha256:bf5677c38fd191341a0d546e91bd90aeaa0a15619385f0bcb33ffe0d9ea929e3",
+      "treeSha256": "sha256:852613cdd160466647614886aa20b018a41ab915369366796ce7b39db8b4ab8b"
+    },
+    {
+      "name": "forge-crud-production",
+      "maturity": "pilot",
+      "role": "crud-vertical-slice",
+      "enforcement": "policy-and-audit-guidance",
+      "sideEffectClass": "workspace-write",
+      "contentSha256": "sha256:4fbfdfc2566b4da8ad6cb6d793b4e28285a20c7a2246deec6e326bfacd744589",
+      "treeSha256": "sha256:c8ac7007680bc15bccb1578191a60cbf25ace448393690a8182d060e14e93fe6"
+    },
+    {
+      "name": "forge-frontend-admin",
+      "maturity": "pilot",
+      "role": "admin-frontend",
+      "enforcement": "policy-and-audit-guidance",
+      "sideEffectClass": "workspace-write",
+      "contentSha256": "sha256:7e5a8b68aa5149abc507d8faed610201ebd46baf5434d0d82c43940dabd27a87",
+      "treeSha256": "sha256:2c8a36707e309fdc3c9415a5813c580d84c3f0d8854cc1051c2581b8a5e3876b"
+    },
+    {
+      "name": "forge-security-tenancy-permission",
+      "maturity": "pilot",
+      "role": "security-tenancy-permission",
+      "enforcement": "policy-and-audit-guidance",
+      "sideEffectClass": "workspace-write",
+      "contentSha256": "sha256:95b169581f8384bfd6a7307b9590620e4e19b8bbf269cdf2389378599cf8d48a",
+      "treeSha256": "sha256:ab3ce16f117315cf8e64bd04a4183192010946d8b35793585d2a9209c1889b5f"
+    },
+    {
+      "name": "forge-workflow-production",
+      "maturity": "pilot",
+      "role": "workflow-production",
+      "enforcement": "policy-and-audit-guidance",
+      "sideEffectClass": "workspace-write",
+      "contentSha256": "sha256:5df3430d3a3a11560f50daa9302f2557404be663959bf35a668e68642990def0",
+      "treeSha256": "sha256:d520f27693a28b2905d22d67f875d6eb9d4b72aef6e8f4ec92e74d4f95740911"
+    },
+    {
+      "name": "forge-testing-observability",
+      "maturity": "pilot",
+      "role": "testing-and-observability",
+      "enforcement": "policy-and-audit-guidance",
+      "sideEffectClass": "workspace-write",
+      "contentSha256": "sha256:364a17b56d5d4323aa19663b064f4a00761c918e5b8ebd149da8209d6da491d1",
+      "treeSha256": "sha256:2f7812a329bdf403b644d9343374cbce293428bca6159858a7e973667ae0552c"
+    }
+  ]
+}
