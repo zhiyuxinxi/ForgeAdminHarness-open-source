@@ -1,0 +1,11 @@
+{
+  "name": "forge-harness-agent-tools",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pinned optional agent tools, isolated from the Harness runtime dependency closure",
+  "dependencies": {
+    "@ast-grep/cli": "0.50.0",
+    "@playwright/cli": "0.1.22",
+    "@usebruno/cli": "4.2.1"
+  }
+}

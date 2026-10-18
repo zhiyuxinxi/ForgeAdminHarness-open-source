@@ -17,6 +17,7 @@ import http from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
 import process from 'node:process';
+import { collectReleaseInputs, selectReleaseImpact, successfulServiceBaselines, serviceMavenDockerfile, publicReleasePlan, sameReleaseCandidate } from './release-inputs.mjs';
 
 import {
   findForbiddenSql,
@@ -34,6 +35,8 @@ import { projectRuntimeDownload } from './runtime-download-evidence.mjs';
 const MAX_BODY_BYTES = 48 * 1024;
 const MAX_COMMAND_OUTPUT_BYTES = 2 * 1024 * 1024;
 const MAX_PUBLIC_DIAGNOSTIC_BYTES = 8 * 1024;
+const MAX_RUNTIME_LOG_BYTES = 64 * 1024;
+const RUNTIME_LOG_TIMEOUT_MS = 30 * 1000;
 const RELEASE_TIMEOUT_MS = 30 * 60 * 1000;
 const TEST_MIGRATION_TIMEOUT_MS = 10 * 60 * 1000;
 const TEST_DATABASE_OPERATOR_TIMEOUT_MS = 8 * 60 * 1000;
@@ -62,6 +65,8 @@ export function runCommand(command, args, options = {}) {
     if (options.input !== undefined) child.stdin.end(options.input);
     const chunks = [];
     let totalBytes = 0;
+    let retainedBytes = 0;
+    const retainOutputTail = options.outputMode === 'tail';
     let settled = false;
     const timeout = setTimeout(() => {
       if (!settled) child.kill('SIGTERM');
@@ -69,11 +74,20 @@ export function runCommand(command, args, options = {}) {
 
     const collect = (chunk) => {
       totalBytes += chunk.length;
-      if (totalBytes > MAX_COMMAND_OUTPUT_BYTES) {
+      if (!retainOutputTail && totalBytes > MAX_COMMAND_OUTPUT_BYTES) {
         child.kill('SIGTERM');
         return;
       }
       chunks.push(chunk);
+      retainedBytes += chunk.length;
+      while (retainedBytes > MAX_COMMAND_OUTPUT_BYTES) {
+        const excess = retainedBytes - MAX_COMMAND_OUTPUT_BYTES;
+        if (chunks[0].length <= excess) retainedBytes -= chunks.shift().length;
+        else {
+          chunks[0] = chunks[0].subarray(excess);
+          retainedBytes -= excess;
+        }
+      }
     };
     child.stdout.on('data', collect);
     child.stderr.on('data', collect);
@@ -86,14 +100,14 @@ export function runCommand(command, args, options = {}) {
       settled = true;
       clearTimeout(timeout);
       const output = Buffer.concat(chunks).toString('utf8');
-      if (totalBytes > MAX_COMMAND_OUTPUT_BYTES) {
+      if (!retainOutputTail && totalBytes > MAX_COMMAND_OUTPUT_BYTES) {
         reject(new Error(`${command} output exceeded the runner limit.`));
       } else if (code !== 0) {
         const error = new Error(`${command} failed with exit ${code ?? signal}.`);
         error.output = output.slice(-32 * 1024);
         reject(error);
       } else {
-        resolve({ code, output });
+        resolve({ code, output, ...(totalBytes > MAX_COMMAND_OUTPUT_BYTES ? { outputTruncated: true } : {}) });
       }
     });
   });
@@ -181,7 +195,7 @@ function parseOperatorOutput(value) {
   return result;
 }
 
-export function sanitizeDiagnosticText(value) {
+function redactDiagnosticText(value) {
   if (typeof value !== 'string') return '';
   return value
     .replace(/\u001b\[[0-9;]*m/g, '')
@@ -194,8 +208,41 @@ export function sanitizeDiagnosticText(value) {
       '$1=[REDACTED]',
     )
     .replace(/:\/\/([^\s/@:]+):([^\s/@]+)@/g, '://[REDACTED]@')
-    .replace(/[\0\r]/g, '')
-    .slice(-MAX_PUBLIC_DIAGNOSTIC_BYTES);
+    .replace(/[\0\r]/g, '');
+}
+
+export function sanitizeDiagnosticText(value) {
+  return redactDiagnosticText(value).slice(-MAX_PUBLIC_DIAGNOSTIC_BYTES);
+}
+
+function projectLogSecrets(environment) {
+  const secrets = [];
+  for (const line of environment.split(/\r?\n/u)) {
+    const match = /^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$/iu.exec(line);
+    if (!match || !/(?:PASSWORD|PASSWD|SECRET|TOKEN|(?:^|_)KEY(?:_|$)|CREDENTIAL)/iu.test(match[1])) continue;
+    let value = match[2];
+    if (value.length >= 2 && ['"', "'"].includes(value[0]) && value.at(-1) === value[0]) value = value.slice(1, -1);
+    if (value) secrets.push(value);
+  }
+  return secrets.sort((left, right) => right.length - left.length);
+}
+
+function sanitizeRuntimeLogs(value, secrets) {
+  let text = String(value ?? '');
+  for (const secret of secrets) text = text.split(secret).join('[REDACTED]');
+  text = text
+    .replace(/\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/gu, '')
+    .replace(/(\b[a-z0-9_-]*(?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*)(["'])(?:\\.|(?!\2)[^\\\r\n])*\2/giu, '$1$2[REDACTED]$2')
+    .replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/gu, '[REDACTED PRIVATE KEY]')
+    .replace(/\b(?:Bearer|Basic)\s+[^\s,"';]+/giu, '[REDACTED AUTHORIZATION]')
+    .replace(/\bsk-[A-Za-z0-9_-]{16,}\b/gu, '[REDACTED]')
+    .replace(/(["']?(?:set-cookie|cookie|authorization)["']?\s*[:=]\s*)(?:["'][^\r\n]*|[^\r\n]*)/giu, '$1[REDACTED]');
+  text = redactDiagnosticText(text).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/gu, '');
+  const bytes = Buffer.from(text, 'utf8');
+  if (bytes.length <= MAX_RUNTIME_LOG_BYTES) return { output: text, truncated: false };
+  let offset = bytes.length - MAX_RUNTIME_LOG_BYTES;
+  while ((bytes[offset] & 0xc0) === 0x80) offset += 1;
+  return { output: bytes.subarray(offset).toString('utf8'), truncated: true };
 }
 
 function releaseError(code, message, {
@@ -391,8 +438,106 @@ export class ControlledReleaseRunner {
     return contract;
   }
 
+  async releaseInputSnapshot(commit, model) {
+    if (!/^[a-f0-9]{40}$/.test(commit)) throw releaseError('RELEASE_INPUTS_UNRESOLVED', 'Invalid source commit.');
+    const tree = (await this.command('git', ['-C', this.workspaceRoot, 'ls-tree', '-rz', '--full-tree', commit])).output;
+    const files = new Map();
+    for (const entry of tree.split('\0').filter(Boolean)) {
+      const match = /^(\d+) (blob|commit) ([a-f0-9]{40})\t([\s\S]+)$/.exec(entry);
+      if (!match) throw releaseError('RELEASE_INPUTS_UNRESOLVED', 'Git input inventory is invalid.');
+      files.set(match[4], { mode: match[1], object: match[3] });
+    }
+    const cache = new Map();
+    const poms = [...files.keys()].filter(file => file.endsWith('/pom.xml')
+      && Object.values(model.services).some(unit => unit.kind === 'maven' && file.startsWith(unit.mavenRoot + '/')));
+    if (poms.length) {
+      const result = await this.command('git', ['-C', this.workspaceRoot, 'cat-file', '--batch'],
+        { input: poms.map(file => files.get(file).object).join('\n') + '\n' });
+      const bytes = Buffer.from(result.output, 'utf8');
+      let offset = 0;
+      for (const file of poms) {
+        const end = bytes.indexOf(10, offset), header = bytes.subarray(offset, end).toString('utf8');
+        const match = /^([a-f0-9]{40}) blob (\d+)$/.exec(header);
+        if (end < offset || !match || match[1] !== files.get(file).object || Number(match[2]) > 2 * 1024 ** 2) throw releaseError('RELEASE_INPUTS_UNRESOLVED', 'Incomplete Git POM inventory.');
+        const body = bytes.subarray(end + 1, end + 1 + Number(match[2]));
+        const object = crypto.createHash('sha1').update(`blob ${body.length}\0`).update(body).digest('hex');
+        offset = end + 2 + body.length;
+        if (object !== match[1] || bytes[offset - 1] !== 10) throw releaseError('RELEASE_INPUTS_UNRESOLVED', 'Git POM bytes could not be read losslessly.');
+        cache.set(file, body.toString('utf8'));
+      }
+      if (offset !== bytes.length) throw releaseError('RELEASE_INPUTS_UNRESOLVED', 'Unexpected Git POM inventory trailing bytes.');
+    }
+    return collectReleaseInputs(model, files, async file => {
+      if (!cache.has(file)) cache.set(file, (await this.command('git', ['-C', this.workspaceRoot, 'show', `${commit}:${file}`])).output);
+      return cache.get(file);
+    });
+  }
+
+  async planReleaseInputs(request, commit, contract = null) {
+    contract ??= await this.loadContract();
+    const model = contract.release.inputModel;
+    if (!model) return null;
+    const env = Object.fromEntries((await readFile(this.envFile, 'utf8')).split('\n').filter(line => /^[A-Z][A-Z0-9_]*=/.test(line)).map(line => {
+      const index = line.indexOf('='); return [line.slice(0, index), line.slice(index + 1).replace(/^['"]|['"]$/g, '').trim()];
+    }));
+    let records;
+    try { records = (await readFile(this.auditFile, 'utf8')).split('\n').filter(Boolean).map(line => JSON.parse(line)); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; records = []; }
+    const baselines = successfulServiceBaselines(records, model, env);
+    const inputs = await this.releaseInputSnapshot(commit, model), snapshots = new Map([[commit, inputs]]), changes = {};
+    for (const [service, baseline] of Object.entries(baselines)) {
+      // Historical receipts remain historical. Reconstruct their inputs from the
+      // exact source, never stamp the new candidate's digest onto an old run.
+      if (!baseline.inputDigest || !baseline.inputFiles) {
+        if (!snapshots.has(baseline.commit)) snapshots.set(baseline.commit, await this.releaseInputSnapshot(baseline.commit, model));
+        const old = snapshots.get(baseline.commit)[service];
+        baseline.inputDigest ??= old.digest; baseline.inputFiles ??= old.files; baseline.migrationDigest ??= old.migrationDigest;
+      }
+      if (baseline.inputDigest !== inputs[service].digest) changes[service] = (await this.command('git', ['-C', this.workspaceRoot, 'diff', '--no-ext-diff', '--no-textconv', '--no-renames', '--name-only', '-z', baseline.commit, commit])).output.split('\0').filter(Boolean);
+    }
+    let allowedChanges;
+    const unreleasedBaseChanges = {};
+    const approvedProtectedChanges = new Set();
+    if (request.provenance?.sourceBaseCommit) {
+      allowedChanges = new Set((await this.command('git', ['-C', this.workspaceRoot, 'diff', '--no-ext-diff', '--no-textconv', '--no-renames', '--name-only', '-z', request.provenance.sourceBaseCommit, commit])).output.split('\0').filter(Boolean));
+      const baseDiffs = new Map();
+      for (const [service, baseline] of Object.entries(baselines)) {
+        if (baseline.inputDigest === inputs[service].digest || baseline.commit === request.provenance.sourceBaseCommit) continue;
+        if (!baseDiffs.has(baseline.commit)) baseDiffs.set(baseline.commit, new Set((await this.command('git', ['-C', this.workspaceRoot,
+          'diff', '--no-ext-diff', '--no-textconv', '--no-renames', '--name-only', '-z', baseline.commit, request.provenance.sourceBaseCommit])).output.split('\0').filter(Boolean)));
+        unreleasedBaseChanges[service] = baseDiffs.get(baseline.commit);
+      }
+      // The platform has already approved these exact deployment bytes. A
+      // public baseline update must not become an unrelated task's source
+      // conflict, but a changed candidate must never inherit that approval.
+      const affected = new Set(Object.values(changes).flat());
+      for (const item of contract.release.protectedFiles ?? []) {
+        if (!affected.has(item.relativePath) || !Object.values(inputs).some(input => input.files.includes(item.relativePath))) continue;
+        const content = (await this.command('git', ['-C', this.workspaceRoot, 'show', `${commit}:${item.relativePath}`])).output;
+        if (crypto.createHash('sha256').update(content, 'utf8').digest('hex') === item.sha256) approvedProtectedChanges.add(item.relativePath);
+      }
+    }
+    const plan = selectReleaseImpact({ requestedServices: request.services, inputs, baselines, changes, allowedChanges, unreleasedBaseChanges, approvedProtectedChanges });
+    return { ...plan, commit, modelDigest: crypto.createHash('sha256').update(JSON.stringify(model)).digest('hex'), baselines };
+  }
+
   composeArgs(...args) {
     return ['compose', '--env-file', this.envFile, '--file', this.composeFile, ...args];
+  }
+
+  async scopedBuildOverrides(services, contract, source, root) {
+    const overrides = {};
+    for (const service of services) {
+      const unit = contract.release.inputModel?.services[service];
+      const build = { context: source };
+      if (unit?.kind === 'maven' && unit.dockerfile) {
+        const recipe = serviceMavenDockerfile(await readFile(path.join(source, unit.dockerfile), 'utf8'), unit.module);
+        build.dockerfile = path.join(root, `${service}.Dockerfile`);
+        await atomicReplace(build.dockerfile, recipe);
+      }
+      overrides[service] = { build };
+    }
+    return overrides;
   }
 
   async composeWithEnvironment(environment, ...args) {
@@ -404,6 +549,32 @@ export class ControlledReleaseRunner {
 
   async compose(...args) {
     return this.composeWithEnvironment(undefined, ...args);
+  }
+
+  async runtimeLogs(request, contract) {
+    // No release/preflight dependency: failed or stopped application containers
+    // are precisely the case this read-only project capability must diagnose.
+    let secrets;
+    try { secrets = projectLogSecrets(await readFile(this.envFile, 'utf8')); }
+    catch {
+      throw releaseError('RUNTIME_LOGS_UNAVAILABLE', 'Project runtime log protection inputs are unavailable.', { stage: 'runtime-logs' });
+    }
+    const args = this.composeArgs('--project-name', contract.composeProjectName, 'logs', '--no-color', '--timestamps', '--tail', String(request.tail),
+      ...(request.sinceSeconds === undefined ? [] : ['--since', `${request.sinceSeconds}s`]), ...request.services);
+    let result;
+    try {
+      result = await this.command('docker', args, { cwd: this.opsRoot, timeoutMs: RUNTIME_LOG_TIMEOUT_MS });
+    } catch (error) {
+      const diagnostic = sanitizeRuntimeLogs(error.output ?? error.message, secrets);
+      throw releaseError('RUNTIME_LOGS_UNAVAILABLE', 'The project application runtime logs could not be read.', {
+        stage: 'runtime-logs', recommendedAction: 'Check the project service name or request a smaller log tail/time window.',
+        diagnosticText: diagnostic.output,
+      });
+    }
+    return { source: 'project-runtime', projectSlug: contract.projectSlug, observedAt: new Date().toISOString(),
+      services: request.services, tail: request.tail,
+      ...(request.sinceSeconds === undefined ? {} : { sinceSeconds: request.sinceSeconds }),
+      ...sanitizeRuntimeLogs(result.output, secrets), maxOutputBytes: MAX_RUNTIME_LOG_BYTES };
   }
 
   async runTestDatabaseOperator(action, contract, environment = {}) {
@@ -997,13 +1168,14 @@ export class ControlledReleaseRunner {
     return inventory;
   }
 
-  async preflight() {
+  async preflight(inputPlan = null) {
     const contract = await this.loadContract();
     const composeResult = await this.compose('config', '--format', 'json');
     validateComposeModel(JSON.parse(composeResult.output), contract);
     await this.validateProtectedFiles(contract);
-    const migrations = await this.validateMigrations();
-    await Promise.all([
+    const databaseRequired = !inputPlan || inputPlan.selectedServices.some(service => contract.release.inputModel.services[service].migrations.length);
+    const migrations = databaseRequired ? await this.validateMigrations() : { status: 'not-required' };
+    if (databaseRequired) await Promise.all([
       tcpProbe(contract.infrastructure.mysql.host, contract.infrastructure.mysql.port),
       tcpProbe(contract.infrastructure.redis.host, contract.infrastructure.redis.port),
     ]);
@@ -1729,8 +1901,8 @@ FORGE_QA_IDENTITY_TRANSACTION
     if (released) {
       if (released.status !== 'success' || released.stage !== 'complete' || released.preparedJobId !== prepared.jobId
         || released.result?.commit !== prepared.commit || released.result.version !== prepared.version
-        || JSON.stringify(released.provenance) !== JSON.stringify(prepared.provenance)
-        || JSON.stringify(released.result.provenance) !== JSON.stringify(prepared.provenance)
+        || !sameReleaseCandidate(released.provenance, prepared.provenance)
+        || !sameReleaseCandidate(released.result.provenance, prepared.provenance)
         || JSON.stringify(released.services) !== JSON.stringify(prepared.services)
         || JSON.stringify(released.result.services) !== JSON.stringify(prepared.services)) return false;
       const variables = { 'forge-admin': 'FORGE_ADMIN_IMAGE', 'forge-app': 'FORGE_APP_IMAGE',
@@ -1827,7 +1999,7 @@ FORGE_QA_IDENTITY_TRANSACTION
         const prepared = JSON.parse(await readFile(path.join(this.preparedCandidatePath(preparation.jobId), 'prepared.json'), 'utf8'));
         if (prepared.schemaVersion !== 1 || prepared.status !== 'prepared' || prepared.jobId !== preparation.jobId
           || prepared.commit !== baseline || prepared.version !== released.version
-          || JSON.stringify(prepared.provenance) !== JSON.stringify(released.provenance)
+          || !sameReleaseCandidate(prepared.provenance, released.provenance)
           || JSON.stringify(prepared.services) !== JSON.stringify(released.services)) return null;
         // Admin anchors the existing successful database baseline, which may
         // have been published separately from UI. This UI-only operation does
@@ -1871,10 +2043,15 @@ FORGE_QA_IDENTITY_TRANSACTION
       await this.recordJobState(state);
     };
     try {
+      const contract = await this.loadContract();
+      const inputPlan = request.runtimePreparation ? null : await this.planReleaseInputs(request, request.provenance.candidateCommit, contract);
+      const requestedServices = request.services;
+      if (inputPlan) request = { ...request, services: inputPlan.selectedServices };
+      state = { ...state, services: request.services, ...(inputPlan ? { requestedServices, inputPlan } : {}) };
       const previous = await this.readJobState();
       const commit = request.provenance.candidateCommit;
       if (previous?.status === 'prepared' && previous.commit === commit
-        && JSON.stringify(previous.provenance) === JSON.stringify(request.provenance)
+        && sameReleaseCandidate(previous.provenance, request.provenance)
         && JSON.stringify(previous.services) === JSON.stringify(request.services)
         && (request.version === undefined || previous.version === request.version)) {
         retainedPreparation = previous;
@@ -1890,11 +2067,12 @@ FORGE_QA_IDENTITY_TRANSACTION
         || !request.runtimePreparation?.recheck && !releasedPreparation)) {
         throw releaseError('PREPARED_CANDIDATE_STALE', 'The protected runtime recheck must reuse its exact prepared job; rebuilding is not allowed.');
       }
-      const preflight = await this.preflight();
+      const preflight = await this.preflight(inputPlan);
       if (!preflight.workspaceClean) throw releaseError('WORKSPACE_DIRTY', 'The shared workspace is not clean.');
       if (releasedPreparation && preflight.head !== commit) throw releaseError('PREPARED_CANDIDATE_STALE', 'The published candidate is no longer the current workspace commit.');
       if (retainedPreparation) {
         const prepared = await this.readPreparedCandidate({ ...request, preparedJobId: retainedPreparation.jobId }, commit, releasedPreparation);
+        if (prepared.inputPlan && JSON.stringify(prepared.inputPlan) !== JSON.stringify(inputPlan)) throw releaseError('PREPARED_CANDIDATE_STALE', 'Service input plan changed after preparation.');
         let runtimeEvidence;
         if (request.runtimePreparation) {
           const root = this.preparedCandidatePath(prepared.jobId);
@@ -1920,14 +2098,22 @@ FORGE_QA_IDENTITY_TRANSACTION
         await this.audit({ type: 'candidate-preparation-reuse', jobId: prepared.jobId, commit,
           services: prepared.services, provenance: prepared.provenance, ...(runtimeEvidence ? { runtimeEvidence } : {}), reusedAt: new Date().toISOString() });
         return { jobId: prepared.jobId, status: 'prepared', commit, version: prepared.version, images: prepared.images,
+          ...(inputPlan ? { inputPlan: publicReleasePlan(inputPlan), services: prepared.services, releaseRequired: prepared.services.length > 0 } : {}),
           ...(runtimeEvidence ? { runtimeEvidence } : {}) };
       }
       await update({});
-      const contract = await this.loadContract();
       const binding = await this.preparationBinding();
       const root = this.preparedCandidatePath(jobId);
       const source = path.join(root, 'workspace');
       await mkdir(root, { recursive: true, mode: 0o700 });
+      if (inputPlan && !request.services.length) {
+        const prepared = { schemaVersion: 1, jobId, status: 'prepared', commit, services: [], requestedServices,
+          provenance: request.provenance, binding, images: {}, buildEnv: {}, inputPlan,
+          testDatabaseSandbox: { mode: 'not-required', reason: 'unchanged-release-inputs' }, startedAt, completedAt: new Date().toISOString() };
+        await atomicReplace(path.join(root, 'prepared.json'), JSON.stringify(prepared) + '\n');
+        await update({ status: 'prepared', stage: 'candidate-unchanged', commit });
+        return { jobId, status: 'prepared', commit, services: [], images: {}, inputPlan: publicReleasePlan(inputPlan), releaseRequired: false };
+      }
       await this.command('git', ['init', source]);
       await this.command('git', ['-C', source, 'fetch', '--no-tags', this.workspaceRoot, commit]);
       await this.command('git', ['-c', 'core.autocrlf=false', '-C', source, 'checkout', '--detach', commit]);
@@ -1939,17 +2125,17 @@ FORGE_QA_IDENTITY_TRANSACTION
         if (tree !== request.runtimePreparation.candidateTree) throw releaseError('CANDIDATE_TREE_MISMATCH', 'The runtime candidate tree does not match its protected binding.');
       }
       await this.validateProtectedFiles(contract, source);
-      await this.validateMigrations(source);
+      if (!inputPlan || request.services.some(service => contract.release.inputModel.services[service].migrations.length)) await this.validateMigrations(source);
       const version = request.version ?? ('release-' + new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'z').toLowerCase() + '-' + commit.slice(0, 12));
-      const serviceVariables = { 'forge-admin': 'FORGE_ADMIN_IMAGE', 'forge-app': 'FORGE_APP_IMAGE',
-        'forge-flow': 'FORGE_FLOW_IMAGE', 'forge-ui': 'FORGE_UI_IMAGE' };
+      const serviceVariables = contract.release.inputModel
+        ? Object.fromEntries(Object.entries(contract.release.inputModel.services).map(([service, unit]) => [service, unit.imageVariable]))
+        : { 'forge-admin': 'FORGE_ADMIN_IMAGE', 'forge-app': 'FORGE_APP_IMAGE', 'forge-flow': 'FORGE_FLOW_IMAGE', 'forge-ui': 'FORGE_UI_IMAGE' };
       const buildEnv = Object.fromEntries(request.services.map((service) => [
         serviceVariables[service], contract.composeProjectName + '/' + service + ':' + version,
       ]));
       // Fixed Compose override: build the isolated source and bind its reviewed
       // configuration/migrations. The live Compose file and branch stay intact.
-      const overrides = {};
-      for (const service of request.services) overrides[service] = { build: { context: source } };
+      const overrides = await this.scopedBuildOverrides(request.services, contract, source, root);
       overrides['forge-admin'] = { ...overrides['forge-admin'], volumes: [
         { type: 'bind', source: path.join(source, 'docker-forge-admin', 'application-datasource.yml'), target: '/app/application-prod.yml', read_only: true },
         { type: 'bind', source: path.join(source, 'forge-server', 'db', 'migration'), target: '/app/db/migration', read_only: true },
@@ -1957,7 +2143,7 @@ FORGE_QA_IDENTITY_TRANSACTION
       const candidateComposeFile = path.join(root, 'compose.candidate.json');
       await atomicReplace(candidateComposeFile, JSON.stringify({ services: overrides }) + '\n');
       await update({ stage: 'candidate-build', commit, version });
-      await this.command('docker', [...this.composeArgs(), '--file', candidateComposeFile, 'build', ...request.services], { cwd: this.opsRoot, env: buildEnv });
+      await this.command('docker', [...this.composeArgs(), '--file', candidateComposeFile, 'build', ...request.services], { cwd: this.opsRoot, env: buildEnv, outputMode: 'tail' });
       const images = {};
       for (const service of request.services) {
         const image = buildEnv[serviceVariables[service]];
@@ -1967,7 +2153,9 @@ FORGE_QA_IDENTITY_TRANSACTION
       }
       const pinnedEnv = Object.fromEntries(request.services.map((service) => [serviceVariables[service], images[service].id]));
       let runtimeEvidence;
-      let testDatabaseSandbox = request.runtimePreparation ? null : await this.uiOnlyDatabaseSkip(request, commit, previous);
+      let testDatabaseSandbox = inputPlan && !request.services.some(service => contract.release.inputModel.services[service].migrations.length)
+        ? { mode: 'not-required', reason: 'no-database-inputs', candidateCommit: commit }
+        : request.runtimePreparation ? null : await this.uiOnlyDatabaseSkip(request, commit, previous);
       if (!testDatabaseSandbox) {
         testDatabaseSandbox = await this.prepareTestDatabase(contract, jobId, commit, update);
         await update({ stage: 'test-database-migration', testDatabaseSandbox });
@@ -1982,11 +2170,13 @@ FORGE_QA_IDENTITY_TRANSACTION
       if (await this.preparationBinding() !== binding) throw releaseError('PREPARED_CANDIDATE_STALE', 'Project release configuration changed during candidate validation.');
       const prepared = { schemaVersion: 1, jobId, status: 'prepared', commit, version,
         services: request.services, provenance: request.provenance, binding, images,
+        ...(inputPlan ? { inputPlan, requestedServices } : {}),
         buildEnv: pinnedEnv, testDatabaseSandbox, ...(runtimeEvidence ? { runtimeEvidence } : {}), startedAt, completedAt: new Date().toISOString() };
       await atomicReplace(path.join(root, 'prepared.json'), JSON.stringify(prepared) + '\n');
       await update({ status: 'prepared', stage: 'candidate-prepared', commit, version });
       await this.audit({ type: 'candidate-preparation', ...prepared });
-      return { jobId, status: 'prepared', commit, version, images, ...(runtimeEvidence ? { runtimeEvidence } : {}) };
+      return { jobId, status: 'prepared', commit, version, images, services: request.services,
+        ...(inputPlan ? { inputPlan: publicReleasePlan(inputPlan) } : {}), ...(runtimeEvidence ? { runtimeEvidence } : {}) };
     } catch (error) {
       if (retainedPreparation || request.preparedJobId !== undefined) {
         await this.audit({ type: 'candidate-preparation-reuse', status: 'failed', jobId: retainedPreparation?.jobId ?? request.preparedJobId,
@@ -2012,7 +2202,7 @@ FORGE_QA_IDENTITY_TRANSACTION
       : JSON.stringify(prepared.services) === JSON.stringify(request.services);
     if (prepared.status !== 'prepared' || prepared.jobId !== request.preparedJobId
       || prepared.commit !== commit || prepared.commit !== request.provenance?.candidateCommit
-      || JSON.stringify(prepared.provenance) !== JSON.stringify(request.provenance)
+      || !sameReleaseCandidate(prepared.provenance, request.provenance)
       || !servicesMatch
       || (request.version !== undefined && prepared.version !== request.version)
       || !await this.preparedBindingMatches(prepared, released, request)) {
@@ -2056,8 +2246,13 @@ FORGE_QA_IDENTITY_TRANSACTION
     try {
       const previous = await this.readJobState();
       await this.recordJobState(jobState);
-      const preflight = await this.preflight();
       contract = await this.loadContract();
+      const head = validatedRequest.provenance?.candidateCommit ?? (contract.release.inputModel
+        ? (await this.command('git', ['-C', this.workspaceRoot, 'rev-parse', 'HEAD'])).output.trim() : undefined);
+      const inputPlan = await this.planReleaseInputs(validatedRequest, head, contract);
+      const requestedServices = validatedRequest.services;
+      if (inputPlan) validatedRequest = { ...validatedRequest, services: inputPlan.selectedServices };
+      const preflight = await this.preflight(inputPlan);
       if (!preflight.workspaceClean) {
         throw new Error('Workspace is not clean; review and commit the intended release before publishing.');
       }
@@ -2078,10 +2273,21 @@ FORGE_QA_IDENTITY_TRANSACTION
       }
       const prepared = validatedRequest.preparedJobId
         ? await this.readPreparedCandidate(validatedRequest, preflight.head) : null;
+      if (prepared?.inputPlan && JSON.stringify(prepared.inputPlan) !== JSON.stringify(inputPlan)) {
+        throw releaseError('PREPARED_CANDIDATE_STALE', 'Service inputs or published baselines changed after preparation.');
+      }
+      if (inputPlan && !validatedRequest.services.length) {
+        const result = { jobId, projectSlug: contract.projectSlug, commit: preflight.head, services: [], images: {},
+          releaseApplied: false, outcome: 'unchanged', inputPlan, startedAt, completedAt: new Date().toISOString() };
+        await this.audit({ type: 'controlled-release-noop', status: 'success', ...result });
+        await updateJobState({ status: 'success', stage: 'complete', services: [], requestedServices, result, completedAt: result.completedAt });
+        return { ...result, inputPlan: publicReleasePlan(inputPlan) };
+      }
       const shortCommit = preflight.head.slice(0, 12);
       const generatedVersion = `release-${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'z').toLowerCase()}-${shortCommit}`;
       const version = prepared?.version ?? validatedRequest.version ?? generatedVersion;
-      await updateJobState({ stage: 'candidate-build', commit: preflight.head, version });
+      await updateJobState({ stage: 'candidate-build', commit: preflight.head, version, services: validatedRequest.services,
+        ...(inputPlan ? { requestedServices, inputPlan } : {}) });
       const imagePrefix = contract.composeProjectName;
       const imageVariables = new Map([
         ['FORGE_ADMIN_IMAGE', `${imagePrefix}/forge-admin:${version}`],
@@ -2089,7 +2295,8 @@ FORGE_QA_IDENTITY_TRANSACTION
         ['FORGE_FLOW_IMAGE', `${imagePrefix}/forge-flow:${version}`],
         ['FORGE_UI_IMAGE', `${imagePrefix}/forge-ui:${version}`],
       ]);
-      const serviceVariables = new Map([
+      const serviceVariables = contract.release.inputModel
+        ? new Map(Object.entries(contract.release.inputModel.services).map(([service, unit]) => [service, unit.imageVariable])) : new Map([
         ['forge-admin', 'FORGE_ADMIN_IMAGE'],
         ['forge-app', 'FORGE_APP_IMAGE'],
         ['forge-flow', 'FORGE_FLOW_IMAGE'],
@@ -2098,7 +2305,8 @@ FORGE_QA_IDENTITY_TRANSACTION
       const buildEnv = {};
       for (const service of validatedRequest.services) {
         const variable = serviceVariables.get(service);
-        buildEnv[variable] = imageVariables.get(variable);
+        buildEnv[variable] = imagePrefix + '/' + service + ':' + version;
+        imageVariables.set(variable, buildEnv[variable]);
       }
 
       if (prepared) {
@@ -2108,14 +2316,32 @@ FORGE_QA_IDENTITY_TRANSACTION
         testDatabaseSandbox = prepared.testDatabaseSandbox;
         await updateJobState({ stage: 'candidate-reused', preparedJobId: prepared.jobId, testDatabaseSandbox });
       } else {
-        await this.command('docker', this.composeArgs('build', ...validatedRequest.services), {
+        let buildArguments = this.composeArgs('build', ...validatedRequest.services);
+        if (inputPlan) {
+          const root = this.preparedCandidatePath(jobId);
+          await mkdir(root, { recursive: true, mode: 0o700 });
+          const overrides = await this.scopedBuildOverrides(validatedRequest.services, contract, this.workspaceRoot, root);
+          const file = path.join(root, 'compose.build.json');
+          await atomicReplace(file, JSON.stringify({ services: overrides }) + '\n');
+          buildArguments = [...this.composeArgs(), '--file', file, 'build', ...validatedRequest.services];
+        }
+        await this.command('docker', buildArguments, {
           cwd: this.opsRoot,
           env: buildEnv,
+          outputMode: 'tail',
         });
+        if (inputPlan) for (const service of validatedRequest.services) {
+          const variable = serviceVariables.get(service);
+          const image = (await this.command('docker', ['image', 'inspect', '--format', '{{.Id}}', buildEnv[variable]])).output.trim();
+          if (!/^sha256:[a-f0-9]{64}$/.test(image)) throw releaseError('CANDIDATE_IMAGE_INVALID', 'Built image identity is unavailable.');
+          buildEnv[variable] = image; imageVariables.set(variable, image);
+        }
         // The database gate must exercise the exact Admin image that will be
         // promoted. Testing before the build silently validated the previous
         // release image and could approve migrations absent from the candidate.
-        testDatabaseSandbox = await this.uiOnlyDatabaseSkip(validatedRequest, preflight.head, previous);
+        testDatabaseSandbox = inputPlan && !validatedRequest.services.some(service => contract.release.inputModel.services[service].migrations.length)
+          ? { mode: 'not-required', reason: 'no-database-inputs', candidateCommit: preflight.head }
+          : await this.uiOnlyDatabaseSkip(validatedRequest, preflight.head, previous);
         if (!testDatabaseSandbox) {
           testDatabaseSandbox = await this.prepareTestDatabase(
             contract,
@@ -2136,7 +2362,7 @@ FORGE_QA_IDENTITY_TRANSACTION
 
       await updateJobState({ stage: 'publish-configuration' });
       const envText = await readFile(this.envFile, 'utf8');
-      const replacements = new Map([['FORGE_ADMIN_COMMIT', preflight.head]]);
+      const replacements = new Map(validatedRequest.services.includes('forge-admin') ? [['FORGE_ADMIN_COMMIT', preflight.head]] : []);
       for (const service of validatedRequest.services) {
         const variable = serviceVariables.get(service);
         replacements.set(variable, imageVariables.get(variable));
@@ -2170,6 +2396,8 @@ FORGE_QA_IDENTITY_TRANSACTION
           version,
           commit: preflight.head,
           services: validatedRequest.services,
+          releaseApplied: true,
+          ...(inputPlan ? { inputPlan, requestedServices } : {}),
           testDatabase: contract.infrastructure.mysql.testDatabase,
           testDatabaseSandbox,
           databaseProvisioningPerformed: false,
@@ -2206,7 +2434,7 @@ FORGE_QA_IDENTITY_TRANSACTION
         if (validatedRequest.services.includes('forge-admin') && testDatabaseSandbox?.mode !== 'not-required') {
           await this.markTestDatabasePublished(validatedRequest.preparedJobId ?? jobId, preflight.head, jobId);
         }
-        return result;
+        return inputPlan ? { ...result, inputPlan: publicReleasePlan(inputPlan) } : result;
       } catch (error) {
         const failedStage = jobState.stage;
         await updateJobState({ stage: 'application-rollback', failedStage });
@@ -2281,6 +2509,14 @@ FORGE_QA_IDENTITY_TRANSACTION
   async execute(request) {
     const contract = await this.loadContract();
     const validated = validateReleaseRequest(request, contract);
+    if (validated.action === 'runtime-logs') return this.runtimeLogs(validated, contract);
+    if (validated.action === 'plan') {
+      const commit = validated.provenance?.candidateCommit
+        ?? (await this.command('git', ['-C', this.workspaceRoot, 'rev-parse', 'HEAD'])).output.trim();
+      const plan = await this.planReleaseInputs(validated, commit, contract);
+      return plan ? { status: 'planned', ...publicReleasePlan(plan) } : { status: 'not-configured', commit,
+        reason: 'Project release input definitions have not been installed; no verification or release was performed.' };
+    }
     if (validated.action === 'contract') {
       let identities;
       try {

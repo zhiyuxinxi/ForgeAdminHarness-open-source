@@ -7,12 +7,12 @@ import test from 'node:test';
 import { installControlledReleaseBackground } from '../docker/harness/forge-phase-budget-guard.mjs';
 
 const command = '/usr/local/bin/forge-release release --services forge-admin,forge-ui --version release-fixture';
-function fixture() {
+function fixture(environment = {}) {
   let handler;
   const dispose = installControlledReleaseBackground({ on(name, callback) {
     assert.equal(name, 'tools/execute'); handler = callback;
     return () => { handler = null; };
-  } });
+  } }, { environment });
   return { run: (exec, next) => handler(exec, next), dispose };
 }
 const execution = args => ({ name: 'bash', arguments: args, callId: 'release-call',
@@ -52,6 +52,24 @@ test('controlled release background dispatch leaves other commands and native fa
   const failure = new Error('background jobs unavailable'); let calls = 0;
   await assert.rejects(f.run(execution({ command }), async () => { calls += 1; throw failure; }), error => error === failure);
   assert.equal(calls, 1, 'no foreground fallback or retry may resubmit a release');
+});
+
+test('direct release observation survives short model timeouts without submitting a second command', async () => {
+  const f = fixture({ FORGE_DEVELOPMENT_MODE: 'direct' });
+  for (const flag of [undefined, true]) {
+    const exec = execution({ command, timeoutMs: 30000, run_in_background: flag });
+    let calls = 0;
+    await f.run(exec, () => {
+      calls += 1;
+      assert.equal(exec.arguments.command, command);
+      assert.equal(exec.arguments.run_in_background, true);
+      assert.equal(exec.arguments.timeoutMs, 960000);
+    });
+    assert.equal(calls, 1);
+  }
+  const args = { command: 'forge-release status', timeoutMs: 30000 };
+  const exec = execution(args);
+  await f.run(exec, () => assert.equal(exec.arguments, args));
 });
 
 const root = fileURLToPath(new URL('../', import.meta.url));

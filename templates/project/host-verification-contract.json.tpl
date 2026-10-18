@@ -10,6 +10,17 @@
   "stateRoot": "__DELIVERY_ROOT__/projects/__PROJECT_SLUG__/verification/host-state",
   "dependencySeed": null,
   "preparedDependencies": null,
+  "inputScopes": {
+    "backend-module-compile": { "kind": "maven", "root": "forge-server", "inputs": [], "rootFiles": true },
+    "backend-module-test": { "kind": "maven", "root": "forge-server", "inputs": [], "rootFiles": true },
+    "backend-test-class": { "kind": "maven", "root": "forge-server", "inputs": [], "rootFiles": true },
+    "frontend-admin-lint": { "kind": "tree", "root": "forge-admin-ui", "inputs": [], "rootFiles": true },
+    "frontend-admin-test": { "kind": "tree", "root": "forge-admin-ui", "inputs": [], "rootFiles": true },
+    "frontend-admin-typecheck": { "kind": "tree", "root": "forge-admin-ui", "inputs": [], "rootFiles": true },
+    "frontend-admin-build": { "kind": "tree", "root": "forge-admin-ui", "inputs": [], "rootFiles": true },
+    "frontend-h5-test": { "kind": "tree", "root": "forge-h5-ui", "inputs": [], "rootFiles": true },
+    "frontend-h5-build": { "kind": "tree", "root": "forge-h5-ui", "inputs": [], "rootFiles": true }
+  },
   "toolchains": {
     "java": "__HOST_JAVA_PATH__",
     "javaHome": "__HOST_JAVA_HOME__",

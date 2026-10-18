@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "bundleVersion": "2026.10.10.94",
+  "bundleVersion": "2026.10.16.10",
   "skills": [
     {
       "name": "project-document-reader",
@@ -8,8 +8,8 @@
       "role": "safe-input",
       "enforcement": "bounded-tool-and-guidance",
       "sideEffectClass": "bounded-derived-write",
-      "contentSha256": "sha256:ad0cda300c253ed86c62321c55acbf91ebb0faac9b9e5112824ae16076b74109",
-      "treeSha256": "sha256:e4603a588e2b9569cc5d29a14949cfa7cb2a4d128176e1548a50c9f00041da60"
+      "contentSha256": "sha256:5ab717f78ea9c3891230ef3b9c2c7eb97eca65d5f266ef0bd981951d78a46317",
+      "treeSha256": "sha256:96981cccf62e1da2ed962eb051d25b032627189611c56ec13c1547b6a1a1a44d"
     },
     {
       "name": "forge-git-checkpoint",
@@ -17,8 +17,8 @@
       "role": "recovery",
       "enforcement": "workflow-guard",
       "sideEffectClass": "git-write",
-      "contentSha256": "sha256:201037e1d849bf1c04274db884d320663b65a83153107fa5697d89febf3417d9",
-      "treeSha256": "sha256:c775e67ae98e4db9542ba9560b064810443df8a78985e515d575c5317ed471a8"
+      "contentSha256": "sha256:0ea97e3602d4dbcce6b48ac7d1806c61da6d3430f6cf47a68ac09beb7fdea91b",
+      "treeSha256": "sha256:cdb7525ec1d672e72db5a15e0f52799d5016a7b6ac8e9dbb2b61df64dff6e4e1"
     },
     {
       "name": "forge-controlled-release",
@@ -26,8 +26,8 @@
       "role": "release",
       "enforcement": "runner-backed",
       "sideEffectClass": "controlled-release",
-      "contentSha256": "sha256:97d55f5b68d2c08158976346a9da4ce9e93ac7abd4b5e5d9a2fabbd072eeb715",
-      "treeSha256": "sha256:92d2bcd47f696fdf308bfad290b10447d527aa57ba9838d48b0ad9e68ab5829d"
+      "contentSha256": "sha256:5599aafe0ccb5d0872e3eb41dbea9c95306ab18b2769535e727106a41aa8d4d3",
+      "treeSha256": "sha256:82716127c6191bbaf16f8e94a1a9f4188cec4367aecee3e2c185c986df66a382"
     },
     {
       "name": "forge-taskspace-collaboration",
@@ -35,8 +35,8 @@
       "role": "multi-agent-isolation",
       "enforcement": "broker-and-workspace-guard",
       "sideEffectClass": "workspace-write",
-      "contentSha256": "sha256:a34f9d8e6ba8fefa29d42a55eda97ab9f0834665b873670130f85352b3e8c968",
-      "treeSha256": "sha256:d9a30461530638581824d01ec5538e9179118d0c2859efe287d0e36e83e2f33d"
+      "contentSha256": "sha256:4a18093a9457a4a09c6ba83381fa968fe67095ff4f113aeb4dfa13478bbc7a3a",
+      "treeSha256": "sha256:ab6d98e89b65206a6af955e4229ebb2c1b438d9e48bcafb3773aa6d2508b8eeb"
     },
     {
       "name": "forge-task-contract",
@@ -44,8 +44,8 @@
       "role": "scope-and-authorization",
       "enforcement": "workflow-guidance",
       "sideEffectClass": "read-only",
-      "contentSha256": "sha256:eafb4a981d6a6ab5163f54c5931d9a583a61135d626a76dd07a3d2389d76ab3f",
-      "treeSha256": "sha256:989bf3bedbc66c9e0688240ef010154acb6850c7d2c2216ee853d9ad31bad80e"
+      "contentSha256": "sha256:3908fa540e73e5ba10fdfc279a3ab81b98919a60f2374db43ec6b9ae4f9217bb",
+      "treeSha256": "sha256:a41249f8959381906dc35d3a4e5a882494233962b05136f759cae0034257f6b6"
     },
     {
       "name": "forge-change-design",
@@ -53,8 +53,8 @@
       "role": "change-design",
       "enforcement": "workflow-guidance",
       "sideEffectClass": "bounded-derived-write",
-      "contentSha256": "sha256:8c8a43f768489aa5e2b5572868a73ab2405660ecd22a51fea10031f3c455f1b2",
-      "treeSha256": "sha256:770eab6f4f0a8d8306cdbf6c8db1e8f13a9e3c53fc9a1d945f8d905efe207a9d"
+      "contentSha256": "sha256:ae7fe398c2d5e51428da253d869e3cd60d173e0915c43b9ce590463370c304af",
+      "treeSha256": "sha256:c8b071a52bb897b694348cf6fdd6440d51b1c9bc8c27f3eb763a151a60587b3c"
     },
     {
       "name": "forge-delivery-orchestrator",
@@ -62,8 +62,8 @@
       "role": "multi-agent-orchestration",
       "enforcement": "workflow-guidance",
       "sideEffectClass": "bounded-derived-write",
-      "contentSha256": "sha256:249d2f52f7b77b4e576b53fe53e685f1c519d2ae71132e022d90c059efdfacb9",
-      "treeSha256": "sha256:7d378e3934706367f4c9fa41a9ea413923cb8e439564be49b73c83fb44d60701"
+      "contentSha256": "sha256:613b2047a1835a78be0304bd56564eb36304ffbe97558a5d36d37cc498cf0d01",
+      "treeSha256": "sha256:2743bd4f290c24e7033fe8116a110c615a3c40762a08a0d11ac3abbf2cf09724"
     },
     {
       "name": "forge-requirement-coverage",
@@ -71,8 +71,8 @@
       "role": "traceability",
       "enforcement": "evidence-guidance",
       "sideEffectClass": "read-only",
-      "contentSha256": "sha256:fe4ca32383b37cb99aa8feb302de3fd4a56aa149186f87d23ea248ec41b27c4e",
-      "treeSha256": "sha256:36f85e73ead74e9ac68f443245d6ab7d3fe9ac8f7bfcbfce83f29b039ca0525c"
+      "contentSha256": "sha256:136023c57163d27183e1ad3eae74653f5a139f8883bcd2dafec178dd5b518d98",
+      "treeSha256": "sha256:ddf5ee3e59592bb8db6ccb256d6eb18b865120f2fee1eea1a0d0c2f2b2e9456d"
     },
     {
       "name": "forge-dictionary-contract",
@@ -80,8 +80,8 @@
       "role": "cross-layer-contract",
       "enforcement": "workflow-guidance",
       "sideEffectClass": "read-only",
-      "contentSha256": "sha256:9dbecdda2a5b9d1b12c42d8981603aba57082cff701b99256d44f81e1d11789a",
-      "treeSha256": "sha256:5e05699c342840029abda1c2544a74f3b04d8173c839047b4898003bfeb81c19"
+      "contentSha256": "sha256:dea233110cca630eb3978a6fb7c02deffef52e99e492183801a47729f3a94e6c",
+      "treeSha256": "sha256:9987cea9ef3681a291838edc34198affc1e375199d3286a4f9043d35f52f5153"
     },
     {
       "name": "forge-ui-consistency-review",
@@ -89,8 +89,8 @@
       "role": "ui-review",
       "enforcement": "evidence-guidance",
       "sideEffectClass": "read-only",
-      "contentSha256": "sha256:b74d3f3a315d180f02c3160bab1512405fbaff3805c4e2581593d57676768c0e",
-      "treeSha256": "sha256:4a6ff19e1782865c56cb7a775efb9a234ac350c6eeb4a374d6932bc72b13ca90"
+      "contentSha256": "sha256:4bb5a5186e446f7bc87fcfe8643747fc3686794c1303f0768f42dfe8af919b83",
+      "treeSha256": "sha256:b2cfab808b41cbc2cc7f31699d0c934004cc5f83b64902195d8d025559860613"
     },
     {
       "name": "forge-release-acceptance",
@@ -98,8 +98,8 @@
       "role": "business-uat",
       "enforcement": "evidence-guidance",
       "sideEffectClass": "bounded-derived-write",
-      "contentSha256": "sha256:231bef981b53b7d16758fd40ebb211395c8b0ecc327813f33cae61199ca102d2",
-      "treeSha256": "sha256:00fa782e4a6014471c50b412d5757a2ffb355a4e7276dda6434cf4e6f9b549df"
+      "contentSha256": "sha256:db0aaa782878e23c50824c0c7cff4b9cb80cdcfec8b615b5699b513aba75db50",
+      "treeSha256": "sha256:786d389d45929352d1b96c48f3e6601d8396c25474175b4323b2bcaecaa3f32a"
     },
     {
       "name": "forge-evidence-truth",
@@ -107,8 +107,8 @@
       "role": "evidence-integrity",
       "enforcement": "evidence-guidance",
       "sideEffectClass": "bounded-derived-write",
-      "contentSha256": "sha256:ed97cad769117bcb339d3f7d524a0390eefd557b861cad44e618e8e319af4ff0",
-      "treeSha256": "sha256:db1ae49badcd076f240c59dc86fed8e8a42896a421e745df6526d600c78a25ac"
+      "contentSha256": "sha256:e565f260dea7bcfc62bb3d530e3232880b59574616fb2c99b4c384573ebad75a",
+      "treeSha256": "sha256:94f6e5bcba06b87fb8eb6492430dcbb13e6bebddf440487602ce702d0b7d4d9c"
     },
     {
       "name": "forge-task-router",
@@ -116,8 +116,8 @@
       "role": "domain-task-routing",
       "enforcement": "policy-and-audit-guidance",
       "sideEffectClass": "read-only",
-      "contentSha256": "sha256:e9686144985ba8744ab5e54e7dba003776a4780763a4feab123894ea4cadbb35",
-      "treeSha256": "sha256:71386677679135047927a6eb3c11de25998927ab96840ac1df234fd559c11a8d"
+      "contentSha256": "sha256:f80b9d233480e1f5a6739d06e4efe7e0e851aa06e6c6efa26f2de38465f9fffb",
+      "treeSha256": "sha256:10cf874453c3e62e6b54057d5590dda6d72a0aff74e7a937009b58de6dd71f06"
     },
     {
       "name": "forge-phase-work-package",
@@ -125,8 +125,8 @@
       "role": "phase-documentation-and-archive",
       "enforcement": "controller-backed",
       "sideEffectClass": "bounded-derived-write",
-      "contentSha256": "sha256:dedddcbae07054f005780bd9411e91a4561938d892ce90cdb8973774841e60ce",
-      "treeSha256": "sha256:1d1ea561eca0c8d06fbf9471eaf0b571009cc60dd50b4a0d83a8c72877797844"
+      "contentSha256": "sha256:6b69fb5eab5fffcc73375e6caff2edb9d5d726d6be6d10ba16b3bcc815856cc5",
+      "treeSha256": "sha256:c393044dd42b58bc732483749d0c3df933bf75961fa37deb4a200f8be7ee515e"
     },
     {
       "name": "forge-database-migration",
@@ -134,8 +134,8 @@
       "role": "schema-and-migration",
       "enforcement": "policy-and-audit-guidance",
       "sideEffectClass": "workspace-write",
-      "contentSha256": "sha256:4179e7b98943bfbae790b8b7033f50116456848899a2628d3fe8c35cd65cdd30",
-      "treeSha256": "sha256:120b1f528b1546cf4e7b0e9d409fd3f287cd0efb9278d8ba71eb5632e4deb6f7"
+      "contentSha256": "sha256:e76368b44ecf30ed58e1f34569906c1a1d1d1408e3c6423655e79f8306bbd616",
+      "treeSha256": "sha256:263b42003bc60a17374d0f27b4fa22b032e9716b67c8dc93dec7b62008e7d31f"
     },
     {
       "name": "forge-backend-architecture",
@@ -143,8 +143,8 @@
       "role": "backend-architecture",
       "enforcement": "policy-and-audit-guidance",
       "sideEffectClass": "workspace-write",
-      "contentSha256": "sha256:bf5677c38fd191341a0d546e91bd90aeaa0a15619385f0bcb33ffe0d9ea929e3",
-      "treeSha256": "sha256:852613cdd160466647614886aa20b018a41ab915369366796ce7b39db8b4ab8b"
+      "contentSha256": "sha256:cedb6e5983edc41fee5480e63ed4f86ee1bb0537d06f71f7907bfd9831ce67b0",
+      "treeSha256": "sha256:d03a94fce58018f79a45e65cf25764bc2fa2f1be4ddbaacd1bc31c611702f04b"
     },
     {
       "name": "forge-crud-production",
@@ -152,8 +152,8 @@
       "role": "crud-vertical-slice",
       "enforcement": "policy-and-audit-guidance",
       "sideEffectClass": "workspace-write",
-      "contentSha256": "sha256:4fbfdfc2566b4da8ad6cb6d793b4e28285a20c7a2246deec6e326bfacd744589",
-      "treeSha256": "sha256:c8ac7007680bc15bccb1578191a60cbf25ace448393690a8182d060e14e93fe6"
+      "contentSha256": "sha256:b0ad9c3e505d25294d66c2f19fbea60facfb68b04fa9bd9187a40b8ddb1efaea",
+      "treeSha256": "sha256:b3044e5993e4fcdbed0756b70c4601ca6e10c60985bed0ecccdde6aab5376044"
     },
     {
       "name": "forge-frontend-admin",
@@ -161,8 +161,8 @@
       "role": "admin-frontend",
       "enforcement": "policy-and-audit-guidance",
       "sideEffectClass": "workspace-write",
-      "contentSha256": "sha256:7e5a8b68aa5149abc507d8faed610201ebd46baf5434d0d82c43940dabd27a87",
-      "treeSha256": "sha256:2c8a36707e309fdc3c9415a5813c580d84c3f0d8854cc1051c2581b8a5e3876b"
+      "contentSha256": "sha256:314b79f9d79e1bcc13d75262f61d3f0536c90de77d8a1f4922e0ec2c99924133",
+      "treeSha256": "sha256:00e11e9f1b144e832466bfb43c91001c2f33415773f4ab921477b5196b174d43"
     },
     {
       "name": "forge-security-tenancy-permission",
@@ -170,8 +170,8 @@
       "role": "security-tenancy-permission",
       "enforcement": "policy-and-audit-guidance",
       "sideEffectClass": "workspace-write",
-      "contentSha256": "sha256:95b169581f8384bfd6a7307b9590620e4e19b8bbf269cdf2389378599cf8d48a",
-      "treeSha256": "sha256:ab3ce16f117315cf8e64bd04a4183192010946d8b35793585d2a9209c1889b5f"
+      "contentSha256": "sha256:d69fb7530917c8c7d3f03b4209864e719e5ad58372d8181f3360ffd3a313b92a",
+      "treeSha256": "sha256:fa21e4e82ed466958d4730cdcb627c8be0fda9f901397c84a02a2bf3fe1c7ad9"
     },
     {
       "name": "forge-workflow-production",
@@ -179,8 +179,8 @@
       "role": "workflow-production",
       "enforcement": "policy-and-audit-guidance",
       "sideEffectClass": "workspace-write",
-      "contentSha256": "sha256:5df3430d3a3a11560f50daa9302f2557404be663959bf35a668e68642990def0",
-      "treeSha256": "sha256:d520f27693a28b2905d22d67f875d6eb9d4b72aef6e8f4ec92e74d4f95740911"
+      "contentSha256": "sha256:fd9f5ab98cf566fbd2d6b4f68ea8ea3afe40aa55cd24b1a8cff69d17c8e5f9ed",
+      "treeSha256": "sha256:ba44f03ab9982812db67afc6c632d54d59e1d2f3d97e8a5addb944d6bfc095a6"
     },
     {
       "name": "forge-testing-observability",
@@ -188,8 +188,35 @@
       "role": "testing-and-observability",
       "enforcement": "policy-and-audit-guidance",
       "sideEffectClass": "workspace-write",
-      "contentSha256": "sha256:364a17b56d5d4323aa19663b064f4a00761c918e5b8ebd149da8209d6da491d1",
-      "treeSha256": "sha256:2f7812a329bdf403b644d9343374cbce293428bca6159858a7e973667ae0552c"
+      "contentSha256": "sha256:c8ca73cf0f63bda760ac525cea637d7710008a3ba03e332048abdbdc608a472a",
+      "treeSha256": "sha256:f35e416c96310d2fd67454d6655e9a388af8d608db11529ee8a5bac646d456d2"
+    },
+    {
+      "name": "browser-playwright",
+      "maturity": "pilot",
+      "role": "browser-interaction",
+      "enforcement": "sandbox-and-guidance",
+      "sideEffectClass": "workspace-write",
+      "contentSha256": "sha256:95bb7ec5896c29ae37f543413e912e3a9502d295ca35e744e2fa1f4472b8f000",
+      "treeSha256": "sha256:dabc702d96a1ff2acb401e871a91b21d4f77e4d289545244e34764771dc9f247"
+    },
+    {
+      "name": "api-bruno",
+      "maturity": "pilot",
+      "role": "api-verification",
+      "enforcement": "sandbox-and-guidance",
+      "sideEffectClass": "workspace-write",
+      "contentSha256": "sha256:5693a62e59960fae64ab01d88e840a302f8498ae64b75852ef9def2343e5c2c1",
+      "treeSha256": "sha256:910e7d824aff51635f4388f20118e5cd6a960b8cb746e9c802d1d467382a2199"
+    },
+    {
+      "name": "code-ast-grep",
+      "maturity": "pilot",
+      "role": "structural-code-search",
+      "enforcement": "sandbox-and-guidance",
+      "sideEffectClass": "read-only",
+      "contentSha256": "sha256:b2223f20b1e0fb86880f1866e4641c97db2e067a908c10a5156f6ac3e0bada14",
+      "treeSha256": "sha256:4648bd26c4ba992d2afb198c258c685fac8cf56de5a06dc9b5156b5c491b4c4c"
     }
   ]
 }

@@ -232,6 +232,12 @@ export function validateIncrementalArtifact({ image, parent, foundation, manifes
         'tool worker configuration is not bound to the installed consumer');
     }
   }
+  if (labels['io.forge.tool-worker.private-proc'] !== undefined) {
+    requireArtifact(labels['io.forge.tool-worker.private-proc'] === 'v1', 'unsupported private proc version');
+    requireArtifact(/^[a-f0-9]{64}$/u.test(proof.actualConsumer.installedBindings?.['/usr/local/lib/forge-direct-worker-sandbox.mjs'] ?? ''),
+      'private proc activation is not bound to the installed sandbox');
+    expected.Labels['io.forge.tool-worker.private-proc'] = 'v1';
+  }
   requireArtifact(digest(image.Config) === manifest.targetConfigDigest, 'complete Config digest differs');
   requireArtifact(digest(image.Config) === digest(expected), 'unreviewed Config change');
   requireArtifact(expectedRuntimeUid === 1000 && Number.isSafeInteger(expectedRuntimeGid) && expectedRuntimeGid > 0

@@ -24,7 +24,7 @@ def manifest():
             'helper': {'path': '/opt/forge-delivery-platform/scripts/lib/container-image-cutover.sh', 'sha256': '8' * 64},
             'files': {key: {'path': path.as_posix(), 'sha256': 'a' * 64, 'uid': 1000, 'gid': 983, 'mode': 0o600}
                       for key, path in DEPLOY.FILE_PATHS.items()},
-            'sessionIds': ['session-dfd1e4fc-a79b-4307-b154-9a8c402106d6'],
+            'sessionIds': ['session-f1184c70-6762-2e96-1a6f-90513bc971dd'],
             'hostUpgrade': {
                 'unit': DEPLOY.FactFeedbackHostUpgrade.UNIT, 'oldVersion': '2026.09.18.3', 'newVersion': '2026.09.18.4',
                 'oldPid': 12345, 'node': '/opt/node/bin/node', 'nodeMajor': 22, 'profileCatalogVersion': '2026.09.03.22',

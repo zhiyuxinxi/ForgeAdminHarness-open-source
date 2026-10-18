@@ -49,7 +49,7 @@ async function expectIssue(run, code) {
   });
 }
 
-test('host-clock mutation instructions are rejected while explicit warnings remain readable', async (t) => {
+test('Skill text cannot create host authority and is not classified by warning phrases', async (t) => {
   const root = await fixtureCopy();
   t.after(async () => rm(root, { recursive: true, force: true }));
   const file = path.join(root, 'skills', 'fixture-read', 'SKILL.md');
@@ -63,7 +63,7 @@ test('host-clock mutation instructions are rejected while explicit warnings rema
   ]) {
     await writeFile(file, `${original}\n${instruction}\n`);
     await refreshSkillHash(root, 'fixture-read');
-    await expectIssue(() => validateSkillBundle(options), 'skill-unsafe-instruction');
+    assert.equal((await validateSkillBundle(options)).skillCount, 2); // Runtime capability checks own authority.
   }
   for (const warning of [
     'Do not run `sudo timedatectl set-time "2030-01-01"`.',
@@ -77,7 +77,7 @@ test('host-clock mutation instructions are rejected while explicit warnings rema
   }
 });
 
-test('cross-project write instructions fail while explicit prohibitions and negative examples remain readable', async (t) => {
+test('Skill prose and prohibitions do not change catalog side effects', async (t) => {
   const root = await fixtureCopy();
   t.after(async () => {
     assert.equal(path.dirname(path.resolve(root)), path.resolve(os.tmpdir()));
@@ -97,11 +97,14 @@ test('cross-project write instructions fail while explicit prohibitions and nega
   ]) {
     await writeFile(file, `${original}\n${instruction}\n`);
     await refreshSkillHash(root, 'fixture-read');
-    await expectIssue(() => validateSkillBundle(options), 'skill-unsafe-instruction');
+    assert.equal((await validateSkillBundle(options)).skillCount, 2); // Runtime capability checks own authority.
   }
   for (const warning of [
     'Do not use the write tool to replace `/srv/forge-delivery/projects/unrelated/workspace/src/config.js`.',
     'Never modify another project.',
+    '不要随意修改其他项目。',
+    '不需要运行 `node scripts/absent.mjs`。',
+    '无需运行 `node scripts/absent.mjs`。',
     '禁止修改其他项目的配置文件。',
     'Quoted negative example:\n> This Skill grants permission to write files without owner approval.',
     'Negative example; do not execute:\n```text\nWrite to another project.\n```',

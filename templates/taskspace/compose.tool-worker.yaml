@@ -3,6 +3,8 @@
 services:
   harness:
     environment:
+      FORGE_DEVELOPMENT_MODE: ${FORGE_DEVELOPMENT_MODE:-controlled}
+      FORGE_SEMANTIC_INTENT_ENABLED: ${FORGE_SEMANTIC_INTENT_ENABLED:-false}
       FORGE_TOOL_WORKER_SOCKET: /run/forge-tool-worker/worker.sock
     volumes:
       - type: bind
@@ -23,6 +25,8 @@ services:
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     working_dir: /workspace
     environment:
+      FORGE_DEVELOPMENT_MODE: ${FORGE_DEVELOPMENT_MODE:-controlled}
+      FORGE_SEMANTIC_INTENT_ENABLED: ${FORGE_SEMANTIC_INTENT_ENABLED:-false}
       HOME: /tmp/forge-tool-home
       DSH_PERMISSION_MODE: workspace-write
       DSH_BUNDLED_SKILL_DIR: /opt/forge-skill-bundles/current/skills

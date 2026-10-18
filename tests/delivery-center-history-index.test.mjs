@@ -49,3 +49,18 @@ test('legacy parent cycle is visible without changing the source identity or los
   assert.match(packet.menus[0].hierarchyNote, /循环/);
   assert.deepEqual(packet.menus[2].path, ['一', '三']);
 });
+
+test('history packets keep project identities and source labels separate', () => {
+  const input = { sourceCommit: 'a'.repeat(40), recordedAt: '2026-10-15T00:00:00Z',
+    menuMetadata: { items: [{ id: '1', parentId: '0', name: '平台夹具菜单', resourceType: 1 }] },
+    schemaMetadata: {}, sourceCorpus: {}, documentHistory: {} };
+  const packets = ['foundation-32148', 'demo-customer-32148'].map(projectSlug => buildHistoryPacket({ ...input, projectSlug }));
+  for (const packet of packets) {
+    assert.equal(packet.source.label, `${packet.projectSlug} 历史文档、菜单配置及数据库结构只读提取`);
+    assert.doesNotMatch(packet.source.label, /示例客户|生产/u);
+    assert.equal(packet.menus[0].id, `${packet.projectSlug}:menu:1`);
+    assert.equal(packet.coverage.businessRowsRead, 0);
+    assert.deepEqual(packet.requirements, []);
+  }
+  assert.notEqual(packets[0].menus[0].id, packets[1].menus[0].id);
+});

@@ -146,50 +146,6 @@ function stripFencedCode(text) {
   return text.replace(/(^|\n)[ \t]*(```|~~~)[^\n]*\n[\s\S]*?\n[ \t]*\2(?=\n|$)/g, '$1');
 }
 
-// Bounded defense for observed host-clock and cross-project write injections. This is
-// not a general proof that arbitrary natural-language instructions are safe.
-function scanUnsafeSkillInstructions(text, file) {
-  const issues = [];
-  const command = /\b(?:sudo\s+)?(?:timedatectl\s+set-time\b|date\s+(?:--set(?:=|\s)|-s\b))/;
-  const crossProjectWrite = /(?:\b(?:use\s+(?:the\s+)?(?:write|edit)\s+tool\s+to\s+)?(?:write|replace|overwrite|modify|delete)\b|写入|替换|覆盖|修改|删除)[^\n。;!?]*(?:\/srv\/forge-delivery\/projects\/[^/\s`]+\/workspace\/|\b(?:another|other|unrelated)[ -]project\b|其[他它]项目)/iu;
-  const selfGrant = /\b(?:this\s+)?skill\s+(?:instruction\s+)?(?:grants?|provides?|confers?)\s+(?:permission|authority)\s+to\s+(?:write|replace|overwrite|modify|delete)\b/iu;
-  const writeProhibition = /(?:\b(?:do\s+not|must\s+not|never)|禁止|严禁|不得|不要|不允许)\s*[:：`'" ]*$/iu;
-  const prohibition = /(?:\b(?:do\s+not|must\s+not|never)\s+(?:run|execute|invoke)|(?:禁止|严禁|不得|不要|不允许)(?:执行|运行|调用))\s*(?:this\s+(?:command|example))?\s*[:：`'" ]*$/i;
-  const negativeExample = /(?:negative\s+example|counterexample|反例|禁止示例|危险示例|\bdo\s+not\s+(?:run|execute)|禁止执行)/i;
-  let previous = '';
-  let fence = null;
-  let negativeFence = false;
-  for (const [index, line] of text.split('\n').entries()) {
-    const fenceMarker = /^\s*(```|~~~)/.exec(line);
-    if (fenceMarker) {
-      if (fence === fenceMarker[1]) {
-        fence = null;
-        negativeFence = false;
-      } else if (fence === null) {
-        fence = fenceMarker[1];
-        negativeFence = negativeExample.test(previous);
-      }
-      continue;
-    }
-    const quotedNegative = /^\s*>/.test(line) && negativeExample.test(previous);
-    for (const [expression, warning, label] of [
-      [command, prohibition, 'Host-clock mutation'],
-      [crossProjectWrite, writeProhibition, 'Cross-project write'],
-      [selfGrant, writeProhibition, 'Skill self-granted write authority'],
-    ]) {
-      for (const match of line.matchAll(new RegExp(expression.source, expression.flags + 'g'))) {
-        const prefix = line.slice(0, match.index).split(/[。；;!?]/).at(-1);
-        if (!negativeFence && !quotedNegative && !warning.test(prefix)) {
-          issues.push(issue('skill-unsafe-instruction', file,
-            `${label} instruction at line ${index + 1}; a Skill cannot grant authority for this side effect.`));
-        }
-      }
-    }
-    if (line.trim()) previous = line;
-  }
-  return issues;
-}
-
 function markdownTargets(text) {
   const withoutFences = stripFencedCode(text);
   const targets = [];
@@ -279,64 +235,6 @@ async function validateLinks(text, file, bundleRoot) {
 }
 
 // Only explicit mandatory declarations are inputs; examples are not commands.
-function requiredExecutorDeclarations(text) {
-  const declarations = [];
-  const mandatory = /(?:\b(?:must|required\s+to)\s+(?:run|execute|invoke)|(?:必须|需要)(?:运行|执行|调用))\s*$/iu;
-  const mandatoryBlock = /(?:\b(?:must|required\s+to)\s+(?:run|execute|invoke)\s+(?:the\s+)?following(?:\s+(?:required\s+)?(?:executor|script|command)s?)?|(?:必须|需要)(?:运行|执行|调用)以下(?:脚本|命令|执行器)?)\s*[:：]\s*$/iu;
-  const example = /(?:negative\s+example|counterexample|反例|禁止示例)/iu;
-  let previous = '';
-  let fence = null;
-  for (const [index, line] of text.split(/\r?\n/u).entries()) {
-    if (fence) {
-      const close = /^ {0,3}(`{3,}|~{3,})\s*$/u.exec(line);
-      if (close && close[1][0] === fence.character && close[1].length >= fence.length) {
-        fence = null;
-        previous = '';
-      } else if (fence.required) declarations.push({ index, command: line.trim() });
-      continue;
-    }
-    const open = /^ {0,3}(`{3,}|~{3,})([^\r\n]*)$/u.exec(line);
-    if (open) {
-      fence = { character: open[1][0], length: open[1].length,
-        required: /^(?:bash|sh|shell|powershell|pwsh)?$/iu.test(open[2].trim())
-          && mandatoryBlock.test(previous) && !example.test(previous) };
-      continue;
-    }
-    if (/^\s*>/u.test(line)) { previous = ''; continue; }
-    for (const match of line.matchAll(/`([^`\n]+)`/gu)) {
-      if (mandatory.test(line.slice(0, match.index))) declarations.push({ index, command: match[1].trim() });
-    }
-    if (line.trim()) previous = line;
-  }
-  return declarations;
-}
-
-// Resolve mandatory local executors as bundle inputs, never run them.
-// Interpreter-based scripts need ordinary readable bytes, not an executable bit.
-async function validateRequiredExecutors(text, file, bundleRoot) {
-  const issues = [];
-  const skillName = path.relative(bundleRoot, file).split(path.sep)[0];
-  const skillRoot = path.join(bundleRoot, skillName);
-  for (const { index, command: declaration } of requiredExecutorDeclarations(text)) {
-    const command = /^(?:(node|python3?|bash|sh|pwsh)\s+)?((?:\.{1,2}\/)*scripts\/[A-Za-z0-9._/-]+)(?:\s|$)/u.exec(declaration);
-    if (!command) continue;
-    const relative = command[2];
-    const target = path.resolve(skillRoot, relative);
-    let metadata;
-    if (isInside(skillRoot, target)) {
-      try { metadata = await lstat(target); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-    }
-    if (!metadata?.isFile() || metadata.isSymbolicLink()) {
-      issues.push(issue('required-executor-unavailable', file,
-        `Required executor ${relative} at line ${index + 1} must be an ordinary file inside this Skill.`));
-    } else if (!command[1] && process.platform !== 'win32' && (metadata.mode & 0o111) === 0) {
-      issues.push(issue('required-executor-not-executable', file,
-        `Required executor ${relative} at line ${index + 1} is invoked directly but is not executable.`));
-    }
-  }
-  return issues;
-}
-
 function parseFrontmatter(text) {
   const normalized = text.replace(/^\uFEFF/, '');
   const lines = normalized.split(/\r?\n/);
@@ -823,10 +721,8 @@ export async function validateSkillBundle({
       continue;
     }
     issues.push(...scanSecretText(text, item.path));
-    if (path.extname(item.path).toLowerCase() === '.md') {
-      issues.push(...scanUnsafeSkillInstructions(text, item.path));
-      issues.push(...await validateRequiredExecutors(text, item.path, root));
-    }
+    // Prose is guidance, not executable authority. Structural paths, links,
+    // secrets and runtime capabilities are validated independently of wording.
     if (['.md', '.html'].includes(extension) || path.basename(item.path) === 'SKILL.md') {
       issues.push(...await validateLinks(text, item.path, root));
     }

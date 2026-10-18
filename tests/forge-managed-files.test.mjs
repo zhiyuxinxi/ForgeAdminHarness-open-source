@@ -23,6 +23,18 @@ const configuration = (targets = [target()]) => validateManagedFileTargets({ sch
   projectSlug: 'forge-base', targets }, 'forge-base');
 const fails = (fn, code) => assert.throws(fn, error => error?.code === code);
 
+test('semantic managed-file intent keeps the named target and account boundary without word blacklists', () => {
+  const prompt='请补充 /data/reports/log.html，别修改其他日志。';
+  const decision={kind:'execute',prohibitedActions:[],managedFiles:{operation:'write',targetPaths:['/data/reports/log.html']}};
+  const grants=managedFileIntentForPrompt(prompt,configuration(),ACTOR,decision);
+  assert.equal(grants.length,1);assert.equal(grants[0].relativePath,'log.html');
+  assert.deepEqual(grants[0].operations,['read','write']);
+  assert.deepEqual(managedFileIntentForPrompt(prompt,configuration(),READER,decision),[]);
+  assert.deepEqual(managedFileIntentForPrompt(prompt,configuration(),ACTOR,{...decision,kind:'observe'}),[]);
+  assert.deepEqual(managedFileIntentForPrompt('请补充 /data/reports-other/log.html',configuration(),ACTOR,
+    {...decision,managedFiles:{operation:'write',targetPaths:['/data/reports-other/log.html']}}),[]);
+});
+
 function request(prompt = '请修改 /data/reports/index.html。', config = configuration()) {
   const identity = { projectSlug: 'forge-base', taskId: 'task-managed', actorUserId: ACTOR,
     actorUsername: 'owner', conversationId: 'conversation:one', dshSessionId: 'session:one',

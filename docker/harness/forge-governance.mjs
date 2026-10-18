@@ -1171,6 +1171,30 @@ function normalizedControllerPath(value) {
     .replace(/\{[^/}]+\}|:[^/]+|\*/gu, ':param').replace(/\/$/u, '') || '/';
 }
 
+// This existing runtime controller is protected by Forge's configured API-resource
+// interceptor. Each object has literal resource URLs; configKey is a Java route
+// variable, not a wildcard permission granted to every object.
+function isSharedDynamicCrudEndpoint(endpoint) {
+  return endpoint.file === 'forge-server/forge-framework/forge-plugin-parent/forge-plugin-generator/src/main/java/com/mdframe/forge/plugin/generator/controller/DynamicCrudController.java'
+    && endpoint.apiPath.startsWith('/ai/crud/:param');
+}
+
+function resourceControllerEndpoint(controllers, resource) {
+  const matching = controllers.filter((endpoint) => {
+    if (endpoint.method !== resource.method) return false;
+    if (endpoint.apiPath === resource.apiPath) return true;
+    if (!isSharedDynamicCrudEndpoint(endpoint)) return false;
+    const template = endpoint.apiPath.split('/');
+    const requested = resource.apiPath.split('/');
+    return template.length === requested.length
+      && template.every((segment, index) => segment === requested[index]
+        || (segment === ':param' && requested[index].length > 0));
+  }).sort((left, right) => left.apiPath.split('/').filter(segment => segment === ':param').length
+    - right.apiPath.split('/').filter(segment => segment === ':param').length);
+  // A public/ignored literal route must not fall through to a protected ID route.
+  return matching[0]?.public ? undefined : matching[0];
+}
+
 function roleGrantFiltersActiveRole(sql) {
   const aliases = [];
   for (const match of sql.matchAll(/\b(?:FROM|JOIN)\s+(?:`?\w+`?\.)?`?sys_role`?(?:\s+(?:AS\s+)?([A-Za-z_][A-Za-z0-9_]*))?/giu)) {
@@ -1794,7 +1818,10 @@ function scanGlobal(record, findings) {
       'giu',
     );
     for (const match of content.matchAll(skillSafetyPattern)) {
-      findings.push(finding('SKILL-SAFETY-001', file, lineAt(content, match.index), 'Skill contains an unreviewed privileged command, dynamic installer, or credential material.'));
+      const message = /PRIVATE KEY/iu.test(match[0])
+        ? 'Skill contains embedded private key credential material.'
+        : 'Skill contains an unreviewed privileged command or dynamic installer.';
+      findings.push(finding('SKILL-SAFETY-001', file, lineAt(content, match.index), message));
     }
   }
   if (/(?:\/src\/test\/|\/__tests__\/|\.(?:spec|test)\.[cm]?[jt]sx?$)/u.test(file)) {
@@ -2295,12 +2322,12 @@ async function scanCrossFile(root, records, findings, legacyFindings = [], roleG
           'A changed API resource must declare literal perms, api_method, and api_url values.'));
         continue;
       }
-      const endpoint = controllers.find((candidate) => !candidate.public
-        && candidate.method === resource.method && candidate.apiPath === resource.apiPath);
+      const endpoint = resourceControllerEndpoint(controllers, resource);
       if (!endpoint) {
         findings.push(finding('PERMISSION-CONTRACT-001', resource.file, resource.line,
           `${resource.method} ${resource.apiPath} has no matching non-public Forge Controller endpoint.`));
-      } else if (endpoint.permissionMode !== 'OR' && endpoint.permission !== resource.permission) {
+      } else if (endpoint.permissionMode !== 'OR' && endpoint.permission !== resource.permission
+          && !(isSharedDynamicCrudEndpoint(endpoint) && endpoint.permissionMode === 'missing')) {
         // Forge independently checks configured type-4 resources by URL and HTTP method.
         // A fully literal OR annotation adds business authorization; it need not repeat
         // the route permission or introduce replacement buttons in this migration.
@@ -2618,7 +2645,22 @@ export async function previewGovernanceRoleGrants({ root: inputRoot, base, sourc
   return grants;
 }
 
+// Main adopts process/convention reductions, not the environment branch's
+// blanket downgrade of permission, migration, supply-chain or test integrity.
+const DIRECT_ADVISORY_RULES = new Set([
+  'BE-ENTITY-001', 'BE-CRUD-001', 'UI-DIALOG-001', 'QUALITY-TEST-001',
+]);
+
+export function directGovernanceSeverity(rule, item) {
+  if (!rule) return 'block';
+  if (DIRECT_ADVISORY_RULES.has(rule.id)) return 'advisory';
+  if (rule.id === 'BE-SAFETY-001' && /System\.out/iu.test(item.message ?? '')
+    && !/secret|credential|password|token|private key/iu.test(item.message)) return 'advisory';
+  return rule.severity;
+}
+
 export async function audit(options, policy) {
+  const directDevelopment = process.env.FORGE_DEVELOPMENT_MODE === 'direct';
   const root = await resolveRoot(options.root);
   const baseCommit = runGit(root, ['rev-parse', `${options.base}^{commit}`]).stdout.trim();
   const head = runGit(root, ['rev-parse', 'HEAD']).stdout.trim();
@@ -2711,13 +2753,15 @@ export async function audit(options, policy) {
   const exceptionResult = applyPolicyExceptions(policy, findings, records, repositoryIdentity);
   const rules = ruleIndex(policy);
   const normalizedFindings = [...new Map(exceptionResult.findings.map((item) => [`${item.ruleId}\0${item.file}\0${item.line}\0${item.message}`, item])).values()]
-    .map((item) => ({ ...item, severity: rules.get(item.ruleId)?.severity ?? 'block' }))
+    .map((item) => ({ ...item, severity: directDevelopment
+      ? directGovernanceSeverity(rules.get(item.ruleId), item) : rules.get(item.ruleId)?.severity ?? 'block' }))
     .sort((left, right) => left.file.localeCompare(right.file, 'en') || left.line - right.line || left.ruleId.localeCompare(right.ruleId, 'en'));
   const blockCount = normalizedFindings.filter((item) => item.severity === 'block').length;
   const receipt = {
     ok: blockCount === 0,
     schemaVersion: 1,
     policyVersion: policy.policyVersion,
+    ...(directDevelopment ? { developmentMode: 'direct' } : {}),
     profile: policy.profile,
     sourceBaseline: policy.sourceBaseline,
     repositoryIdentity,
@@ -2742,7 +2786,7 @@ export async function audit(options, policy) {
     findings: normalizedFindings,
     legacyFindings,
     appliedExceptions: exceptionResult.applied,
-    obligations: semanticObligations(policy, records, uiReceipt.obligations),
+    obligations: directDevelopment ? [] : semanticObligations(policy, records, uiReceipt.obligations),
     generatedAt: new Date().toISOString(),
   };
   receipt.receiptDigest = `sha256:${sha256(canonicalJson({ ...receipt, generatedAt: null }))}`;
@@ -2771,7 +2815,17 @@ export async function main(argv, io = process) {
       io.stdout.write(`${help()}\n`);
       return 0;
     }
-    const { policy } = await loadPolicy();
+    const { policy: versionedPolicy } = await loadPolicy();
+    const policy = process.env.FORGE_DEVELOPMENT_MODE !== 'direct' ? versionedPolicy : {
+      ...versionedPolicy,
+      developmentMode: 'direct',
+      rules: versionedPolicy.rules.map(rule => ({ ...rule,
+        severity: directGovernanceSeverity(rule, { message: '' }),
+        ...(rule.id === 'BE-SAFETY-001'
+          ? { summary: `${rule.summary} In direct development System.out style findings are advisory; actual safety findings retain their severity.` }
+          : {}),
+      })),
+    };
     if (options.command === 'catalog') {
       if (options.format === 'json') io.stdout.write(`${JSON.stringify(policy, null, 2)}\n`);
       else io.stdout.write(`${policy.profile} ${policy.policyVersion}: ${policy.rules.length} rules\n${policy.rules.map((rule) => `${rule.id}\t${rule.severity}\t${rule.enforcement}\t${rule.summary}`).join('\n')}\n`);

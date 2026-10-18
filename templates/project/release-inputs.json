@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "services": {
+    "forge-admin": {
+      "kind": "maven", "mavenRoot": "forge-server", "module": "forge-admin-server", "dockerfile": "docker-forge-admin/Dockerfile.admin",
+      "roots": [], "inputs": ["docker-forge-admin/Dockerfile.admin", "docker-forge-admin/application-datasource.yml"],
+      "optionalInputs": [".dockerignore", "docker-forge-admin/Dockerfile.admin.dockerignore"],
+      "migrations": ["forge-server/db/migration"], "imageVariable": "FORGE_ADMIN_IMAGE",
+      "checks": [{"profile": "backend-module-test", "selectors": {"modules": ["forge-server/forge-admin-server"]}}]
+    },
+    "forge-app": {
+      "kind": "maven", "mavenRoot": "forge-server", "module": "forge-app-server", "dockerfile": "docker-forge-admin/Dockerfile.app",
+      "roots": [], "inputs": ["docker-forge-admin/Dockerfile.app", "docker-forge-admin/application-datasource.yml"],
+      "optionalInputs": [".dockerignore", "docker-forge-admin/Dockerfile.app.dockerignore"],
+      "migrations": ["forge-server/db/migration"], "imageVariable": "FORGE_APP_IMAGE",
+      "checks": [{"profile": "backend-module-test", "selectors": {"modules": ["forge-server/forge-app-server"]}}]
+    },
+    "forge-flow": {
+      "kind": "maven", "mavenRoot": "forge-server", "module": "forge-flow/forge-flow-server", "dockerfile": "docker-forge-admin/Dockerfile.flow",
+      "roots": [], "inputs": ["docker-forge-admin/Dockerfile.flow", "docker-forge-admin/application-datasource.yml"],
+      "optionalInputs": [".dockerignore", "docker-forge-admin/Dockerfile.flow.dockerignore"],
+      "migrations": ["forge-server/db/migration"], "imageVariable": "FORGE_FLOW_IMAGE",
+      "checks": [{"profile": "backend-module-test", "selectors": {"modules": ["forge-server/forge-flow/forge-flow-server"]}}]
+    },
+    "forge-ui": {
+      "kind": "tree", "roots": ["forge-admin-ui", "forge-h5-ui"],
+      "inputs": ["docker-forge-admin/Dockerfile.ui", "docker-forge-admin/nginx.conf"],
+      "optionalInputs": [".dockerignore", "docker-forge-admin/Dockerfile.ui.dockerignore", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc", ".pnpmfile.cjs", "tsconfig.json", "tsconfig.base.json"],
+      "migrations": [], "imageVariable": "FORGE_UI_IMAGE",
+      "checks": [{"profile": "frontend-admin-test", "selectors": {}, "inputRoots": ["forge-admin-ui", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc", ".pnpmfile.cjs", "tsconfig.json", "tsconfig.base.json"]}, {"profile": "frontend-h5-test", "selectors": {}, "inputRoots": ["forge-h5-ui", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc", ".pnpmfile.cjs", "tsconfig.json", "tsconfig.base.json"]}]
+    }
+  }
+}

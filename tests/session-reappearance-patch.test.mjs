@@ -181,7 +181,7 @@ test('a missing or different identity cannot release a real removal', async () =
 });
 
 if (process.env.FORGE_TEST_ENVELOPE_OUTPUT) {
-  const id = 'session-2eae321e-4728-4430-89b6-c497896493f8';
+  const id = 'session-f3a45cf3-aa61-354e-ba48-7b683e71f0bb';
   callbacks.get('session/disposed')({ id });
   const removal = producer.serverRequest(frames.pop());
   const addition = added(id);

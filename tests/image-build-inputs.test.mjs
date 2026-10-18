@@ -28,7 +28,7 @@ test('root-filesystem validation accepts descendants without a doubled-separator
   assert.equal(withinRoot(filesystemRoot, relative), repositoryRoot);
 });
 
-test('reviewed Harness Docker inputs produce one complete deterministic receipt', () => {
+test('reviewed Harness Docker inputs produce one complete deterministic receipt', async () => {
   const first = validate(repositoryRoot);
   const second = validate(repositoryRoot);
   assert.equal(first.status, 0, first.stderr);
@@ -38,7 +38,20 @@ test('reviewed Harness Docker inputs produce one complete deterministic receipt'
   assert.deepEqual(firstReceipt, secondReceipt);
   assert.match(firstReceipt.digest, /^sha256:[a-f0-9]{64}$/u);
   assert.ok(firstReceipt.fileCount >= 50);
-  assert.equal(firstReceipt.dependencyCount, 5);
+  const declared = JSON.parse(await readFile(spec, 'utf8'));
+  assert.equal(firstReceipt.dependencyCount, declared.dependencies.length);
+  for (const name of ['playwright-cli', 'bruno-cli', 'ast-grep-cli']) {
+    assert.ok(declared.dependencies.some(dependency => dependency.name === name), `${name} must verify its installed package`);
+  }
+  const toolManifest = JSON.parse(await readFile(path.join(repositoryRoot, 'docker/harness/agent-tools/package.json'), 'utf8'));
+  const toolLock = JSON.parse(await readFile(path.join(repositoryRoot, 'docker/harness/agent-tools/package-lock.json'), 'utf8'));
+  const versions = await readFile(path.join(repositoryRoot, 'config/versions.env'), 'utf8');
+  for (const dependency of declared.dependencies.filter(item => item.packageJson.startsWith('opt/forge-agent-tools/'))) {
+    const packageName = dependency.packageJson.slice('opt/forge-agent-tools/node_modules/'.length, -'/package.json'.length);
+    const expected = new RegExp(`^${dependency.versionKey}=(.+)$`, 'm').exec(versions)?.[1].trim();
+    assert.equal(toolManifest.dependencies[packageName], expected);
+    assert.equal(toolLock.packages[`node_modules/${packageName}`].version, expected);
+  }
 });
 
 test('every local Docker COPY must be bound to the manifest destination', async () => {

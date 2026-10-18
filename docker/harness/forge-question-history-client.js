@@ -147,11 +147,6 @@ function forgeWorkpodPreparation(node) {
   }
   return null;
 }
-function forgeWorkpodReleaseRequested(question) {
-  const content = question?.data?.content;
-  const text = typeof content === 'string' ? content : (content ?? []).filter(part => part.type === 'text').map(part => part.text).join('\n');
-  return text.trim() === '发版';
-}
 function forgeWorkpodGroups(order, nodeStore) {
   const groups = []; let current;
   for (const key of order) {
@@ -295,7 +290,7 @@ function ForgeQuestionRows({ order, nodeStore, renderNode, loadQuestionHistory, 
     renderNode(group.question.key),
     react_jsx_runtime.jsx(ForgeQuestionProcess, { ...group, renderNode, loadQuestionHistory }),
     ...group.visible.map(renderNode),
-    index === groups.length - 1 && group.tail && (group.needsConfirmation || !forgeWorkpodReleaseRequested(group.question)) && react_jsx_runtime.jsx(ForgeWorkpodActions, { sessionId, group, running, connectionReady }, `${sessionId}:${group.question.data.seq}:${group.tail.data.seq}`)
+    index === groups.length - 1 && group.tail && react_jsx_runtime.jsx(ForgeWorkpodActions, { sessionId, group, running, connectionReady }, `${sessionId}:${group.question.data.seq}:${group.tail.data.seq}`)
   ] }, group.question.key)), react_jsx_runtime.jsx(ForgePromptQueueStatus, { sessionId }, 'forge-prompt-queue-status')];
 }
 if (!document.querySelector('style[data-forge-question-history]')) {

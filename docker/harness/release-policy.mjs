@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { validateReleaseInputs } from './release-inputs.mjs';
 
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const DATABASE_NAME_PATTERN = /^[a-z0-9_]{1,64}$/;
@@ -257,7 +258,9 @@ export function validateRuntimeContract(contract) {
     'workspaceComposeAllowed',
     'testDatabaseLifecycle',
     ...(Object.hasOwn(contract.release, 'protectedCandidateApproval') ? ['protectedCandidateApproval'] : []),
+    ...(Object.hasOwn(contract.release, 'inputModel') ? ['inputModel'] : []),
   ], 'release');
+  if (contract.release.inputModel !== undefined) validateReleaseInputs(contract.release.inputModel, contract.release.allowedReleaseServices);
   if (contract.release.fixedComposeFile !== `${projectRoot}/ops/compose.yaml`) {
     throw new Error('fixedComposeFile must be the platform-managed project Compose file.');
   }
@@ -737,12 +740,40 @@ export function validateRuntimeProbePlan(plan) {
   return structuredClone(plan);
 }
 
+export function validateRuntimeLogsRequest(request, allowedServices = undefined) {
+  if (!request || typeof request !== 'object' || Array.isArray(request) || request.action !== 'runtime-logs') {
+    throw new Error('Runtime logs request must use the runtime-logs action.');
+  }
+  exactKeys(request, ['action', ...['services', 'tail', 'sinceSeconds'].filter(key => Object.hasOwn(request, key))], 'runtime logs request');
+  const services = Object.hasOwn(request, 'services') ? request.services : allowedServices;
+  if (services !== undefined) {
+    const permitted = allowedServices ?? ['forge-admin', 'forge-app', 'forge-flow', 'forge-ui'];
+    if (!Array.isArray(services) || services.length < 1 || services.length > permitted.length
+      || new Set(services).size !== services.length || services.some(service => !permitted.includes(service))) {
+      throw new Error('Runtime logs services must be unique allowed application services.');
+    }
+  }
+  const tail = Object.hasOwn(request, 'tail') ? request.tail : 200;
+  assertInteger(tail, 1, 1000, 'runtime logs tail');
+  if (Object.hasOwn(request, 'sinceSeconds')) assertInteger(request.sinceSeconds, 1, 86400, 'runtime logs sinceSeconds');
+  return { action: 'runtime-logs', ...(services === undefined ? {} : { services: [...services] }), tail,
+    ...(Object.hasOwn(request, 'sinceSeconds') ? { sinceSeconds: request.sinceSeconds } : {}) };
+}
+
 export function validateReleaseRequest(request, contractInput) {
   const contract = validateRuntimeContract(contractInput);
   if (!request || typeof request !== 'object' || Array.isArray(request)) {
     throw new Error('Release request must be an object.');
   }
   const action = request.action;
+  if (action === 'runtime-logs') return validateRuntimeLogsRequest(request, contract.release.allowedReleaseServices);
+  if (action === 'plan') {
+    exactKeys(request, ['action', ...(Object.hasOwn(request, 'services') ? ['services'] : []),
+      ...(Object.hasOwn(request, 'provenance') ? ['provenance'] : [])], 'release plan');
+    const planned = validateReleaseRequest({ ...request, action: 'release',
+      services: request.services ?? contract.release.allowedReleaseServices, approvalRef: 'Read-only impact calculation.' }, contract);
+    return { action, services: planned.services, ...(planned.provenance ? { provenance: planned.provenance } : {}) };
+  }
   if (!['contract', 'diagnose', 'preflight', 'status', 'prepare', 'release'].includes(action)) {
     throw new Error('Release action is not allowed.');
   }
@@ -790,11 +821,15 @@ export function validateReleaseRequest(request, contractInput) {
       'actorId',
       'conversationId',
       'candidateCommit',
+      ...(Object.hasOwn(request.provenance, 'sourceBaseCommit') ? ['sourceBaseCommit'] : []),
     ], 'release provenance');
     if (request.provenance.source !== 'taskspace') {
       throw new Error('release provenance source is invalid.');
     }
     provenance = {
+      ...(request.provenance.sourceBaseCommit === undefined ? {} : {
+        sourceBaseCommit: assertString(request.provenance.sourceBaseCommit, COMMIT_PATTERN, 'release source base'),
+      }),
       source: 'taskspace',
       taskId: assertString(request.provenance.taskId, TASKSPACE_ID_PATTERN, 'release provenance taskId'),
       actorId: assertString(request.provenance.actorId, ACTOR_ID_PATTERN, 'release provenance actorId'),

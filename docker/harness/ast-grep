@@ -1,0 +1,3 @@
+#!/bin/sh
+# Do not replace the operating system's unrelated sg command.
+exec /opt/forge-agent-tools/node_modules/@ast-grep/cli/ast-grep "$@"

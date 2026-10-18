@@ -382,11 +382,11 @@ test('captured release explanations bind an unversioned self reference to the re
   const project = { projectSlug: 'forge-base', projectName: 'Forge base fixture', observedAt: NOW };
   const event = { type: 'controlled-release', projectSlug: 'forge-base', jobId: 'ef1da95d-d20d-4896-8bef-ad547d4f1604',
     status: 'success', commit: '06d3d61dfc29dfc35cb744c4ee6003cae33fc5d5', completedAt: NOW,
-    provenance: { taskId: 'c-7a1c9bc6c9ea0f6e50bebff9' } };
+    provenance: { taskId: 'c-7d4261f446fd89d5e427f354' } };
   const document = {"path":"code-copilot/changes/delivery-center-release-06d3d61/spec.md","commit":"af1f9c22566c996803841ab2d68c1e2774104eaa","blob":"b491476be391ee41e7e1dc3ad2d0f6a70a8d0960","contentDigest":"9c18ece69dd7835a7ecc659e3382b6faf02fdcf0a3251fc61e8ddf2ee686359e","committedAt":"2026-10-09T12:26:42+08:00","line":22,"fenceLine":21};
   const projectRecords = rows => projectDeliverySnapshot({ ...project, releases: [event], checkpointDocuments: {
     batches: [], gaps: [], coverage: {}, documents: [{ ...document, records: rows, sourceScope: 'taskspace-checkpoint',
-      batchId: 'checkpoint-fixture', taskId: 'c-35b2fd779238cb165934b3bb' }] } });
+      batchId: 'checkpoint-fixture', taskId: 'c-7d2ec5bbd185cb69fbce1056' }] } });
   const preserved = structuredClone(records);
   const snapshot = projectRecords(records); const release = snapshot.releases[0];
   assert.equal(release.documentedChangeCount, 2);

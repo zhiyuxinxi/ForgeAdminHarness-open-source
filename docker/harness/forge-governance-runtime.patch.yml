@@ -25,6 +25,9 @@
       name: file:///usr/local/lib/forge-phase-budget-guard.mjs
     - id: forge-typed-file-removal
       name: file:///usr/local/lib/forge-typed-file-removal.mjs
+    - id: forge-browser
+      name: file:///usr/local/lib/forge-browser.mjs
+      disabled: !!js process.env.FORGE_DEVELOPMENT_MODE !== 'direct'
     - id: forge-completion-claim-guard
       name: file:///usr/local/lib/forge-completion-claim-guard.mjs
 - id: system-prompt

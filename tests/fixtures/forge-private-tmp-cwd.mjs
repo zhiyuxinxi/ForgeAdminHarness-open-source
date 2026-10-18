@@ -1,0 +1,15 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { directWorkerConfinement, directWorkerSpawnSpec } from '/usr/local/lib/forge-direct-worker-sandbox.mjs';
+assert.equal(process.env.FORGE_DIRECT_SANDBOX_FIXTURE, '1');
+assert.equal(process.getuid(), 1000);
+assert.deepEqual(fs.readdirSync('/workspace'), []);
+fs.writeFileSync('/tmp/outer-sentinel', 'private outer temp');
+fs.writeFileSync('/workspace/tmp-consumer.mjs', "import fs from 'node:fs';if(process.cwd()!=='/tmp'||fs.existsSync('/tmp/outer-sentinel'))throw Error('isolation');fs.writeFileSync('/tmp/generated.json',JSON.stringify({ok:true}));console.log(JSON.parse(fs.readFileSync('/tmp/generated.json')).ok);");
+const confined = directWorkerConfinement(['node', '/workspace/tmp-consumer.mjs'], {mode:'read-only',workspaceRoot:'/workspace'});
+const spec=directWorkerSpawnSpec({argv:confined.argv,cwd:'/tmp',env:{PATH:'/usr/local/bin:/usr/bin:/bin',HOME:'/tmp'}});
+const r=spawnSync(spec.argv[0],spec.argv.slice(1),{cwd:spec.cwd,env:spec.env,encoding:'utf8',timeout:10000});
+assert.equal(r.status,0,r.stderr);assert.equal(r.stdout.trim(),'true');assert.equal(fs.existsSync('/tmp/generated.json'),false);
+assert.equal(fs.readFileSync('/tmp/outer-sentinel','utf8'),'private outer temp');
+console.log(JSON.stringify({testExitCode:0,privateTmpCwd:true,outerTempHidden:true,temporaryOutputIsolated:true}));

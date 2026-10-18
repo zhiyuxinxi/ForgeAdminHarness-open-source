@@ -3,6 +3,7 @@ import {
   closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync, unlinkSync,
 } from 'node:fs';
 import { posix } from 'node:path';
+import { directDevelopmentPath } from './forge-direct-development.mjs';
 
 const name = 'forge-typed-file-removal';
 const inject = Object.freeze(['tools', 'fs', 'sandboxPolicy']);
@@ -20,12 +21,13 @@ function removalPath(args, workspaceRoot = '/workspace') {
   let relative = args.file_path;
   if (relative.startsWith(`${workspaceRoot}/`)) relative = relative.slice(workspaceRoot.length + 1);
   else if (relative.startsWith('./')) relative = relative.slice(2);
+  const direct = process.env.FORGE_DEVELOPMENT_MODE === 'direct';
   if (!relative || relative.length > 1024 || relative !== relative.normalize('NFC')
     || relative !== relative.trim() || /[\\:\u0000-\u001f\u007f]/u.test(relative)
-    || relative.split('/').some((part) => !part || part.startsWith('.'))) {
+    || relative.split('/').some((part) => !part || part === '.' || part === '..' || (!direct && part.startsWith('.')))) {
     fail('FORGE_REMOVE_PATH', 'Use one ordinary repository-relative file path inside this workspace.');
   }
-  if (PROTECTED_FILE.test(posix.basename(relative)) || /\.(?:pem|key|p12|pfx)$/iu.test(relative)) {
+  if (direct ? !directDevelopmentPath(relative) : (PROTECTED_FILE.test(posix.basename(relative)) || /\.(?:pem|key|p12|pfx)$/iu.test(relative))) {
     fail('FORGE_REMOVE_PROTECTED', 'This tool cannot remove dependency, platform, or credential configuration.');
   }
   return { relative, absolute: `${workspaceRoot}/${relative}` };

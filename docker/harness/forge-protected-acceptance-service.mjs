@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { validateConversationIntent, conversationIntentAuthority } from './forge-conversation-intent.mjs';
 
 import crypto from 'node:crypto';
 import { ManagedFileError, loadManagedFileTargets, validateManagedFileTargets, managedFileIntentForPrompt, authorizeManagedFileRequest } from './forge-managed-files.mjs';
@@ -41,6 +42,7 @@ import {
   validateHostRunReceipt,
 } from './forge-host-verification-receipt.mjs';
 import { hostVerificationCommand } from './host-verify-policy.mjs';
+import { validateContainerExecutionAdmissionReceipt } from './verify-policy.mjs';
 import { VERIFY_PROFILE_NAMES, frontendTestScopeFilters, selectorDigest, verificationCommand, governanceTaskScopeForContract, governanceTaskScopeArguments, revalidatedGovernanceTaskArguments, governanceRoleGrantPolicyForContract, governanceRoleGrantArguments, governanceSourceProvenanceArguments, normalizeAcceptedApiContract, governanceAcceptedApiContractArguments } from './verify-policy.mjs';
 import { normalizeReferenceProvenancePolicy } from './forge-reference-provenance.mjs';
 import {
@@ -56,6 +58,7 @@ import {
 } from './forge-execution-context.mjs';
 import {
   compileForgeTaskExecutionContract,
+  isForgeDirectDevelopmentContract,
   normalizeForgeDualReviewBinding,
   normalizeForgeRoleGrantDecisions,
   normalizeForgeTaskOwnedPaths,
@@ -128,6 +131,7 @@ const EXPLICIT_NEW_TASK_AFTER_CONFIRMATION = /(?:^|[。；;！？!?\r\n])\s*(?:�
 const REVALIDATE_CURRENT_TASK = /^(?:请\s*)?(?:重新|继续)(?:验证|测试)(?:(?:当前|本次|本)的?(?:改动|任务|修改))?(?=[，,。；;！!\s]|$)/u;
 
 function compileConversationAcceptanceSpec(contract) {
+  if (isForgeDirectDevelopmentContract(contract)) return { requiredDimensions: [], requiredObligations: [] };
   const verificationProfiles = contract.requiredVerificationProfiles.filter((profile) => profile !== 'governance');
   const scopedUtility = Object.hasOwn(contract, 'suspendedReviewObligations') && contract.tddRequired === false
     && contract.taskProfiles.includes('frontend-admin')
@@ -499,6 +503,91 @@ function requestedProductionAction(prompt) {
   if (!ATTRIBUTED_NEXT_LINE_CONDITIONAL_RELEASE.test(prompt) && hasDirectReleaseSentence(prompt)) return 'release';
   if (/^(?:请|现在请)?提交(?:代码)?(?=[\s:：，,。！!]|$)/u.test(prompt)) return 'git-checkpoint';
   return integration ? 'git-checkpoint' : null;
+}
+
+function directCheckpointDenied(prompt) {
+  return /(?:不要|不得|不准|禁止|暂不|先不|不允许|不授权|不必|无需|不)\s*(?:受控\s*)?(?:提交|保存|集成)/u.test(prompt);
+}
+
+function requestedDirectProductionAction(prompt) {
+  // Enum labels may be inline code in an ordinary permission request. Preserve
+  // only those labels; quoted/code examples still cannot become authorization.
+  const direct = prompt.replace(/`(git-checkpoint|release)`/giu, '$1')
+    .replace(/```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)|`[^`\r\n]*`/gu, ' ')
+    .replace(/“[^”]*”|‘[^’]*’|「[^」]*」|『[^』]*』|"[^"]*"|'[^']*'/gu, ' ');
+  if (directCheckpointDenied(direct)) return null;
+  // Publication after checks is explicit authority in its own sentence.
+  // A later "if this implementation fails, repair it" clause does not make
+  // that earlier authorization hypothetical.
+  const sentences = direct.split(/[。；;！？!?\r\n]/u);
+  const releaseAfterChecks = sentences.some((sentence, index) =>
+    !/(?:引用|示例|文档|日志|工具输出|假设|假如|如果|是否|能否)/u.test(sentence)
+    && !/(?:引用|示例|文档|日志|工具输出)[^。；;\r\n]*[：:]\s*$/u.test(sentences[index - 1] ?? '')
+    && /^(?:我)?(?:同意|确认|授权)(?:把|将)(?:本轮|本次|当前)(?:这些)?(?:改动|修改|候选)保存(?:并|和|、)?集成[，,]\s*(?:并)?在(?:必要)?(?:检查|验证|测试)通过后(?:直接)?(?:发布|发版|部署|上线)到(?:当前|本次)项目\s*$/u.test(sentence.trim()));
+  if (releaseAfterChecks && !hasProductionActionDenial(direct)
+    && !hasCurrentProductionActionRestriction(direct) && !/[？?]/u.test(direct)) return 'release';
+  const ordinaryRelease = sentences.some((sentence, index) => {
+    const text = sentence.trim();
+    if (/(?:假设|假如|如果|是否|能否)/u.test(text)
+      || ATTRIBUTED_RELEASE_SENTENCE.test(text)
+      || /(?:引用|示例|文档|日志|工具输出)[^。；;\r\n]*[：:]\s*$/u.test(sentences[index - 1] ?? '')) return false;
+    // A completion clause states the current task's release endpoint. It must
+    // end as an action, not a UI label such as "改完发版按钮".
+    return /(?:^|[，,])\s*(?:请\s*)?(?:改(?:完|好)|修(?:完|好)|(?:修改|修复|调整)(?:完|完成))(?:后|之后)?(?:直接|再)?(?:发布|发版|部署|上线)\s*$/u.test(text)
+      // The owner may name the already authorized task or state its desired
+      // release endpoint. Preserve sentence/attribution and denial checks above.
+      || /(?:^|[，,])\s*(?:请\s*)?(?:继续)?完成(?:我)?(?:此前|之前|当前|本轮|本次)?已授权的[^，,。；;！？!?\r\n]{0,64}?(?:发布|发版|部署|上线)\s*$/u.test(text)
+      || /(?:^|[，,])\s*我(?:就|只)?(?:想|要)(?:把|将)?(?:当前|本次|本轮)?(?:候选|任务|改动)?(?:发布|发版|部署|上线)(?:成功|完成)(?:而已)?\s*$/u.test(text)
+      || /^(?:请\s*)?(?:将|把)(?:(?:当前|本次|本轮)?(?:工作舱|任务|会话)(?:的)?)?(?:权限上限|Action\s+Ceiling)\s*(?:从\s*(?:git-checkpoint|workspace-write)\s*)?(?:提升|调整|设置|升级|改)为\s*(?:release(?:\s*[/／]\s*发布)?|发布)\s*$/iu.test(text);
+  });
+  if (ordinaryRelease && !hasProductionActionDenial(direct)
+    && !hasCurrentProductionActionRestriction(direct) && !/[？?]/u.test(direct)) return 'release';
+  const existing = requestedProductionAction(prompt);
+  if (existing !== null) return existing;
+  // Ordinary save-and-integrate requests authorize a checkpoint, including
+  // when the following clause explicitly withholds publication.
+  const clauses = direct.split(/[。；;！？!?\r\n]/u);
+  return clauses.some((clause, index) => {
+    if (/(?:引用|示例|文档|日志|工具输出|假设|假如|如果|是否|能否)/u.test(clause)
+      || /[？?]/u.test(prompt)
+      || /(?:引用|示例|文档|日志|工具输出)[^。；;\r\n]*[：:]\s*$/u.test(clauses[index - 1] ?? '')) return false;
+    const actionClause = clause.trim().replace(/^(?:请\s*)?继续完成(?:上一轮|此前|之前|刚才)已(?:经)?(?:要求|授权)的(?:工作|任务)[：:]\s*/u, '');
+    return actionClause.split(/[，,]/u).some(part => /^(?:请\s*)?(?:(?:直接|然后|最后|并|再|检查通过后)\s*)*(?:完成(?:相关|必要|本次)?(?:检查|验证)并)?保存(?:并|和|、)?集成(?:当前(?:候选|改动)|本次(?:候选|改动))?\s*$/u.test(part.trim()));
+  }) ? 'git-checkpoint' : null;
+}
+
+function explicitlyAuthorizesDirectCandidateServiceRelease(prompt) {
+  const direct = prompt.replace(/```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)|`[^`\r\n]*`/gu, ' ')
+    .replace(/“[^”]*”|‘[^’]*’|「[^」]*」|『[^』]*』|"[^"]*"|'[^']*'/gu, ' ');
+  const authorization = /^(?:(?:本次|本轮|当前)(?:已经|已|明确)?|我(?:已经|已|明确)?)授权(?:你)?(?:(?:保存|提交(?:代码)?|集成(?:当前|本次|本轮)?候选)(?:、|和|并))*(?:通过(?:平台)?受控(?:入口|流程)|(?:正常)?受控)?(?:仅|只)?(?:发布|发版|部署|上线)\s*[A-Za-z][A-Za-z0-9_-]{0,63}\s*$/u;
+  // Chinese action and service names need no whitespace. Keep the whole
+  // imperative bounded so a release label, question or quoted example is not
+  // promoted; account and current-candidate checks still run at issuance.
+  const service = '(?:(?:管理端)?(?:前端|后端)(?:服务)?|管理端|应用端|流程服务|(?:forge-)?(?:admin|app|flow|ui))';
+  const targets = `${service}(?:\\s*(?:和|及|与|、|[/／])\\s*${service})*`;
+  // A controlled-entry qualifier and a bounded service list still name the
+  // same release action. Keep sentence attribution and account ceilings below.
+  const entry = '(?:(?:沿|通过)(?:现有|既有|正常|平台)?受控(?:入口|流程))?';
+  const ordinary = new RegExp(`^(?:(?:现在|这次|本次|本轮)\\s*)?(?:请\\s*)?(?:(?:然后|再)\\s*)?(?:确认|授权)?${entry}(?:仅|只)?(?:发布|发版|部署|上线)\\s*${targets}(?:\\s*(?:一次|一下|吧))?\\s*$|^(?:请\\s*)?(?:把|将)?\\s*${targets}\\s*(?:都|一起)?(?:发布|发版|部署|上线)(?:一下|吧)?\\s*$`, 'u');
+  // Authorization is a clause: a comma may introduce scope restrictions after
+  // the service name. Keep attribution/conditions from the surrounding sentence.
+  const explicit = [...direct.matchAll(/[^，,。；;！？!?\r\n]+/gu)].some(match => {
+    const preceding = direct.slice(0, match.index).split(/[。；;！？!?]/u).at(-1) ?? '';
+    if (/(?:引用(?:内容)?|示例|文档(?:示例|说明)?|日志|工具(?:输出|结果)|提示(?:文字|文案)|假设|假如|设想|如果)[^\r\n]*[：:][ \t]*\r?\n[ \t]*$/u.test(preceding)) return false;
+    const sentencePrefix = preceding.split(/[\r\n]/u).at(-1) ?? '';
+    const sentence = sentencePrefix + direct.slice(match.index).split(/[。；;！？!?\r\n]/u)[0];
+    if (/(?:假设|假如|设想|如果)/u.test(sentence)
+      || /(?:引用(?:内容)?|示例|文档(?:示例|说明)?|日志(?:显示|记录|输出)?|工具(?:输出|结果)|提示(?:文字|文案))[^。；;！？!?\r\n]*[，,：:]\s*$/u.test(sentencePrefix)) return false;
+    return authorization.test(match[0].trim()) || ordinary.test(match[0].trim());
+  });
+  if (!explicit) return false;
+  // A named current-service authorization can exclude other projects/services.
+  // Keep every denial of the current, unspecified or all targets in force.
+  const scoped = direct.split(/[，,。；;！？!?\r\n]+/u).filter(clause =>
+    !/^(?:请\s*)?(?:不要|不得|禁止|暂不|先不|无需|不必|不)\s*(?:发布|发版|部署|上线)(?:其他|其它)(?:项目|服务)(?:(?:或|和|、)(?:项目|服务))?\s*$/u.test(clause.trim())).join('。');
+  return !hasGlobalReadOnlyIntent(prompt) && !hasCancellationClause(prompt)
+    && !hasPlanningRequest(prompt) && !QUESTION_REQUEST.test(prompt)
+    && !hasCurrentProductionActionRestriction(scoped);
 }
 
 // An affirmative request can authorize a concrete scope and its closeout in
@@ -1268,8 +1357,11 @@ export class ProtectedAcceptanceService {
       'verificationKeyPem', ...(Object.hasOwn(options, 'clock') ? ['clock'] : []),
       ...(Object.hasOwn(options, 'currentExecutionAuthority') ? ['currentExecutionAuthority'] : []),
       ...(Object.hasOwn(options, 'managedFileTargets') ? ['managedFileTargets'] : []),
+      ...(Object.hasOwn(options, 'developmentMode') ? ['developmentMode'] : []),
     ], 'service options');
     this.config = this.#validateConfig(options.config);
+    this.developmentMode = options.developmentMode ?? process.env.FORGE_DEVELOPMENT_MODE ?? 'controlled';
+    if (!['controlled', 'direct'].includes(this.developmentMode)) fail('ACCEPTANCE_CONFIG_INVALID', 'Unknown development mode.', 503);
     this.clock = options.clock ?? (() => new Date());
     if (Object.hasOwn(options, 'currentExecutionAuthority') && typeof options.currentExecutionAuthority !== 'function') {
       fail('ACCEPTANCE_SCHEMA_INVALID', 'currentExecutionAuthority must be a trusted callback.');
@@ -1572,6 +1664,7 @@ export class ProtectedAcceptanceService {
       ...(Object.hasOwn(record, 'ordinaryFinalVerificationSupported') ? ['ordinaryFinalVerificationSupported'] : []),
       ...(Object.hasOwn(record, 'completedApiContract') ? ['completedApiContract'] : []),
       ...(Object.hasOwn(record, 'managedFileIntent') ? ['managedFileIntent'] : []),
+      ...(Object.hasOwn(record, 'conversationIntent') ? ['conversationIntent'] : []),
     ], 'conversation task request');
     exactKeys(record.source, ['head', 'fingerprint'], 'conversation task request.source');
     const expiresAt = Date.parse(record.expiresAt);
@@ -1689,7 +1782,8 @@ export class ProtectedAcceptanceService {
   }
 
   async #rememberConversationTaskRequest(input, taskId) {
-    const managedFileIntent = managedFileIntentForPrompt(input.promptText, this.managedFileTargets(), input.actorUserId);
+    const decision = input.conversationIntent?.decision;
+    const managedFileIntent = managedFileIntentForPrompt(input.promptText, this.managedFileTargets(), input.actorUserId, decision);
     const previous = await this.#readConversationTaskRequest(taskId);
     if (previous?.rpcId === input.rpcId) {
       const same = ['projectSlug', 'taskId', 'actorUserId', 'actorUsername', 'conversationId',
@@ -1706,7 +1800,8 @@ export class ProtectedAcceptanceService {
           input.completedApiContract === undefined ? null : normalizeAcceptedApiContract(input.completedApiContract))
         && previous.authorizedActionCeiling === (input.workspaceWriteAuthorized === false ? 'read-only' : input.authorizedActionCeiling ?? 'workspace-write')
         && previous.writerScopesDigest === this.#writerScopesDigest()
-        && canonicalSha256(previous.managedFileIntent ?? []) === canonicalSha256(managedFileIntent);
+        && canonicalSha256(previous.managedFileIntent ?? []) === canonicalSha256(managedFileIntent)
+        && canonicalSha256(previous.conversationIntent ?? null) === canonicalSha256(input.conversationIntent ?? null);
       if (!same) {
         fail('CONVERSATION_TASK_REQUEST_CONFLICT', '同一请求标识不能绑定不同的用户、内容、源码或权限。', 409);
       }
@@ -1721,7 +1816,9 @@ export class ProtectedAcceptanceService {
         { archive: true },
       );
     }
-    const writableEligible = input.workspaceWriteAuthorized === true && conversationTaskWritableEligible(input.promptText);
+    const writableEligible = input.workspaceWriteAuthorized === true && (decision
+      ? decision.kind === 'execute' && !decision.prohibitedActions.includes('workspace-write')
+      : conversationTaskWritableEligible(input.promptText));
     const record = sealRecord({
       schemaVersion: 1,
       projectSlug: input.projectSlug,
@@ -1745,6 +1842,7 @@ export class ProtectedAcceptanceService {
       }),
       authorizedActionCeiling: input.workspaceWriteAuthorized === false ? 'read-only' : input.authorizedActionCeiling ?? 'workspace-write',
       writableEligible,
+      ...(input.conversationIntent === undefined ? {} : { conversationIntent: structuredClone(input.conversationIntent) }),
       ...(managedFileIntent.length ? { managedFileIntent } : {}),
       expiresAt: new Date(this.clock().getTime() + CONVERSATION_TASK_REQUEST_TTL_MS).toISOString(),
       writerScopesDigest: this.#writerScopesDigest(),
@@ -1761,6 +1859,23 @@ export class ProtectedAcceptanceService {
     }));
   }
 
+  async authorizeBusinessDataIntent(input) {
+    const keys = ['projectSlug', 'taskId', 'actorUserId', 'conversationId', 'dshSessionId', 'rpcId', 'promptTextDigest', 'operation'];
+    exactKeys(input, keys, 'business data intent');
+    requiredString(input.taskId, TASK_ID, 'business data taskId');
+    return this.#exclusive(input.taskId, async () => {
+      const record = await this.#readConversationTaskRequest(input.taskId);
+      if (!record || keys.filter(key => key !== 'operation').some(key => record[key] !== input[key])
+        || Date.parse(record.expiresAt) <= this.clock().getTime()
+        || record.workspaceWriteAuthorized !== true || record.writableEligible !== true
+        || !['apply', 'cancel'].includes(input.operation)
+        || record.conversationIntent?.decision.businessDataOperation !== input.operation) {
+        fail('DATA_APPLY_INTENT_REQUIRED', '当前用户请求未授权此业务数据操作。', 403);
+      }
+      return { authorized: true, operation: input.operation, rpcId: record.rpcId };
+    });
+  }
+
   async #readConversationScope(taskId, file = path.join(this.config.stateRoot, 'conversation-task-scopes', `${taskId}.json`)) {
     const info = await lstat(file).catch((error) => {
       if (error.code === 'ENOENT') return null;
@@ -1775,6 +1890,7 @@ export class ProtectedAcceptanceService {
       'dshSessionId', 'sourceCommit', 'ownedPaths', 'taskProfiles', 'promptTextDigest', 'recordDigest',
       'implementationRequested', 'rpcId', 'requestDigest', 'grantId',
       ...(Object.hasOwn(scope, 'goal') ? ['goal'] : []),
+      ...(Object.hasOwn(scope, 'paused') ? ['paused'] : []),
       ...(Object.hasOwn(scope, 'dualReview') ? ['dualReview'] : []),
       ...(Object.hasOwn(scope, 'roleGrantDecisions') ? ['roleGrantDecisions'] : []),
       ...(Object.hasOwn(scope, 'acceptedApiContract') ? ['acceptedApiContract'] : []),
@@ -1782,6 +1898,7 @@ export class ProtectedAcceptanceService {
       ...(Object.hasOwn(scope, 'sourceTransition') ? ['sourceTransition'] : []),
       ...(Object.hasOwn(scope, 'sourceTransitionDigest') ? ['sourceTransitionDigest', 'sourceTransitionFromFingerprint'] : [])], 'conversation task scope');
     if (scope.schemaVersion !== 1 || typeof scope.implementationRequested !== 'boolean'
+      || (Object.hasOwn(scope, 'paused') && typeof scope.paused !== 'boolean')
       || (Object.hasOwn(scope, 'goal')
         && (typeof scope.goal !== 'string' || scope.goal.length < 1
           || Buffer.byteLength(scope.goal, 'utf8') > 1024 * 1024))
@@ -1929,6 +2046,8 @@ export class ProtectedAcceptanceService {
   }
 
   #conversationScopeAllowed(scope) {
+    if (this.developmentMode === 'direct' && scope?.ownedPaths?.length === 1
+      && scope.ownedPaths[0] === '.' && scope.taskProfiles?.length === 1 && scope.taskProfiles[0] === 'project-files') return true;
     const configured = this.config.conversationWriterScopes ?? [];
     const writers = configured.filter((item) => isCurrentProjectWriterScope(item) || scope.taskProfiles.includes(item.taskProfile));
     return scope.ownedPaths.length > 0 && scope.ownedPaths.every((candidate) =>
@@ -2062,12 +2181,27 @@ export class ProtectedAcceptanceService {
     const candidateSource = record?.acceptanceContract?.candidate?.source;
     const identityKeys = ['projectSlug', 'taskId', 'actorUserId', 'actorUsername', 'conversationId', 'dshSessionId'];
     const transitionCeilingAllowed = ['git-checkpoint', 'release'].includes(scope.actionCeiling);
+    const currentClaimedRequest = previous.grantId === scope.grantId
+      && previous.claim.rpcId === scope.rpcId
+      && previous.promptTextDigest === scope.promptTextDigest;
+    // The Broker validates this transition against the current signed execution
+    // and live inventory. Direct edits can change its fingerprint before the
+    // first Host binding, including when integrate saves edits before merging.
+    // The initial request candidate is not that edited tree. Ordinary renewal
+    // can also refresh the grant fingerprint without verifying or replacing
+    // that unbound direct candidate; it is not an authority fingerprint.
+    const directEditedTransition = this.developmentMode === 'direct'
+      && currentClaimedRequest
+      && input.rpcId === scope.rpcId && input.promptTextDigest === scope.promptTextDigest
+      && (transition.phase === 'integrated'
+        || (transition.phase === 'checkpointed' && transition.from.fingerprint === transition.to.fingerprint))
+      && (candidateSource?.fingerprint === previous.workspaceFingerprint
+        || (binding === null && isForgeDirectDevelopmentContract(record.taskContract)));
     const exactCandidate = identityKeys.every((key) => transition.task[key] === input[key]
         && previous[key] === input[key])
       && transition.from.head === scope.sourceCommit
       && transition.from.head === previous.sourceCommit
       && transition.from.head === candidateSource?.head
-      && transition.from.fingerprint === candidateSource?.fingerprint
       && transition.to.head === input.source.head
       && transition.to.fingerprint === input.source.fingerprint
       && transitionCeilingAllowed
@@ -2087,11 +2221,23 @@ export class ProtectedAcceptanceService {
       && transition.sourceAuthority.productionAuthorityDigest === binding?.productionAuthorityDigest
       && transition.sourceAuthority.controllerGrantDigest === binding?.controllerGrantDigest
       && binding?.authorityWorkspaceFingerprint === previous.workspaceFingerprint;
-    const currentClaimedMergeAuthority = previous.grantId === scope.grantId
-      && previous.claim.rpcId === scope.rpcId
-      && previous.promptTextDigest === scope.promptTextDigest
-      && previous.workspaceFingerprint === transition.from.fingerprint;
-    if (!exactCandidate || (!sameBoundAuthority && !currentClaimedMergeAuthority)) {
+    const currentClaimedMergeAuthority = currentClaimedRequest
+      && (previous.workspaceFingerprint === transition.from.fingerprint || directEditedTransition);
+    // A Host admission may bind edits without changing the original authority's
+    // fingerprint. Further same-request edits can still be checkpointed under
+    // that exact authority; the old Host evidence is discarded after migration.
+    const directEditedCheckpoint = this.developmentMode === 'direct'
+      && isForgeDirectDevelopmentContract(record?.taskContract)
+      && record?.acceptanceContract?.developmentMode === 'direct'
+      && transition.phase === 'checkpointed'
+      && transition.from.fingerprint === transition.to.fingerprint
+      && sameBoundAuthority && currentClaimedRequest
+      && input.rpcId === scope.rpcId && input.promptTextDigest === scope.promptTextDigest
+      && transition.sourceAuthority.issuedAt === previous.claim.claimedAt
+      && transition.sourceAuthority.expiresAt === previous.expiresAt;
+    const candidateContentMatches = transition.from.fingerprint === candidateSource?.fingerprint
+      || directEditedTransition || directEditedCheckpoint;
+    if (!exactCandidate || !candidateContentMatches || (!sameBoundAuthority && !currentClaimedMergeAuthority)) {
       fail('CONVERSATION_SOURCE_TRANSITION_MISMATCH', '源码迁移事实与原授权、任务身份或当前受控源码不一致。', 409);
     }
     const { sourceTransition: _previousTransition, acceptedApiContract, ...originalScope } = scope;
@@ -2099,6 +2245,7 @@ export class ProtectedAcceptanceService {
       ...originalScope,
       sourceCommit: transition.to.head,
       ...(acceptedApiContract !== undefined && transition.from.fingerprint === transition.to.fingerprint
+        && transition.from.fingerprint === candidateSource?.fingerprint
         && acceptedApiContract.sourceCommit === transition.from.head ? {
           acceptedApiContract: normalizeAcceptedApiContract({ ...acceptedApiContract, sourceCommit: transition.to.head }),
         } : {}),
@@ -2471,6 +2618,126 @@ export class ProtectedAcceptanceService {
     return { grant, previousCompletion: null };
   }
 
+  async #issueDirectExecutionAuthority(input, taskId, { refreshPrepared = false } = {}) {
+    if (input.controllerPhase !== undefined) {
+      return { authority: null, trustedPolicyInput: null, idempotent: false };
+    }
+    const prompt = input.promptText.trim();
+    const previousScope = await this.#readConversationScope(taskId);
+    const previous = await this.readProductionTaskGrant(taskId, { allowExpired: true });
+    const identity = ['projectSlug', 'taskId', 'actorUserId', 'actorUsername', 'conversationId', 'dshSessionId'];
+    const sameTask = previousScope !== null && identity.every(key => previousScope[key] === input[key])
+      && (previousScope.implementationRequested === true || previousScope.paused === true);
+    let semantic;
+    if (input.conversationIntent !== undefined) {
+      const binding = input.conversationIntent;
+      if (binding?.schemaVersion !== 1 || binding.rpcId !== input.rpcId
+        || binding.promptTextDigest !== crypto.createHash('sha256').update(input.promptText).digest('hex')
+        || !identity.every(key => binding.identity?.[key] === input[key])
+        || typeof binding.providerRequestId !== 'string' || !binding.providerRequestId) {
+        fail('CONVERSATION_INTENT_BINDING_INVALID', '用户意图未绑定当前可信请求。', 409);
+      }
+      const decision = validateConversationIntent(binding.decision, input.promptText);
+      // Re-derive inherited authority from AS-owned scope, not model fields.
+      semantic = conversationIntentAuthority(decision, sameTask
+        ? {goal:previousScope.goal,actionCeiling:previousScope.actionCeiling,
+          active:previousScope.implementationRequested,paused:previousScope.paused === true} : null);
+    } else if (process.env.FORGE_SEMANTIC_INTENT_ENABLED === 'true') {
+      fail('CONVERSATION_INTENT_REQUIRED', '本轮缺少平台语义结果，不能退回旧词面规则签发。', 503);
+    }
+    const stop = semantic ? semantic.stop : hasGlobalReadOnlyIntent(prompt) || hasCancellationClause(prompt);
+    const readOnly = semantic ? !semantic.writable : stop || hasPlanningRequest(prompt) || QUESTION_REQUEST.test(prompt)
+      || (/[？?]/u.test(prompt) && !hasTaskWriteIntent(prompt));
+    const continuation = semantic ? semantic.continuation : sameTask && (isForgeConversationTaskContinuation(prompt)
+      || /^(?:请\s*)?(?:确认|确定|同意|继续)(?=[\s，,。！!]|执行|实施|以上|当前|本次|原|剩余|$)/u.test(prompt));
+    const explicitSequenceRelease = !hasProductionActionDenial(prompt)
+      && !/(?:引用|示例|文案|文字|日志|假设|假如|如果)/u.test(prompt)
+      && prompt.replace(/```[^]*?```|~~~[^]*?~~~/gu, ' ').split(/[，,。；;\r\n]/u)
+        .some(clause => /^(?:请\s*)?(?:然后|再|并|并且)(?:直接)?(?:发布|发版|部署|上线)[！!\s]*$/u.test(clause.trim()));
+    const requestedAction = readOnly ? null : requestedDirectProductionAction(prompt)
+      ?? (!directCheckpointDenied(prompt)
+        && (explicitSequenceRelease || explicitlyAuthorizesDirectCandidateServiceRelease(prompt)) ? 'release' : null);
+    // Direct development does not require a recognized imperative or a second
+    // proposal/confirmation before saving the current task. Publication remains
+    // explicit; the authenticated account and user prohibitions still bound it.
+    const writable = input.workspaceWriteAuthorized === true && (semantic ? semantic.writable
+      : !readOnly && (!isBareTaskContinuation(prompt) || requestedAction !== null || continuation));
+    const developmentCeiling = directCheckpointDenied(prompt)
+      || input.authorizedActionCeiling === 'workspace-write' ? 'workspace-write' : 'git-checkpoint';
+    const inheritedCeiling = continuation && !hasProductionActionDenial(prompt) && !directCheckpointDenied(prompt)
+      ? (previousScope.actionCeiling === 'workspace-write' && !directCheckpointDenied(previousScope.goal ?? '')
+        ? developmentCeiling : previousScope.actionCeiling) : undefined;
+    let actionCeiling = semantic?.actionCeiling ?? requestedAction ?? inheritedCeiling ?? developmentCeiling;
+    // Default saving is bounded by the account. Explicit or inherited production
+    // actions must still report missing authorization instead of being hidden.
+    if (semantic && !semantic.continuation && actionCeiling === 'git-checkpoint'
+      && [null, 'workspace-write'].includes(input.conversationIntent.decision.requestedAction)
+      && input.authorizedActionCeiling === 'workspace-write') actionCeiling = 'workspace-write';
+    if (writable && PRODUCTION_ACTIONS.indexOf(actionCeiling)
+      > PRODUCTION_ACTIONS.indexOf(input.authorizedActionCeiling ?? 'workspace-write')) {
+      fail('CONVERSATION_ACTION_NOT_AUTHORIZED', '当前用户没有本次提交或发版所需的权限。', 403);
+    }
+    // Keep the server-owned original request for renewal and managed-file checks;
+    // model prepare_task proposals are not part of this development path.
+    if (!refreshPrepared) await this.#rememberConversationTaskRequest({ ...input, conversationTaskPreparationSupported: true }, taskId);
+    if (!writable) {
+      const newTask = input.conversationIntent?.decision.continuity === 'new-task';
+      if ((stop || newTask) && previousScope !== null) await this.#saveConversationScope(taskId, sealRecord({
+        ...recordPayload(previousScope), implementationRequested: false, grantId: null,
+        paused: !newTask && input.conversationIntent?.decision.kind === 'pause',
+        ...(newTask ? {goal:input.conversationIntent.decision.goal,actionCeiling:'git-checkpoint'} : {}),
+        rpcId: input.rpcId, promptTextDigest: input.promptTextDigest, requestDigest: canonicalSha256(input),
+      }));
+      return { authority: null, trustedPolicyInput: null, idempotent: false };
+    }
+    const requestName = rpcId => crypto.createHash('sha256').update(rpcId).digest('hex');
+    const history = `conversation-task-requests/${taskId}`;
+    if (await lstat(path.join(this.config.stateRoot, history, `${requestName(input.rpcId)}.json`))
+      .catch(error => { if (error.code === 'ENOENT') return null; throw error; })) {
+      fail('CONVERSATION_REQUEST_REPLAY', '这条请求已被后续消息替代，不能再次执行。', 409);
+    }
+    let grant = !refreshPrepared && previous?.claim?.rpcId === input.rpcId && Date.parse(previous.expiresAt) > this.clock().getTime()
+      && isForgeDirectDevelopmentContract(previous.taskContract) ? previous : null;
+    if (grant !== null && (!identity.every(key => grant[key] === input[key])
+      || grant.promptTextDigest !== input.promptTextDigest || grant.sourceCommit !== input.source.head
+      || grant.workspaceFingerprint !== input.source.fingerprint || grant.actionCeiling !== actionCeiling)) {
+      fail('CONVERSATION_REQUEST_CONFLICT', '同一请求不能绑定不同的身份、内容、源码或权限。', 409);
+    }
+    if (grant === null) {
+      const issued = createProductionTaskGrant({ developmentMode: 'direct', now: this.clock().getTime(), spec: {
+        schemaVersion: 1, ...Object.fromEntries(identity.map(key => [key, input[key]])),
+        promptText: input.promptText, sourceCommit: input.source.head, workspaceFingerprint: input.source.fingerprint,
+        ownedPaths: ['.'], taskProfiles: ['project-files'], actionCeiling,
+        ttlSeconds: Math.min(900, this.config.contractTtlSeconds),
+      } });
+      if (previous !== null) await this.#saveConversationRecord('production-task-grants-history',
+        `${taskId}.${previous.grantId}.${previous.recordDigest}`, previous, { archive: true });
+      await this.#saveConversationRecord('production-task-grant-receipts', issued.grant.grantId, issued.receipt, { archive: true });
+      await this.writeProductionTaskGrant(issued.grant);
+      grant = issued.grant;
+    }
+    // Retain issuer-validated source evidence across direct requests; the new
+    // request's authorization and account ceiling above remain authoritative.
+    const checkpointScope = await this.#checkpointScopeEvidence(input, previousScope, grant.taskContract, actionCeiling);
+    for (const rpcId of new Set([previousScope?.rpcId, previous?.claim?.rpcId].filter(id => id && id !== input.rpcId))) {
+      await this.#saveConversationRecord(history, requestName(rpcId), { schemaVersion: 1, taskId, rpcId }, { archive: true });
+    }
+    await this.#saveConversationScope(taskId, sealRecord({
+      schemaVersion: 1, ...Object.fromEntries(identity.map(key => [key, input[key]])), sourceCommit: input.source.head,
+      ownedPaths: ['.'], taskProfiles: ['project-files'], implementationRequested: true, actionCeiling,
+      promptTextDigest: input.promptTextDigest, rpcId: input.rpcId, requestDigest: canonicalSha256(input), grantId: grant.grantId,
+      goal: semantic?.goal ?? (continuation ? previousScope.goal ?? input.promptText : input.promptText),
+      ...(checkpointScope === null ? {} : {
+        sourceTransition: structuredClone(checkpointScope.sourceTransition),
+        sourceTransitionDigest: checkpointScope.sourceTransitionDigest,
+        sourceTransitionFromFingerprint: checkpointScope.sourceTransitionFromFingerprint,
+      }),
+    }));
+    const result = await this.#signTaskGrant(input, taskId, grant, grant.taskContract);
+    await this.#bindPreparedConversationContract(input, taskId, grant.taskContract, result);
+    return result;
+  }
+
   async issueExecutionAuthority(input) {
     exactKeys(input, [
       'projectSlug', 'taskId', 'actorUserId', 'actorUsername', 'conversationId',
@@ -2487,6 +2754,7 @@ export class ProtectedAcceptanceService {
       ...(Object.hasOwn(input, 'sourceTransition') ? ['sourceTransition'] : []),
       ...(Object.hasOwn(input, 'controllerPhase') ? ['controllerPhase'] : []),
       ...(Object.hasOwn(input, 'completedApiContract') ? ['completedApiContract'] : []),
+      ...(Object.hasOwn(input, 'conversationIntent') ? ['conversationIntent'] : []),
     ], 'execution authority request');
     if (Object.hasOwn(input, 'ordinaryFinalVerificationSupported') && typeof input.ordinaryFinalVerificationSupported !== 'boolean') {
       fail('EXECUTION_RUNTIME_CAPABILITY_INVALID', 'Ordinary final verification support must come from the trusted runtime.', 422);
@@ -2597,6 +2865,7 @@ export class ProtectedAcceptanceService {
       fail('EXECUTION_AUTHORITY_PROMPT_DIGEST_MISMATCH', 'Execution authority prompt digest does not match the received text.', 409);
     }
 
+    if (this.developmentMode === 'direct') return this.#issueDirectExecutionAuthority(input, taskId);
     if (input.workspaceWriteAuthorized === false) {
       if (this.managedFileTargets().targets.length && input.controllerPhase === undefined) await this.#rememberConversationTaskRequest(input, taskId);
       return { authority: null, trustedPolicyInput: null, idempotent: false };
@@ -2859,7 +3128,7 @@ export class ProtectedAcceptanceService {
         || (scope.actionCeiling ?? 'workspace-write') !== grant.actionCeiling
         || grant.taskContract.contractId !== input.contractId || !PRODUCTION_ACTIONS.includes(grant.actionCeiling)
         || (phaseScopeMatches ? !this.#conversationScopeAllowed(scope)
-          : this.config.conversationTaskPreparation !== true || request === null
+          : (this.config.conversationTaskPreparation !== true && this.developmentMode !== 'direct') || request === null
             || !identity.every((key) => request[key] === input[key]) || request.rpcId !== input.rpcId
             || request.workspaceWriteAuthorized !== true || !PRODUCTION_ACTIONS.includes(request.authorizedActionCeiling)
             || PRODUCTION_ACTIONS.indexOf(grant.actionCeiling) > PRODUCTION_ACTIONS.indexOf(request.authorizedActionCeiling)
@@ -3098,13 +3367,13 @@ export class ProtectedAcceptanceService {
         || !PRODUCTION_ACTIONS.includes(request.authorizedActionCeiling)) {
         fail('CONVERSATION_TASK_CAPABILITY_DENIED', 'The original RPC did not have workspace write capability.', 403);
       }
-      if (request.writableEligible !== conversationTaskWritableEligible(input.promptText)) {
+      if (this.developmentMode !== 'direct' && request.writableEligible !== conversationTaskWritableEligible(input.promptText)) {
         fail('CONVERSATION_TASK_REQUEST_INVALID', 'Stored conversation task eligibility does not match the original RPC.', 503);
       }
       if (request.source.head !== input.source.head) {
         fail('CONVERSATION_TASK_SOURCE_CHANGED', 'Conversation task source changed after the original RPC.', 409);
       }
-      if (request.writerScopesDigest !== this.#writerScopesDigest()) {
+      if (this.developmentMode !== 'direct' && request.writerScopesDigest !== this.#writerScopesDigest()) {
         fail('CONVERSATION_TASK_POLICY_CHANGED', 'Conversation writer scopes changed after the original RPC.', 409);
       }
       if (Date.parse(request.expiresAt) <= this.clock().getTime()) {
@@ -3125,7 +3394,10 @@ export class ProtectedAcceptanceService {
         && sameTaskScope.promptTextDigest === input.promptTextDigest
         && sameTaskScope.implementationRequested === true
         && sameTaskScope.grantId !== null;
-      if (sourceChanged && !inspectPreparedScope) {
+      const directPreparedScope = this.developmentMode === 'direct'
+        && sameTaskScope?.rpcId === input.rpcId && sameTaskScope.promptTextDigest === input.promptTextDigest
+        && sameTaskScope.implementationRequested === true && sameTaskScope.grantId !== null;
+      if (sourceChanged && !inspectPreparedScope && !directPreparedScope) {
         fail('CONVERSATION_TASK_SOURCE_CHANGED', 'Conversation task source changed after the original RPC.', 409);
       }
       const common = {
@@ -3133,12 +3405,53 @@ export class ProtectedAcceptanceService {
           ? '当前没有已准备的普通代码任务。'
           : `当前普通代码任务：${sameTaskScope.goal ?? '已保存的兼容任务范围'}`,
         currentTask: this.#conversationTaskView(sameTaskScope),
-        availableScopes: structuredClone(this.config.conversationWriterScopes),
+        availableScopes: this.developmentMode === 'direct' ? [] : structuredClone(this.config.conversationWriterScopes),
       };
       if (sourceChanged) {
         common.summary += ' 工作区源码已变化；本次仅只读查看已准备的任务范围，未刷新执行授权、源码绑定或检查准入。提交、集成和发布仍须核对当前候选及有效检查。';
       }
       if (input.operation === 'inspect') return { status: 'inspected', ...common };
+
+      if (directPreparedScope) {
+        const previous = await this.readProductionTaskGrant(taskId, { allowExpired: true });
+        if (!isForgeDirectDevelopmentContract(previous?.taskContract)
+          || previous.grantId !== sameTaskScope.grantId || previous.claim?.rpcId !== input.rpcId
+          || previous.sourceCommit !== input.source.head
+          || !identityKeys.filter(key => key !== 'rpcId').every(key => previous[key] === input[key])) {
+          fail('CONVERSATION_TASK_REQUEST_MISMATCH', 'Direct task refresh requires the same signed task and request.', 409);
+        }
+        // Re-evaluate only the authenticated original text. A model proposal
+        // cannot grant publication or change the existing isolated workspace.
+        if (request.conversationIntent ? !request.writableEligible
+          : hasGlobalReadOnlyIntent(input.promptText) || hasCancellationClause(input.promptText)
+            || hasPlanningRequest(input.promptText) || QUESTION_REQUEST.test(input.promptText.trim())) {
+          fail('CONVERSATION_TASK_READ_ONLY', '当前请求明确限制为只读，不能准备代码写入。', 409);
+        }
+        if (typeof this.currentExecutionAuthority !== 'function') throw renewalAuthorityUnavailable();
+        const authorityRequest = { schemaVersion: 1,
+          ...Object.fromEntries(['projectSlug', 'taskId', 'actorUserId', 'actorUsername', 'conversationId',
+            'dshSessionId', 'rpcId'].map(key => [key, input[key]])),
+          contractId: previous.taskContract.contractId, actionCeiling: previous.actionCeiling };
+        const current = await this.currentExecutionAuthority(authorityRequest);
+        if (!plainObject(current) || !Object.entries(authorityRequest).every(([key, value]) => current[key] === value)
+          || !PRODUCTION_ACTIONS.includes(current.authorizedActionCeiling)
+          || !Number.isFinite(Date.parse(current.checkedAt))
+          || Math.abs(Date.parse(current.checkedAt) - this.clock().getTime()) > 30_000) throw renewalAuthorityUnavailable();
+        const authorizedActionCeiling = PRODUCTION_ACTIONS[Math.min(PRODUCTION_ACTIONS.indexOf(request.authorizedActionCeiling),
+          PRODUCTION_ACTIONS.indexOf(current.authorizedActionCeiling))];
+        const authorityResult = await this.#issueDirectExecutionAuthority({ ...input, route: 'session.prompt',
+          ...(request.conversationIntent ? { conversationIntent: request.conversationIntent } : {}),
+          workspaceWriteAuthorized: true, authorizedActionCeiling }, taskId, { refreshPrepared: true });
+        return { status: 'prepared', summary: `已续接当前任务，执行权限为 ${authorityResult.authority.actionCeiling}；直接模式不需要重复提案或确认。`,
+          currentTask: this.#conversationTaskView(await this.#readConversationScope(taskId)),
+          availableScopes: common.availableScopes, authorityResult };
+      }
+
+      // Never fall back to the legacy proposal compiler in direct mode. In
+      // particular, an analysis/paused request cannot replace the active scope
+      // with a model proposal that asks the user to confirm it again.
+      if (this.developmentMode === 'direct') return { status: 'inspected', ...common,
+        summary: '直接模式无需任务提案。当前请求没有可续接的执行授权，保持本轮只读或暂停边界；不要反复提案或要求重复确认。' };
 
       const prompt = input.promptText.trim();
       const planning = hasPlanningRequest(prompt);
@@ -3468,6 +3781,7 @@ export class ProtectedAcceptanceService {
   }
 
   #reviewedReceiptSourcePolicies(record) {
+    if (this.developmentMode === 'direct' && isForgeDirectDevelopmentContract(record.taskContract)) return [];
     const binding = {
       governanceTaskScope: governanceTaskScopeForContract(record.taskContract),
       governanceRoleGrantPolicy: governanceRoleGrantPolicyForContract(record.taskContract),
@@ -3485,12 +3799,14 @@ export class ProtectedAcceptanceService {
   }
 
   #candidateResult(record, idempotent) {
-    const governanceTaskScope = governanceTaskScopeForContract(record.taskContract);
-    const governanceRoleGrantPolicy = governanceRoleGrantPolicyForContract(record.taskContract);
-    const governanceSourceProvenancePolicy = this.#sourceProvenancePolicy(record);
+    const direct = this.developmentMode === 'direct' && isForgeDirectDevelopmentContract(record.taskContract);
+    const governanceTaskScope = direct ? undefined : governanceTaskScopeForContract(record.taskContract);
+    const governanceRoleGrantPolicy = direct ? undefined : governanceRoleGrantPolicyForContract(record.taskContract);
+    const governanceSourceProvenancePolicy = direct ? undefined : this.#sourceProvenancePolicy(record);
     const reviewedReceiptSourceProjections = this.#reviewedReceiptSourcePolicies(record);
     return {
       acceptanceContract: record.acceptanceContract,
+      ...(direct ? { developmentMode: 'direct' } : {}),
       ...(governanceTaskScope === undefined ? {} : { governanceTaskScope }),
       ...(governanceRoleGrantPolicy === undefined ? {} : { governanceRoleGrantPolicy }),
       ...(governanceSourceProvenancePolicy === undefined ? {} : { governanceSourceProvenancePolicy }),
@@ -3607,6 +3923,7 @@ export class ProtectedAcceptanceService {
       schemaVersion: 1,
       contractType: ACCEPTANCE_DOCUMENT_TYPES.contract,
       contractId: previousContract.contractId,
+      ...(previousContract.developmentMode === 'direct' ? { developmentMode: 'direct' } : {}),
       projectSlug: this.config.projectSlug,
       taskId: existing.taskId,
       candidate: {
@@ -3705,7 +4022,13 @@ export class ProtectedAcceptanceService {
     const record = await this.readRecord(taskId);
     let admission;
     try {
-      admission = validateHostExecutionAdmissionReceipt(input.admissionReceipt, {
+      const directContainer = this.developmentMode === 'direct'
+        && isForgeDirectDevelopmentContract(record.taskContract)
+        && record.acceptanceContract.developmentMode === 'direct'
+        && input.admissionReceipt?.receiptType === 'forge-verify/execution-admission';
+      const validateAdmission = directContainer
+        ? validateContainerExecutionAdmissionReceipt : validateHostExecutionAdmissionReceipt;
+      admission = validateAdmission(input.admissionReceipt, {
         projectSlug: this.config.projectSlug,
         taskId,
         observedAt: this.clock().toISOString(),
@@ -3816,7 +4139,8 @@ export class ProtectedAcceptanceService {
     exactKeys(input.acceptanceSpec, ['requiredDimensions', 'requiredObligations'], 'acceptanceSpec');
     const requiredProfiles = input.taskContract.requiredVerificationProfiles.filter((item) => item !== 'governance');
     if (requiredProfiles.some((item) => !this.config.allowedVerificationProfiles.includes(item))) fail('ACCEPTANCE_PROFILE_NOT_ALLOWED', 'Task contract requests an unapproved verification profile.');
-    if (!Array.isArray(input.acceptanceSpec.requiredObligations) || input.acceptanceSpec.requiredObligations.length === 0) fail('ACCEPTANCE_SCHEMA_INVALID', 'Acceptance obligations are required.');
+    const direct = this.developmentMode === 'direct' && isForgeDirectDevelopmentContract(input.taskContract);
+    if (!Array.isArray(input.acceptanceSpec.requiredObligations) || (!direct && input.acceptanceSpec.requiredObligations.length === 0)) fail('ACCEPTANCE_SCHEMA_INVALID', 'Acceptance obligations are required.');
     const expectedIds = [...input.taskContract.requiredObligations].sort();
     const actualIds = input.acceptanceSpec.requiredObligations.map((item) => item?.id).sort();
     if (JSON.stringify(expectedIds) !== JSON.stringify(actualIds)) fail('ACCEPTANCE_CONTRACT_MISMATCH', 'Acceptance obligations must exactly match the task contract.');
@@ -3849,7 +4173,7 @@ export class ProtectedAcceptanceService {
         `production-authority:${rebindGrant.claim.productionAuthorityId}`,
       );
     }
-    const previousReview = await this.#reviewPredecessorForTask(taskId, existing, input.taskContract, input.authorId);
+    const previousReview = direct ? undefined : await this.#reviewPredecessorForTask(taskId, existing, input.taskContract, input.authorId);
     const now = this.clock();
     const expiresAt = new Date(Math.min(
       now.getTime() + this.config.contractTtlSeconds * 1000,
@@ -3859,6 +4183,7 @@ export class ProtectedAcceptanceService {
       schemaVersion: 1,
       contractType: ACCEPTANCE_DOCUMENT_TYPES.contract,
       contractId: input.taskContract.contractId,
+      ...(direct ? { developmentMode: 'direct' } : {}),
       projectSlug: this.config.projectSlug,
       taskId,
       candidate: {
@@ -4509,6 +4834,18 @@ export class ProtectedAcceptanceService {
   async resolve(input) {
     exactKeys(input, ['taskId'], 'resolver request');
     const record = await this.readRecord(input.taskId);
+    if (this.developmentMode === 'direct' && isForgeDirectDevelopmentContract(record.taskContract)) {
+      const contract = validateAcceptanceContract(record.acceptanceContract, this.trustPolicy);
+      if (contract.developmentMode !== 'direct') fail('ACCEPTANCE_CONTRACT_MISMATCH', 'Direct status requires its signed direct contract.', 409);
+      const status = {
+        schemaVersion: 1, projectionType: 'forge-direct-development-status/v1',
+        developmentMode: 'direct', status: 'not_required',
+        projectSlug: contract.projectSlug, taskId: record.taskId, taskContractId: record.taskContract.contractId,
+        source: structuredClone(contract.candidate.source), evaluatedAt: this.clock().toISOString(),
+        verification: 'not_claimed', release: 'not_claimed',
+      };
+      return { ...status, statusDigest: canonicalSha256(status) };
+    }
     return evaluateProtectedLedgerCompletion({
       ledger: restoreForgeObligationLedger(record.ledger, record.taskContract, record.acceptanceContract),
       taskContract: record.taskContract,
@@ -4533,6 +4870,8 @@ export class ProtectedAcceptanceService {
     return {
       schemaVersion: 1,
       projectionType: 'forge-candidate-authority-binding/v1',
+      ...(this.developmentMode === 'direct' && isForgeDirectDevelopmentContract(record.taskContract)
+        ? { developmentMode: 'direct' } : {}),
       taskId: record.taskId,
       contractId: record.taskContract.contractId,
       candidate: {
@@ -4585,6 +4924,7 @@ function serverFor(service, capability) {
             ['/v1/conversation-task', (body) => service.prepareConversationTask(body)],
             ['/v1/execution-renewal', (body) => service.renewConversationExecution(body)],
             ['/v1/managed-file', (body) => service.authorizeManagedFileOperation(body)],
+            ['/v1/business-data-intent', (body) => service.authorizeBusinessDataIntent(body)],
           ])
         : capability === 'issuer'
           ? new Map([
@@ -4617,7 +4957,7 @@ function serverFor(service, capability) {
 export function createProtectedAcceptanceServers(service) {
   return {
     control: serverFor(service, 'control'),
-    ...(service.config.conversationTaskPreparation === true
+    ...((service.config.conversationTaskPreparation === true || service.developmentMode === 'direct')
       ? { scope: serverFor(service, 'scope') }
       : {}),
     issuer: serverFor(service, 'issuer'),

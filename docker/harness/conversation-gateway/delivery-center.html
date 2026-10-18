@@ -6,14 +6,15 @@
   <title>菜单管理 · 需求与交付中心</title>
   <link rel="stylesheet" href="/forge-gateway/assets/gateway.css">
   <link rel="stylesheet" href="/forge-gateway/assets/delivery-center.css">
+  <link rel="stylesheet" href="/forge-gateway/assets/production-delivery.css">
 </head>
 <body>
   <header class="app-header">
-    <a class="brand" href="/forge-gateway/?project=forge-base" aria-label="返回示例客户工作台"><span class="brand-mark" aria-hidden="true">F</span><span><strong>需求与交付中心</strong><small>示例客户 · 业务功能与交付过程</small></span></a>
-    <div class="identity-cluster"><span class="role-badge">共享只读</span><strong id="delivery-user">正在读取账号…</strong><a class="secondary-button" href="/forge-gateway/?project=forge-base">返回项目</a></div>
+    <a id="delivery-brand" class="brand" href="/forge-gateway/" aria-label="返回项目工作台"><span class="brand-mark" aria-hidden="true">F</span><span><strong>需求与交付中心</strong><small id="delivery-project-subtitle">业务功能与交付过程</small></span></a>
+    <div class="identity-cluster"><span class="role-badge">共享交付中心</span><strong id="delivery-user">正在读取账号…</strong><a id="delivery-back" class="secondary-button" href="/forge-gateway/">返回项目</a></div>
   </header>
   <main class="app-main delivery-main">
-    <h1 class="delivery-sr-only">示例客户需求与交付中心</h1>
+    <h1 id="delivery-title" class="delivery-sr-only">需求与交付中心</h1>
     <div id="delivery-start-error" class="form-message error" role="alert" hidden></div>
     <button id="delivery-start-retry" class="secondary-button" type="button" hidden>重新加载项目</button>
     <div class="delivery-layout">
@@ -36,7 +37,7 @@
       <section class="workspace-section delivery-workspace" aria-labelledby="delivery-list-title">
         <div class="section-heading delivery-list-heading"><div><p class="section-kicker" id="delivery-context">完整业务结构</p><h2 id="delivery-list-title">菜单管理</h2><p id="delivery-list-help" class="section-help"></p></div><button id="delivery-refresh" class="secondary-button" type="button">刷新记录</button></div>
         <nav id="delivery-subviews" class="delivery-subviews" aria-label="模块内视图" hidden></nav>
-        <div class="delivery-workspace-layout">
+        <div id="delivery-reader-panel" class="delivery-workspace-layout">
           <details class="delivery-sidebar" id="delivery-menu-panel" open>
             <summary class="delivery-sidebar-summary">业务菜单</summary>
             <div class="delivery-tree-heading"><span class="field-help">按完整业务结构定位</span><button id="delivery-all-menus" class="text-button" type="button">全部菜单</button></div>
@@ -78,6 +79,7 @@
             <div class="delivery-pagination"><p id="delivery-range" class="section-help" role="status"></p><div class="delivery-page-controls"><label for="delivery-page-size">每页</label><select id="delivery-page-size"><option value="20">20 条</option><option value="50">50 条</option><option value="100">100 条</option></select><button id="delivery-prev" class="secondary-button" type="button" disabled>上一页</button><button id="delivery-next" class="secondary-button" type="button" disabled>下一页</button></div></div>
           </div>
         </div>
+        <div id="delivery-production-panel" class="delivery-production-panel"></div>
       </section>
     </div>
   </main>

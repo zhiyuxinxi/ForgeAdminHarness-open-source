@@ -1,4 +1,6 @@
 import { admittedVerificationProfile } from './forge-backend-source-quality.mjs';
+import { BROWSER_READ_ACTIONS, closeBrowserSession, reconcileBrowserAuthority } from './forge-browser.mjs';
+import { directDevelopmentEnabled, directDevelopmentPath, withDirectToolPolicy } from './forge-direct-development.mjs';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -80,7 +82,7 @@ const MUTATION_TOOLS = new Set(['copy_file', 'edit', 'remove_file', 'write']);
 const READ_TOOLS = new Set(['read', 'grep', 'glob', 'ls', 'find', 'skill', 'job_output', 'job_list', BUSINESS_DATA_PREVIEW_TOOL]);
 const KNOWN_TOOL_NAMES = new Set([
   ...MUTATION_TOOLS, ...READ_TOOLS, 'todo_write', 'ask_user_question',
-  'bash', 'str_replace_editor', PREPARE_TASK_TOOL_NAME, BUSINESS_DATA_APPLY_TOOL, MANAGED_FILE_TOOL,
+  'bash', 'browser', 'str_replace_editor', PREPARE_TASK_TOOL_NAME, BUSINESS_DATA_APPLY_TOOL, MANAGED_FILE_TOOL,
 ]);
 const DOMAIN_SKILL_EXCLUSIONS = new Set([
   'forge-task-router',
@@ -271,6 +273,7 @@ function isUnknownSideEffectExecution(exec) {
 // Argument-sensitive tools retain that boundary rather than claiming a single
 // unconditional permission. This descriptor never grants execution authority.
 function describeGovernedTool(name) {
+  if (name === 'browser') return { admitted: true, classification: 'argument-dependent', sideEffectClasses: ['read-only', 'browser-interaction'] };
   if (isUnknownSideEffectExecution({ name })) return { admitted: false, classification: 'unclassified-denied', sideEffectClasses: [] };
   if (name === BUSINESS_DATA_APPLY_TOOL) return { admitted: true, classification: 'business-data-mutation', sideEffectClasses: ['business-data-write'] };
   if (name === MANAGED_FILE_TOOL) return { admitted: true, classification: 'argument-dependent', sideEffectClasses: ['read-only', 'brokered-state-change'] };
@@ -538,6 +541,7 @@ async function appendProjectionOperation(state, method, payload, observedAt) {
 }
 
 async function projectPhaseGuardStateNow(state, reason, now) {
+  if (directDevelopmentEnabled(state?.taskContract)) return state;
   if (!state?.executionProjectionRequired) return state;
   const initialStateInput = projectionInitialStateInput(state);
   if (!initialStateInput) {
@@ -669,6 +673,7 @@ async function prepareProjectedMutationNow(state, exec, now) {
 }
 
 async function prepareProjectedMutation(state, exec, now = Date.now()) {
+  if (directDevelopmentEnabled(state?.taskContract)) return state;
   if (!state?.executionProjectionRequired || !isMutationExecution(exec)) return state;
   return queueExecutionProjection(state, () => prepareProjectedMutationNow(state, exec, now));
 }
@@ -690,6 +695,7 @@ async function settleProjectedMutationNow(state, exec, succeeded, now) {
 }
 
 async function settleProjectedMutation(state, exec, succeeded, now = Date.now()) {
+  if (directDevelopmentEnabled(state?.taskContract)) return state;
   if (!state?.executionProjectionRequired || !isMutationExecution(exec)) return state;
   return queueExecutionProjection(state, () => settleProjectedMutationNow(state, exec, succeeded, now));
 }
@@ -889,6 +895,7 @@ function candidateTaskContract(state, exec) {
     || !isSourceMutation(exec) || exec?.name === 'bash') return undefined;
   const relativePath = contractPathFromMutation(exec);
   if (!relativePath) return undefined;
+  if (directDevelopmentEnabled(state.taskContract)) return directDevelopmentPath(relativePath) ? state.taskContract : undefined;
   const owned = state.taskContract.ownedPaths.some((entry) => isForgeTaskOwnedPath(relativePath, entry));
   return owned ? state.taskContract : undefined;
 }
@@ -901,9 +908,17 @@ function requestedSkill(exec) {
 }
 
 function isMutationExecution(exec) {
+  if (exec?.name === 'browser') return !BROWSER_READ_ACTIONS.has(normalizedArguments(exec).action);
   if (MUTATION_TOOLS.has(exec?.name)) return true;
   if (exec?.name === 'str_replace_editor') return normalizedArguments(exec).command !== 'view';
   if (exec?.name !== 'bash') return false;
+  if (process.env.FORGE_DEVELOPMENT_MODE === 'direct') {
+    const raw = commandOf(exec);
+    if (!parseControlledEvidenceCommand(raw) && !parseControlledVerificationInspectionCommand(raw)
+      && !parseControlledReleaseInspectionCommand(raw) && !parseControlledReleaseMutationCommand(raw)
+      && !parseControlledReleasePreparationCommand(raw) && !parseControlledGovernanceInspectionCommand(raw)
+      && !parseControlledDeliveryCommand(raw)) return true;
+  }
   const command = commandForMutationClassification(exec);
   return SHELL_MUTATION.test(command) || hasUnquotedOutputRedirection(command);
 }
@@ -929,6 +944,7 @@ function isProductionSourceMutation(exec) {
 }
 
 function isReadExecution(exec) {
+  if (exec?.name === 'browser') return BROWSER_READ_ACTIONS.has(normalizedArguments(exec).action);
   if (READ_TOOLS.has(exec?.name)) return true;
   if (exec?.name === 'str_replace_editor') return !isMutationExecution(exec);
   return exec?.name === 'bash'
@@ -1112,7 +1128,7 @@ export function createBrokerAdmissionClient({
   if (typeof brokerUrl !== 'string' || typeof tokenFile !== 'string') return undefined;
   const endpoint = new URL(brokerUrl);
   if (endpoint.protocol !== 'http:'
-    || !['taskspace-broker', '127.0.0.1', 'localhost'].includes(endpoint.hostname)
+    || !['taskspace-broker', 'taskspace-broker-stable', 'taskspace-broker-enhanced', '127.0.0.1', 'localhost'].includes(endpoint.hostname)
     || endpoint.username || endpoint.password || (endpoint.pathname !== '/' && endpoint.pathname !== '')) {
     throw new Error('FORGE_TASKSPACE_BROKER_URL must name the fixed internal Broker endpoint.');
   }
@@ -1173,19 +1189,22 @@ export function createBrokerExecutionContextResolver({
   conversationId = process.env.FORGE_TASKSPACE_CONVERSATION_ID,
   actorUserId = process.env.FORGE_TASKSPACE_ACTOR_USER_ID,
   timeoutMs = 5000,
+  sourceTransitionTimeoutMs = 60_000,
 } = {}) {
   if ([brokerUrl, tokenFile, projectSlug, taskId, conversationId, actorUserId]
     .some((value) => typeof value !== 'string' || value.length === 0)) return undefined;
   const endpoint = new URL(brokerUrl);
   if (endpoint.protocol !== 'http:'
-    || !['taskspace-broker', '127.0.0.1', 'localhost'].includes(endpoint.hostname)
+    || !['taskspace-broker', 'taskspace-broker-stable', 'taskspace-broker-enhanced', '127.0.0.1', 'localhost'].includes(endpoint.hostname)
     || endpoint.username || endpoint.password || (endpoint.pathname !== '/' && endpoint.pathname !== '')
     || !tokenFile.startsWith('/run/forge-taskspace/')
-    || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 30_000) {
+    || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 30_000
+    || !Number.isSafeInteger(sourceTransitionTimeoutMs) || sourceTransitionTimeoutMs < timeoutMs
+    || sourceTransitionTimeoutMs > 60_000) {
     throw new Error('Broker execution-context resolver configuration is invalid.');
   }
   const currentLookups = new WeakMap();
-  return async ({ agent, decision }) => {
+  return async ({ agent, decision, sourceTransition = null, renewal = null }) => {
     const direct = Array.isArray(decision?.messages)
       ? decision.messages.filter((message) => message?.source?.kind === 'user') : [];
     if (!agent || typeof agent.session?.id !== 'string') return undefined;
@@ -1205,6 +1224,8 @@ export function createBrokerExecutionContextResolver({
       } catch { return undefined; }
     }
     if (!lookup || lookup.dshSessionId !== agent.session.id) return undefined;
+    const renewingCurrentRequest = direct.length === 0 && renewal?.rpcId === lookup.rpcId
+      && renewal?.dshSessionId === lookup.dshSessionId;
     const { rpcId, textDigest } = lookup;
     const token = (await readFile(tokenFile, 'utf8')).trim();
     if (token.length < 32 || token.length > 256) throw new Error('TaskSpace execution capability token is invalid.');
@@ -1248,7 +1269,13 @@ export function createBrokerExecutionContextResolver({
           } catch (error) { reject(error); }
         });
       });
-      request.setTimeout(timeoutMs, () => request.destroy(new Error('EXECUTION_CONTEXT_TIMEOUT: internal Broker lookup timed out.')));
+      // Signed lease renewal also inventories before and after reauthorization.
+      // Only a remembered same-request renewal uses the longer window; first
+      // lookups and unrelated ordinary reads keep their short deadline.
+      const requestTimeoutMs = renewingCurrentRequest
+        || ['checkpointed', 'integrated', 'review-base-advanced'].includes(sourceTransition?.phase)
+        ? sourceTransitionTimeoutMs : timeoutMs;
+      request.setTimeout(requestTimeoutMs, () => request.destroy(new Error('EXECUTION_CONTEXT_TIMEOUT: internal Broker lookup timed out.')));
       request.once('error', reject);
       request.end(payload);
     });
@@ -1272,6 +1299,7 @@ export async function refreshExecutionAdmission(
   now = Date.now(),
   executionContract = state?.taskIntent,
 ) {
+  if (directDevelopmentEnabled(state?.taskContract)) return state;
   const productionCeiling = state?.executionAuthorityClass === 'production-task-writer'
     && state.protectedExecutionContextValidated === true
     && state.executionTestOnly === false
@@ -1419,12 +1447,19 @@ function successfulSourceTransition(state, exec, result) {
       const transition = validateSourceTransition(checkpoint.sourceTransition);
       const authority = transition.sourceAuthority;
       const task = transition.task;
+      // Direct integrate can save this request's edits before merging. Its
+      // pre-save tree need not have an optional Host admission; the exact
+      // command, signed authority and Broker-owned transition still bind it.
+      const directEditedIntegration = directDevelopmentEnabled(state.taskContract)
+        && state.protectedExecutionContextValidated && state.executionAuthorityClass === 'production-task-writer'
+        && state.executionWorkflowId === null && state.executionTestOnly === false;
       if (transition.phase !== 'integrated' || transition.from.head === transition.to.head
         || transition.from.head !== command.options['--expected-head']
         || transition.from.fingerprint !== command.options['--expected-fingerprint']
         || transition.from.head !== state.executionSourceCommit
         || (transition.from.fingerprint !== state.executionWorkspaceFingerprint
-          && transition.from.fingerprint !== state.verificationAdmission?.receipt?.source?.workspaceFingerprint)
+          && transition.from.fingerprint !== state.verificationAdmission?.receipt?.source?.workspaceFingerprint
+          && !directEditedIntegration)
         || transition.to.head !== checkpoint.head || transition.to.fingerprint !== checkpoint.workspaceFingerprint
         || transition.canonicalHead !== checkpoint.canonicalHead
         || transition.canonicalHead !== command.options['--canonical-head']
@@ -1701,7 +1736,7 @@ function controlledReleaseMutationDenialReason(state, command, now = Date.now())
   if (command.action === 'integrate'
     && (command.options['--expected-head'] !== state.executionSourceCommit
       || (command.options['--expected-fingerprint'] !== state.executionWorkspaceFingerprint
-        && !hostCandidateFingerprint))) {
+        && !hostCandidateFingerprint && !directDevelopmentEnabled(contract)))) {
     return `${marker}: controlled integrate must bind the exact current protected source HEAD and workspace fingerprint`;
   }
   if (state.promptReadOnlyConstraint) {
@@ -1711,7 +1746,7 @@ function controlledReleaseMutationDenialReason(state, command, now = Date.now())
     ? state.actionCeiling === 'release'
     : ['git-checkpoint', 'release'].includes(state.actionCeiling);
   if (!ceilingAllowsAction) {
-    const confirmationNextStep = state.actionCeiling === 'workspace-write'
+    const confirmationNextStep = !directDevelopmentEnabled(contract) && state.actionCeiling === 'workspace-write'
       && prepareTaskDenialReason(state, {
         name: PREPARE_TASK_TOOL_NAME,
         arguments: { operation: 'inspect' },
@@ -1722,10 +1757,10 @@ function controlledReleaseMutationDenialReason(state, command, now = Date.now())
       : '';
     return `${marker}: controlled ${command.action} exceeds the protected contract ceiling ${state.actionCeiling}.${confirmationNextStep}`;
   }
-  if (!state.suspendHeuristicStops && !state.invokedSkills.has(requiredSkill)) {
+  if (!directDevelopmentEnabled(contract) && !state.suspendHeuristicStops && !state.invokedSkills.has(requiredSkill)) {
     return `${marker}: invoke ${requiredSkill} successfully before controlled ${command.action}`;
   }
-  if (state.executionProjectionRequired) {
+  if (state.executionProjectionRequired && !directDevelopmentEnabled(contract)) {
     if (state.executionProjectionStatus !== 'ready') {
       return `${marker}: protected execution reducer projection is unavailable (${state.executionProjectionErrorCode ?? 'EXECUTION_PROJECTION_NOT_READY'}); controlled ${command.action} fails closed`;
     }
@@ -1778,7 +1813,7 @@ function prepareTaskDenialReason(state, exec, now = Date.now()) {
     return `${PHASE_GUARD_MARKER}: the direct user prompt explicitly requires read-only work; prepare_task may inspect but cannot propose write scope`;
   }
   if (operation === 'propose' && state.executionAuthorityClass === 'production-task-writer'
-    && (state.mutationCount > 0 || state.mutationSequence > 0)) {
+    && (state.mutationCount > 0 || state.mutationSequence > 0) && !directDevelopmentEnabled(state.taskContract)) {
     return `${PHASE_GUARD_MARKER}: prepare_task cannot replace a scoped writer contract after source mutation`;
   }
   return undefined;
@@ -1819,8 +1854,27 @@ function controlledDeliveryDenialReason(state, command, exec, now = Date.now()) 
   return undefined;
 }
 
+function directToolExecutionEnabled(state) {
+  // Ordinary analysis has a signed production-read-only context, without the
+  // development contract marker. It still uses the deployment's direct tools,
+  // with the same identity/expiry checks and an immutable workspace mount.
+  return directDevelopmentEnabled(state?.taskContract)
+    || (process.env.FORGE_DEVELOPMENT_MODE === 'direct'
+      && state?.executionAuthorityClass === 'production-read-only'
+      && state?.actionCeiling === 'read-only' && state?.taskContract?.actionCeiling === 'read-only');
+}
+
+function directBrowserAuthority(state) {
+  if (!directToolExecutionEnabled(state) || !state.protectedExecutionContextValidated || state.executionContextStatus !== 'ready') return undefined;
+  return { mode: state.promptReadOnlyConstraint || state.actionCeiling === 'read-only' ? 'read-only' : 'workspace-write',
+    workspaceRoot: '/workspace', taskKey: JSON.stringify([state.executionIdentity?.taskId, state.taskContract?.contractId]),
+    expiresAt: state.executionContextExpiresAt };
+}
+
 function toolDenialReason(state, exec) {
   const marker = PHASE_GUARD_MARKER;
+  if (exec?.name === 'browser' && exec?.signal?.aborted) return `${marker}: the current browser request is stopped; browser execution is not authorized`;
+  if (exec?.name === 'browser' && !directToolExecutionEnabled(state)) return `${marker}: browser requires the current authenticated direct-development context`;
   if (exec?.name === PREPARE_TASK_TOOL_NAME) return prepareTaskDenialReason(state, exec);
   const command = commandOf(exec);
   const controlledCommand = exec?.name === 'bash' ? parseControlledEvidenceCommand(command) : null;
@@ -1835,6 +1889,67 @@ function toolDenialReason(state, exec) {
     ? parseControlledReleasePreparationCommand(command) : null;
   const controlledReleaseMutation = exec?.name === 'bash'
     ? parseControlledReleaseMutationCommand(command) : null;
+  // Session bookkeeping and clarification do not consume a workspace lease.
+  // Saving may invalidate the source binding before the agent closes its todo.
+  if (directDevelopmentEnabled(state?.taskContract)
+    && ['todo_write', 'ask_user_question'].includes(exec?.name)) return undefined;
+  if (directToolExecutionEnabled(state)
+    && (MUTATION_TOOLS.has(exec?.name) || READ_TOOLS.has(exec?.name) || exec?.name === 'bash' || exec?.name === 'browser'
+      || ['skill', 'todo_write', 'ask_user_question'].includes(exec?.name))) {
+    // A completed save/integration invalidates write bindings while they are
+    // refreshed. Reading ordinary source does not consume that write binding.
+    const readingDuringSourceRefresh = ['read', 'grep', 'glob', 'ls', 'find'].includes(exec?.name)
+      && state.executionContextStatus === 'unavailable' && state.pendingSourceTransition != null;
+    if (state.executionContextStatus === 'unavailable' && !readingDuringSourceRefresh) {
+      return `${marker}: current request authorization context is unavailable (${state.executionContextFailureCode ?? 'EXECUTION_CONTEXT_UNAVAILABLE'}); this is not evidence of lease expiry. The platform must restore this request binding; do not ask the user to repeat an already authorized task.`;
+    }
+    if (!state.protectedExecutionContextValidated || (state.executionContextStatus !== 'ready' && !readingDuringSourceRefresh)
+      || !['production-task-writer', 'production-read-only'].includes(state.executionAuthorityClass) || state.executionTestOnly !== false
+      || !state.executionIdentity || !Number.isFinite(Date.parse(state.executionContextExpiresAt))
+      || Date.parse(state.executionContextExpiresAt) <= Date.now()) {
+      return `${marker}: direct development requires the current unexpired authenticated TaskSpace context`;
+    }
+    if (controlledReleaseInspection || controlledVerificationInspection || controlledGovernanceInspection) return undefined;
+    const ordinaryShell = exec?.name === 'bash' && !controlledReleaseMutation && !controlledReleasePreparation
+      && !controlledCommand && !controlledDelivery;
+    const shellReadOnly = ordinaryShell && (state.promptReadOnlyConstraint || state.actionCeiling === 'read-only');
+    const changing = MUTATION_TOOLS.has(exec?.name) || (exec?.name === 'bash' && !shellReadOnly)
+      || (exec?.name === 'browser' && isMutationExecution(exec));
+    if (changing && (state.promptReadOnlyConstraint || state.actionCeiling === 'read-only'
+      || exec?.signal?.aborted)) {
+      return `${marker}: the current user request is read-only or stopped; development execution is not authorized`;
+    }
+    if (changing && (state.executionAuthorityClass !== 'production-task-writer'
+      || !['workspace-write', 'git-checkpoint', 'release'].includes(state.actionCeiling))) {
+      return `${marker}: current TaskSpace account authority does not allow development writes`;
+    }
+    if (MUTATION_TOOLS.has(exec?.name) && !directDevelopmentPath(contractPathFromMutation(exec))) {
+      return `${marker}: platform, Git, credential and outside-workspace paths remain protected`;
+    }
+    if (exec?.name === 'bash') {
+      // Git metadata writes are rejected by the worker's read-only mount.
+      // Matching command text here also rejects quoted examples and scripts.
+      if (controlledReleaseMutation) return controlledReleaseMutationDenialReason(state, controlledReleaseMutation);
+      if (controlledReleasePreparation) return controlledReleasePreparationDenialReason(state, controlledReleasePreparation, exec);
+      if (CONTROLLED_COMMAND_REFERENCE.test(command) && !controlledCommand && !controlledVerificationInspection
+        && !controlledReleaseInspection && !controlledGovernanceInspection && !controlledDelivery) {
+        if (isPlainControlledIntegrateReference(command)) {
+          return `${marker}: controlled integrate command was not executed: invalid or missing required arguments. --mode, --expected-head, --expected-fingerprint and --canonical-head are required; continue also requires --operation-id. ${controlledIntegrateDiscoveryContract()} Correct the arguments within the existing authorization and continue; do not repeat the unchanged command or request user confirmation merely for this syntax error. No permission or gate bypass is available`;
+        }
+        const hint = controlledEvidenceCommandHint(command);
+        return hint ? `${marker}:${hint}`
+          : `${marker}: protected platform clients still require one exact argv without shell composition`;
+      }
+      if (!controlledCommand && !controlledVerificationInspection && !controlledReleaseInspection
+        && !controlledGovernanceInspection && !controlledDelivery && !process.env.FORGE_TOOL_WORKER_SOCKET) {
+        return `${marker}: direct development commands require the isolated tool worker`;
+      }
+    }
+    if (changing && (typeof exec?.callId !== 'string' || state.settledWriterCalls.has(exec.callId))) {
+      return `${marker}: development calls require a fresh stable native call id`;
+    }
+    return undefined;
+  }
   const typedVerificationRun = controlledCommand?.executable === 'forge-verify'
     && controlledCommand.action === 'run';
   const stoppedVerificationEvidence = permitsStoppedVerificationEvidence(state, controlledCommand);
@@ -1980,7 +2095,10 @@ function toolDenialReason(state, exec) {
       || !Number.isFinite(Date.parse(state.executionContextExpiresAt)) || Date.parse(state.executionContextExpiresAt) <= Date.now()) {
       return `${marker}: business-data mutation requires a current protected task and execution; the typed approval never replaces this binding`;
     }
-    if (!hasDirectBusinessDataIntent(state.prompt, normalizedArguments(exec).operation)) {
+    // The semantic deployment checks this exact operation against the AS-owned
+    // current request at the Broker; tool arguments cannot supply user intent.
+    if (process.env.FORGE_SEMANTIC_INTENT_ENABLED !== 'true'
+      && !hasDirectBusinessDataIntent(state.prompt, normalizedArguments(exec).operation)) {
       return `${marker}: this data operation requires a current direct user instruction; code-write authority cannot authorize data changes`;
     }
     if (state.executionProjectionRequired && (state.executionProjectionStatus !== 'ready'
@@ -2154,7 +2272,7 @@ function observeToolResult(state, exec, result, writerFact) {
   state.sequence += 1;
   const sequence = state.sequence;
   const failed = resultFailed(result);
-  observeStaleCreate(state, exec, result, writerFact);
+  if (!directDevelopmentEnabled(state.taskContract)) observeStaleCreate(state, exec, result, writerFact);
   const skill = requestedSkill(exec);
   if (skill && !failed) {
     state.invokedSkills.add(skill);
@@ -2625,6 +2743,10 @@ function readOnlyAcceptanceStatusFact(projection) {
 }
 
 function reminderForState(state, protectedCompletionProjection = null, capabilities = undefined) {
+  if (directToolExecutionEnabled(state) && state.executionContextStatus === 'unavailable') {
+    return `${PHASE_GUARD_MARKER}: current request authorization context is unavailable (${state.executionContextFailureCode ?? 'EXECUTION_CONTEXT_UNAVAILABLE'}). Prior-turn authority does not authorize this turn. Report the platform binding failure, not an expired authorization or a request for repeated user approval.`;
+  }
+  if (directToolExecutionEnabled(state)) return `FORGE_DIRECT_DEVELOPMENT_V1: The current protected execution ceiling is ${state.actionCeiling}; this does not authorize every available action. Use the current native conversation and its full context to follow the user's actual request, including explicit read-only requests, pauses, prohibited saves and publication limits. Interpret plan selections and confirmations in that context without asking for repeated authorization. Work directly in this isolated TaskSpace. No task proposal, owned-file list, fixed phase, mandatory Skill order, RED-first rule or fixed verification list is required. Use the isolated worker for ordinary commands, scripts and Git history analysis; read-only requests use a read-only workspace. Choose checks for the actual change. Respect read-only and stop requests. Platform files, credentials, Git metadata and other workspaces remain protected. Git checkpoint/integration/release use the supported Forge clients and their actual authorization. A failed command is a real failure; repair and continue the same authorized task without repeating confirmation. Never claim unrun checks or an uncompleted release succeeded.`;
   const taskPreparationFact = ordinaryReadOnlyTaskPreparationEligible(state, capabilities)
     ? ' This is a validated ordinary read-only task-preparation context and prepare_task is available in this turn. For an implementation request or explicitly authorized receipt revalidation, call prepare_task with operation inspect, perform only the bounded repository reads needed to identify the exact scope, then call prepare_task with operation propose. For receipt revalidation, preserve unchanged source and reuse only evidence accepted under the new protected context; preparation alone is not acceptance. Do not propose for a pure question; answer it read-only. Write only after prepare_task returns status prepared and the protected context carries the resulting scoped writer authority. Historical Skills or prior read-only conclusions do not replace this current-turn sequence; prepare_task does not automatically authorize writes.'
     : '';
@@ -2808,6 +2930,8 @@ function installPhaseBudgetGuard(ctx, createUserMessage, {
     try {
       const renewed = normalizeProtectedExecutionContext(await resolveExecutionContext({
         agent, turn: current.turn, step: current.currentStep, decision: { kind: 'enter', messages: [] },
+        sourceTransition: checkpoint,
+        renewal: checkpoint === null ? { rpcId: current.executionRpcId, dshSessionId: current.executionDshSessionId } : null,
       }));
       const sameExecution = integrated
         ? renewed.executionId !== current.executionIdentity.executionId
@@ -2895,7 +3019,8 @@ function installPhaseBudgetGuard(ctx, createUserMessage, {
       || typeof nextContext.workspaceFingerprint !== 'string'
       || (typeof state.executionSourceCommit === 'string' && nextContext.sourceCommit !== state.executionSourceCommit)
       || (typeof state.executionWorkspaceFingerprint === 'string'
-        && nextContext.workspaceFingerprint !== state.executionWorkspaceFingerprint)
+        && nextContext.workspaceFingerprint !== state.executionWorkspaceFingerprint
+        && !(directDevelopmentEnabled(state.taskContract) && directDevelopmentEnabled(nextContext.contract)))
       || !['workspace-write', 'git-checkpoint', 'release'].includes(nextContext.contract.actionCeiling)
       || result.currentTask === null
       || JSON.stringify(result.currentTask.ownedPaths) !== JSON.stringify(nextContext.contract.ownedPaths)
@@ -2937,17 +3062,23 @@ function installPhaseBudgetGuard(ctx, createUserMessage, {
     const directPromptRequiresContext = decision.messages
       .some((message) => message?.source?.kind === 'user');
     let executionContext;
+    let executionContextFailureCode;
     if (directPromptRequiresContext && typeof resolveExecutionContext === 'function') {
       try {
         executionContext = normalizeProtectedExecutionContext(
           await resolveExecutionContext({ agent, turn, step, decision }),
         );
-      } catch {
+      } catch (error) {
+        executionContextFailureCode = /^[A-Z][A-Z0-9_]{1,79}$/u.test(error?.code ?? '') ? error.code
+          : /^([A-Z][A-Z0-9_]{1,79}):/u.exec(error?.message ?? '')?.[1] ?? 'EXECUTION_CONTEXT_BINDING_FAILED';
         executionContext = undefined;
       }
     }
     if (!directPromptRequiresContext) await refreshCurrentContext(agent);
     const state = stateFor(agent, turn, executionContext, directPromptRequiresContext);
+    await reconcileBrowserAuthority(agent, directBrowserAuthority(state));
+    if (directPromptRequiresContext) state.executionContextFailureCode = executionContext
+      ? undefined : executionContextFailureCode ?? 'EXECUTION_CONTEXT_UNAVAILABLE';
     if (state.staleCreate?.stage?.endsWith('reserved')) {
       finishStaleCreate(state, 'cancelled', 'result-missing-before-next-step');
     }
@@ -2959,13 +3090,14 @@ function installPhaseBudgetGuard(ctx, createUserMessage, {
       .join('\n');
     if (directPromptText.trim().length > 0) {
       state.prompt = directPromptText;
-      state.promptReadOnlyConstraint = promptAddsReadOnlyConstraint(directPromptText);
+      state.promptReadOnlyConstraint = process.env.FORGE_DEVELOPMENT_MODE === 'direct'
+        ? state.actionCeiling === 'read-only' : promptAddsReadOnlyConstraint(directPromptText);
     }
     await refreshExecutionAdmission(state, admitExecution);
     let protectedCompletionProjection = null;
     const readOnlyStatusRequested = directPromptRequiresContext
       && readOnlyAcceptanceStatusRequested(state, directPromptText);
-    if ((directPromptRequiresContext || state.verificationSequence > state.completionVerificationSequence)
+    if (!directDevelopmentEnabled(state.taskContract) && (directPromptRequiresContext || state.verificationSequence > state.completionVerificationSequence)
       && (productionWriterContextCurrent(state) || readOnlyStatusRequested)
       && !operatorOwnsPhaseAcceptance(state)
       && typeof resolveProtectedCompletion === 'function') {
@@ -3006,7 +3138,7 @@ function installPhaseBudgetGuard(ctx, createUserMessage, {
     );
     const fullNotice = operatorOwnsPhaseAcceptance(state)
       ? reminder
-      : `${reminder} ${ORDINARY_RESPONSE_CONTRACT} ${ORDINARY_CONFIRMATION_GUIDANCE}`;
+      : `${reminder} ${ORDINARY_RESPONSE_CONTRACT}${directDevelopmentEnabled(state.taskContract) ? '' : ` ${ORDINARY_CONFIRMATION_GUIDANCE}`}`;
     const admission = state.verificationAdmission;
     const admissionId = productionWriterContextCurrent(state) && !state.verificationBlocked
       && admissionCurrent(admission, requiredExecutionProfiles(state.taskContract, state))
@@ -3041,12 +3173,18 @@ function installPhaseBudgetGuard(ctx, createUserMessage, {
   ctx.on('tools/pre-execute', async (exec, next) => {
     let state;
     try { state = exec.agent ? states.get(exec.agent) : undefined; } catch { state = undefined; }
-    if (state && (isMutationExecution(exec) || isBusinessDataMutationExecution(exec)
+    // A long model step can outlive the lease checked at pre-step. Direct
+    // reads and verification commands require that same current authority.
+    // Reuse the signed renewal path before applying the unchanged denial rules.
+    const directAuthorityTool = directDevelopmentEnabled(state?.taskContract)
+      && (READ_TOOLS.has(exec.name) || exec.name === 'bash' || exec.name === 'browser' || exec.name === 'skill');
+    if (state && (directAuthorityTool || isMutationExecution(exec) || isBusinessDataMutationExecution(exec)
       || (exec.name === 'bash' && parseControlledReleaseMutationCommand(commandOf(exec)) !== null))) {
       state = await refreshCurrentContext(exec.agent);
     }
+    await reconcileBrowserAuthority(exec.agent, directBrowserAuthority(state));
     let staleReservation;
-    if (STALE_CREATE_STAGES.has(state?.staleCreate?.stage)) {
+    if (!directDevelopmentEnabled(state?.taskContract) && STALE_CREATE_STAGES.has(state?.staleCreate?.stage)) {
       if (state.staleCreate.stage.endsWith('reserved')) {
         return { kind: 'deny', reason: `${PHASE_GUARD_MARKER}: stale-create recovery already has one in-flight call` };
       }
@@ -3102,6 +3240,7 @@ function installPhaseBudgetGuard(ctx, createUserMessage, {
     }
     let reason = toolDenialReason(state, exec);
     if (reason) {
+      await closeBrowserSession(exec.agent);
       await cancelStaleReservation('policy-denied');
       return { kind: 'deny', reason };
     }
@@ -3157,6 +3296,14 @@ function installPhaseBudgetGuard(ctx, createUserMessage, {
     }
   });
 
+  ctx.on('tools/execute', async (exec, next) => {
+    const state = exec?.agent ? states.get(exec.agent) : undefined;
+    if (!['bash', 'browser'].includes(exec?.name) || !directToolExecutionEnabled(state)) return next();
+    const denial = toolDenialReason(state, exec);
+    if (denial) { await closeBrowserSession(exec.agent); throw new Error(denial); }
+    return withDirectToolPolicy(directBrowserAuthority(state), next);
+  });
+
   ctx.tools.guard((exec) => {
     try {
       return toolDenialReason(exec.agent ? states.get(exec.agent) : undefined, exec);
@@ -3174,7 +3321,7 @@ function installPhaseBudgetGuard(ctx, createUserMessage, {
     const writerFact = mutation ? admittedWriterFact(state, exec) : undefined;
     if (!settleWriterAttempt(state, exec)) return;
     if (mutation && !writerFact) return;
-    if (!state.executionProjectionRequired) {
+    if (!state.executionProjectionRequired || directDevelopmentEnabled(state.taskContract)) {
       observeToolResult(state, exec, result, writerFact);
       const checkpoint = successfulSourceTransition(state, exec, result);
       if (checkpoint !== null) await refreshCurrentContext(exec.agent, checkpoint);
@@ -3319,12 +3466,17 @@ function installControlledDeliveryConcurrency(ctx) {
 // Release waits for Broker/Runner's final result. Register that same command
 // with native jobs after permission admission, so a foreground wait limit does
 // not discard its result or leave the originating session without a wakeup.
-function installControlledReleaseBackground(ctx) {
+function installControlledReleaseBackground(ctx, { environment = process.env } = {}) {
   return ctx.on('tools/execute', (exec, next) => {
     if (exec?.name === 'bash'
-      && parseControlledReleaseMutationCommand(commandOf(exec))?.action === 'release'
-      && exec.arguments?.run_in_background !== true) {
-      exec.arguments = { ...exec.arguments, run_in_background: true };
+      && parseControlledReleaseMutationCommand(commandOf(exec))?.action === 'release') {
+      // Direct-mode CLI observes one accepted operation for at most 15 minutes.
+      // Keep that native job alive long enough to return its terminal/unknown result.
+      if (environment.FORGE_DEVELOPMENT_MODE === 'direct') {
+        exec.arguments = { ...exec.arguments, run_in_background: true, timeoutMs: 16 * 60 * 1000 };
+      } else if (exec.arguments?.run_in_background !== true) {
+        exec.arguments = { ...exec.arguments, run_in_background: true };
+      }
     }
     return next();
   });

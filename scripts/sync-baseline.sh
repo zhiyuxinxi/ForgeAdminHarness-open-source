@@ -319,6 +319,10 @@ foundation_image_id="$(docker image inspect --format '{{.Id}}' "${HARNESS_FOUNDA
 verify_harness_foundation_image "${HARNESS_FOUNDATION_IMAGE}" "${foundation_image_id}" >/dev/null
 foundation_image_id="${FORGE_VERIFIED_HARNESS_FOUNDATION_IMAGE_ID}"
 foundation_image_build_ref="$(resolve_local_docker_build_ref "${HARNESS_FOUNDATION_IMAGE}" "${foundation_image_id}")"
+# Runtime defaults may be immutable IDs; Docker build requires a named output.
+if [[ "${HARNESS_IMAGE}" == sha256:* || "${HARNESS_IMAGE}" == *@sha256:* ]]; then
+  HARNESS_IMAGE="forge-delivery/harness:build-${HARNESS_IMAGE_REVISION}"
+fi
 log "Building trusted-host Harness target ${HARNESS_IMAGE} from ${foundation_image_id}."
 docker build \
   --build-arg "HARNESS_BASE_IMAGE=${foundation_image_build_ref}" \
@@ -336,6 +340,21 @@ docker build \
   --tag "${HARNESS_IMAGE}" \
   --file "${REPO_ROOT}/docker/harness/Dockerfile.overlay" \
   "${REPO_ROOT}"
+# Publish a shallow image on every full build; preserve the assembled runtime
+# Config and filesystem instead of accumulating the previous release's layers.
+require_command python3
+assembled_image_id="$(docker image inspect --format '{{.Id}}' "${HARNESS_IMAGE}")"
+compaction_resource="${DELIVERY_ROOT}/build/harness-compaction-${assembled_image_id#sha256:}"
+if [[ -f "${compaction_resource}/result.json" ]]; then
+  python3 "${REPO_ROOT}/scripts/compact-harness-image.py" --register-only --tag "${HARNESS_IMAGE}" \
+    --resource "${compaction_resource}" --foundation-image "${foundation_image_id}" \
+    --receipt-root "${DELIVERY_ROOT}/baselines/harness-compactions"
+else
+  python3 "${REPO_ROOT}/scripts/compact-harness-image.py" \
+    --source-image "${assembled_image_id}" --tag "${HARNESS_IMAGE}" \
+    --resource "${compaction_resource}" --foundation-image "${foundation_image_id}" \
+    --receipt-root "${DELIVERY_ROOT}/baselines/harness-compactions"
+fi
 verify_target_harness_image "${HARNESS_IMAGE}" "${foundation_image_id}"
 harness_image_id="${FORGE_VERIFIED_HARNESS_IMAGE_ID}"
 [[ "$(docker image inspect --format '{{.Id}}' "${HARNESS_IMAGE}")" == "${harness_image_id}" ]] \

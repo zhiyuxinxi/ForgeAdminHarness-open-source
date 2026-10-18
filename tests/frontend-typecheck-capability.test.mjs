@@ -256,7 +256,7 @@ snapshots:
 
 async function createFixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'forge-frontend-typecheck-'));
-  const taskspace = path.join(root, 'project', 'taskspaces', 'c-0123456789abcdef01234567');
+  const taskspace = path.join(root, 'project', 'taskspaces', 'c-1108a582a4cef44bd86848a7');
   const workspace = path.join(taskspace, 'workspace');
   const frontend = path.join(workspace, 'forge-admin-ui');
   await mkdir(frontend, { recursive: true });
@@ -327,7 +327,7 @@ async function createFixture() {
 
   const metadata = path.join(taskspace, 'metadata.json');
   await writeFile(metadata, `${JSON.stringify({
-    taskId: 'c-0123456789abcdef01234567',
+    taskId: 'c-1108a582a4cef44bd86848a7',
     projectSlug: 'fixture-project',
     status: 'active',
     accessMode: 'conversation',
@@ -337,7 +337,7 @@ async function createFixture() {
 
 async function createProductionPreimageFixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'forge-frontend-typecheck-production-'));
-  const taskspace = path.join(root, 'project', 'taskspaces', 'c-fedcba9876543210fedcba98');
+  const taskspace = path.join(root, 'project', 'taskspaces', 'c-6b63828afc29c837101f2339');
   const workspace = path.join(taskspace, 'workspace');
   const frontend = path.join(workspace, 'forge-admin-ui');
   await mkdir(frontend, { recursive: true });
@@ -363,7 +363,7 @@ async function createProductionPreimageFixture() {
 
   const metadata = path.join(taskspace, 'metadata.json');
   await writeFile(metadata, `${JSON.stringify({
-    taskId: 'c-fedcba9876543210fedcba98',
+    taskId: 'c-6b63828afc29c837101f2339',
     projectSlug: 'fixture-project',
     status: 'active',
     accessMode: 'conversation',

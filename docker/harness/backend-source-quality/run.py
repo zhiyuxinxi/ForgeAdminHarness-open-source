@@ -16,6 +16,19 @@ BUNDLE = Path(__file__).resolve().parent
 MAX_BYTES = 1024 * 1024
 
 
+def apply_direct_advisory(report, code):
+    # Design signals must not turn a local development task into a refactor.
+    # Keep every finding and the scanner result; code findings/errors still fail.
+    if (os.environ.get('FORGE_DEVELOPMENT_MODE') == 'direct'
+            and code == 1 and report.get('status') == 'findings'
+            and report.get('findings') and report.get('errors') == []
+            and all(item.get('reviewKind') == 'structure' for item in report['findings'])):
+        report['status'] = 'advisory'
+        report['scannerExitCode'] = code
+        return 0
+    return code
+
+
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -103,6 +116,7 @@ def main():
         report = {'schemaVersion': 1, 'mode': 'fast', 'status': 'error',
                   'bundleSha256': args.bundle_sha256, 'files': [], 'findings': [], 'errors': [str(error)]}
         code = 2
+    code = apply_direct_advisory(report, code)
     (output / 'result.json').write_text(json.dumps(report, ensure_ascii=False), encoding='utf-8')
     print(json.dumps({'status': report['status'], 'findings': len(report['findings']),
                       'errors': len(report['errors'])}))

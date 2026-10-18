@@ -787,7 +787,7 @@ async function writeHostInventoryContract(fixture, overrides = {}) {
 }
 
 async function authorizeProductionAction(fixture, task, {
-  actionCeiling = 'release', ownedPaths = ['forge-admin-ui/src'], now = Date.now(), promptText,
+  actionCeiling = 'release', ownedPaths = ['forge-admin-ui/src'], now = Date.now(), promptText, developmentMode,
 } = {}) {
   task.metadata = JSON.parse(await readFile(path.join(task.root, 'metadata.json'), 'utf8'));
   const actorUserId = task.metadata.actorUserId ?? `11111111-1111-4111-8111-${task.taskId === 'task-b' ? '222222222222' : '111111111111'}`;
@@ -806,8 +806,10 @@ async function authorizeProductionAction(fixture, task, {
       mode: 'queue', content: [{ type: 'text', text: promptText ?? prompt }],
     },
   })), 'session.prompt');
-  const taskAuthority = { actionCeiling, ownedPaths, taskProfiles: ['requirements'] };
-  const contract = compileForgeTaskExecutionContract({ prompt: promptText ?? prompt, ...taskAuthority });
+  const taskAuthority = { actionCeiling, ownedPaths, taskProfiles: developmentMode === 'direct' ? ['project-files'] : ['requirements'] };
+  const contract = compileForgeTaskExecutionContract({ prompt: promptText ?? prompt, ...taskAuthority },
+    developmentMode === 'direct' ? { developmentMode } : {});
+  if (developmentMode === 'direct') taskAuthority.contract = contract;
   const authority = {
     projectSlug: 'forge-base', taskId: task.taskId, actorUserId,
     actorUsername: task.actorId, conversationId: task.conversationId,
@@ -4203,4 +4205,188 @@ test('candidate build or startup failure cannot advance the shared integration b
       assert.deepEqual(calls.filter((action) => ['prepare', 'release'].includes(action)), ['prepare']);
     });
   }
+});
+
+
+function directBroker(fixture, options = {}) {
+  const broker = new TaskspaceBroker({ projectRoot: fixture.projectRoot, projectSlug: 'forge-base',
+    developmentMode: 'direct', ...options });
+  // Windows cannot execute Linux flock. The same cases use real locking when
+  // run in the target Linux image; this local adapter covers only the caller.
+  if (process.platform === 'win32') {
+    broker.acquireTaskOperationLock = async () => {};
+    broker.releaseTaskOperationLock = async () => {};
+  }
+  return broker;
+}
+
+test('container direct broker sends optional compile synchronously to its real executor type', async () => {
+  const fixture = await createFixture();
+  const task = fixture.tasks.get('task-a');
+  await authorizeProductionAction(fixture, task, {
+    actionCeiling: 'workspace-write', ownedPaths: ['.'], developmentMode: 'direct',
+  });
+  const broker = directBroker(fixture, { verificationMode: 'container-toolchain' });
+  const requests = [];
+  broker.callVerification = async request => { requests.push(request); return { status: 'passed' }; };
+  const request = { action: 'verify-run', profile: 'backend-module-compile',
+    selectors: { modules: ['forge-server/forge-business/forge-business-core'] },
+    idempotencyKey: 'container-direct-compile', admissionId: randomUUID(), executionMode: 'background' };
+  await broker.executeAuthenticated(task.token, request);
+  assert.equal(requests[0].executionMode, undefined);
+  assert.equal(requests[0].candidateBinding.actionCeiling, 'workspace-write');
+  broker.verificationMode = 'host-toolchain';
+  await broker.executeAuthenticated(task.token, request);
+  assert.equal(requests[1].executionMode, 'background');
+});
+
+test('direct development checkpoint saves ordinary workspace files without a development whitelist', async () => {
+  const fixture = await createFixture();
+  const task = fixture.tasks.get('task-a');
+  const authorization = await authorizeProductionAction(fixture, task, {
+    actionCeiling: 'git-checkpoint', ownedPaths: ['.'], developmentMode: 'direct',
+  });
+  await writeFile(path.join(task.workspace, 'shared.txt'), 'direct source change\n');
+  const changedSource = await inventoryWorkspace(task.workspace, VERIFICATION_LIMITS);
+  const broker = directBroker(fixture, { protectedCandidateBindingClient: async () => assert.fail('Direct save cannot require prior Host verification') });
+  const result = await broker.executeAuthenticated(task.token, {
+    action: 'checkpoint', paths: ['shared.txt'], message: 'Save direct source',
+    expectedHead: authorization.source.head, expectedWorkspaceFingerprint: changedSource.workspaceFingerprint,
+  });
+  assert.notEqual(result.commit ?? result.head, fixture.baseCommit);
+  assert.equal(await git(task.workspace, 'status', '--porcelain=v1'), '');
+  assert.equal(await git(fixture.workspaceRoot, 'rev-parse', 'HEAD'), fixture.baseCommit);
+  const authenticated = await broker.taskForToken(task.token);
+  await writeFile(path.join(task.workspace, 'PROJECT_CONTEXT.md'), 'platform authority');
+  await assert.rejects(broker.assertCheckpointPaths(authenticated, ['PROJECT_CONTEXT.md'], ['.'], authorization.context),
+    { code: 'TASKSPACE_CHECKPOINT_PATH_DENIED' });
+  await writeFile(path.join(task.workspace, '.env'), 'local-value');
+  await assert.rejects(broker.assertCheckpointPaths(authenticated, ['.env'], ['.'], authorization.context),
+    { code: 'TASKSPACE_CHECKPOINT_PATH_DENIED' });
+});
+
+test('direct development verification permits an optional profile outside the empty development contract', async () => {
+  const fixture = await createFixture();
+  const task = fixture.tasks.get('task-a');
+  await authorizeProductionAction(fixture, task, { actionCeiling: 'workspace-write', ownedPaths: ['.'], developmentMode: 'direct' });
+  const requests = [];
+  const broker = directBroker(fixture, { verificationClient: async request => { requests.push(request); return { status: 'failed', executionProven: true }; } });
+  const receipt = await broker.executeAuthenticated(task.token, { action: 'verify-run', profile: 'backend-module-compile',
+    selectors: { modules: ['forge-server/example'] }, admissionId: randomUUID(), idempotencyKey: 'direct-optional-compile' });
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].taskId, task.taskId);
+  assert.equal(receipt.status, 'failed');
+});
+
+test('admitted direct release survives status turns while cancellation and source identity remain enforced', async t => {
+  for (const condition of ['status', 'status-after-expiry', 'stop-then-status', 'new-source', 'stopped-task', 'other-session']) {
+    await t.test(condition, async () => {
+      const fixture = await createFixture(); const task = fixture.tasks.get('task-a');
+      await writeFile(path.join(task.workspace, 'shared.txt'), 'release continuity\n');
+      const candidate = await commit(task.workspace, 'release continuity candidate');
+      const authorization = await authorizeProductionAction(fixture, task, { ownedPaths: ['.'], developmentMode: 'direct' });
+      const original = authorization.context; const releases = [];
+      const readOnlyTurn = async (prompt, offset) => {
+        const classified = classifyPinnedDshPromptBody(Buffer.from(JSON.stringify({ type: 'client-request',
+          rpcId: `rpc:release-observation:${condition}:${offset}`, method: 'session.prompt', payload: {
+            sessionId: condition === 'other-session' ? 'session:other' : original.dshSessionId,
+            mode: 'queue', content: [{ type: 'text', text: prompt }],
+          } })), 'session.prompt');
+        await prepareProtectedExecutionContext({ projectRoot: fixture.projectRoot, projectSlug: 'forge-base', taskMetadata: task.metadata,
+          request: { ...classified, actorUserId: original.actorUserId, actorUsername: original.actorUsername,
+            conversationId: original.conversationId, requestId: `request:observation:${offset}` },
+          now: Date.now() + offset, policyPath: path.resolve('docker/harness/forge-execution-policy.json') });
+      };
+      const broker = directBroker(fixture, { releaseClient: async request => {
+        releases.push(request);
+        if (request.action === 'prepare') {
+          if (condition === 'stop-then-status') await readOnlyTurn('停止执行。', 1);
+          await readOnlyTurn('仅查看当前发版进度，不需要新操作。', 2);
+          if (condition === 'status-after-expiry') {
+            const file = path.join(fixture.projectRoot, 'taskspaces/.broker/executions', `${task.taskId}.json`);
+            const state = JSON.parse(await readFile(file, 'utf8'));
+            state.current.issuedAt = new Date(Date.now() - 120000).toISOString();
+            state.current.expiresAt = new Date(Date.now() - 60000).toISOString();
+            await writeFile(file, JSON.stringify(state));
+          }
+          if (condition === 'new-source') await writeFile(path.join(task.workspace, 'shared.txt'), 'changed');
+          if (condition === 'stopped-task') await writeFile(path.join(task.root, 'metadata.json'), JSON.stringify({ ...task.metadata, status: 'stopped' }));
+          return { status: 'prepared', jobId: '123e4567-e89b-42d3-a456-426614174229', commit: candidate };
+        }
+        return { jobId: 'real-runner-result', commit: candidate, testDatabaseSandbox: { status: 'healthy' } };
+      } });
+      const result = broker.executeAuthenticated(task.token, { action: 'release', services: ['forge-ui'], approvalRef: 'Current user release' });
+      if (['status', 'status-after-expiry'].includes(condition)) {
+        await result; assert.deepEqual(releases.map(x => x.action), ['prepare', 'release']);
+      } else {
+        await assert.rejects(result, { code: condition === 'stop-then-status' ? 'TASKSPACE_RELEASE_CANCELLED'
+          : condition === 'new-source' ? 'TASKSPACE_RELEASE_SOURCE_CHANGED' : 'TASKSPACE_RELEASE_AUTHORITY_STALE' });
+        assert.equal(releases.some(x => x.action === 'release'), false);
+        assert.equal(await git(fixture.workspaceRoot, 'rev-parse', 'HEAD'), fixture.baseCommit);
+      }
+    });
+  }
+});
+
+test('direct development release bypasses development completion but preserves candidate preparation and authorization', async t => {
+  for (const condition of ['authorized', 'no-release-authority', 'prepare-failed', 'source-drift', 'compatibility']) {
+    await t.test(condition, async () => {
+      const fixture = await createFixture();
+      const task = fixture.tasks.get('task-a');
+      await writeFile(path.join(task.workspace, 'shared.txt'), 'direct release\n');
+      const candidate = await commit(task.workspace, 'direct release candidate');
+      await authorizeProductionAction(fixture, task, { actionCeiling: condition === 'no-release-authority' ? 'workspace-write' : 'release',
+        ownedPaths: ['.'], developmentMode: 'direct' });
+      const releases = [];
+      let completionCalls = 0;
+      const broker = directBroker(fixture, {
+        ...(condition === 'compatibility' ? { developmentMode: 'governed' } : {}),
+        protectedCompletionClient: async () => { completionCalls += 1; throw new Error('Development obligations absent'); },
+        releaseClient: async request => {
+          releases.push(request);
+          if (request.action === 'prepare') {
+            if (condition === 'prepare-failed') throw new Error('Real candidate startup failed');
+            if (condition === 'source-drift') await writeFile(path.join(task.workspace, 'shared.txt'), 'changed during preparation');
+            return { status: 'prepared', jobId: '123e4567-e89b-42d3-a456-426614174229', commit: candidate };
+          }
+          return { jobId: 'real-runner-result', commit: candidate, testDatabaseSandbox: { status: 'healthy' } };
+        },
+      });
+      const operation = broker.executeAuthenticated(task.token, { action: 'release', services: ['forge-ui'], approvalRef: 'User requested this release' });
+      if (condition === 'authorized') {
+        const result = await operation;
+        assert.equal(result.developmentMode, 'direct');
+        assert.equal(result.developmentVerification, 'not-required');
+        assert.deepEqual(releases.map(item => item.action), ['prepare', 'release']);
+        assert.equal(await git(fixture.workspaceRoot, 'rev-parse', 'HEAD'), candidate);
+      } else {
+        await assert.rejects(operation, condition === 'no-release-authority' ? { code: 'TASKSPACE_ACTION_CEILING_DENIED' }
+          : condition === 'prepare-failed' ? /Real candidate startup failed/u
+          : condition === 'source-drift' ? { code: 'TASKSPACE_RELEASE_SOURCE_CHANGED' }
+          : { code: 'TASKSPACE_ACCEPTANCE_NOT_READY' });
+        assert.equal(releases.some(item => item.action === 'release'), false);
+        assert.equal(await git(fixture.workspaceRoot, 'rev-parse', 'HEAD'), fixture.baseCommit);
+      }
+      assert.equal(completionCalls, condition === 'compatibility' ? 1 : 0);
+    });
+  }
+});
+
+
+test('direct development integration preserves new canonical work and saves source without prior verification', async () => {
+  const fixture = await createFixture();
+  const task = fixture.tasks.get('task-a');
+  await authorizeProductionAction(fixture, task, { actionCeiling: 'git-checkpoint', ownedPaths: ['.'], developmentMode: 'direct' });
+  await writeFile(path.join(task.workspace, 'shared.txt'), 'direct task change\n');
+  await writeFile(path.join(fixture.workspaceRoot, 'migration.sql'), '-- another task canonical change\n');
+  const canonical = await commit(fixture.workspaceRoot, 'preserve another task');
+  const source = await inventoryWorkspace(task.workspace, VERIFICATION_LIMITS);
+  const broker = directBroker(fixture, { protectedCandidateBindingClient: async () => assert.fail('Direct integration does not require Host verification'),
+    releaseClient: releaseStub().client });
+  const result = await broker.executeAuthenticated(task.token, { action: 'integrate', mode: 'start', paths: ['shared.txt'],
+    expectedHead: source.head, expectedWorkspaceFingerprint: source.workspaceFingerprint, canonicalHead: canonical });
+  assert.equal(result.status, 'integrated');
+  assert.equal(await readFile(path.join(task.workspace, 'shared.txt'), 'utf8'), 'direct task change\n');
+  assert.equal(await readFile(path.join(task.workspace, 'migration.sql'), 'utf8'), '-- another task canonical change\n');
+  assert.equal(await git(fixture.workspaceRoot, 'rev-parse', 'HEAD'), canonical);
 });

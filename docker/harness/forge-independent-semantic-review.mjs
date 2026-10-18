@@ -581,7 +581,7 @@ async function readCodexReviewCredential(tokenFile) {
   }
 }
 
-async function readCodexReviewResponse(body) {
+async function readCodexReviewResponse(body, expectedModel = CODEX_MODEL) {
   // Native Codex streams finalize text in output_item.done; the terminal
   // response may have an empty output array. Both item and response completion
   // are required. EOF, [DONE] and text deltas alone cannot prove completion.
@@ -655,7 +655,7 @@ async function readCodexReviewResponse(body) {
   }
   if (completed?.status !== 'completed' || !identity.test(completed.id ?? '')
     || (responseId !== undefined && responseId !== completed.id)
-    || completed.model !== CODEX_MODEL || !Array.isArray(completed.output)
+    || completed.model !== expectedModel || !Array.isArray(completed.output)
     || completed.output.some((item) => !['reasoning', 'message'].includes(item?.type))) {
     throw invalid('VERIFY_REVIEW_RESPONSE_INVALID', '独立审查未返回指定模型的完整无工具终态；未签发通过回执。');
   }
@@ -790,3 +790,7 @@ export function createConfiguredSemanticReviewer(env = process.env, fetchImpl) {
   reviewer.availableForTask = (id) => id === taskId || legacy !== null;
   return reviewer;
 }
+
+// Reuse the native, completed-response transport for the trusted user-intent
+// reader. That reader has no tools and does not run a code review.
+export { codexReviewFetch, readCodexReviewResponse };

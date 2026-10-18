@@ -32,7 +32,7 @@ const execute = promisify(execFile);
 const repositoryRoot = path.resolve(import.meta.dirname, '..');
 const compatibility = { profileCatalogVersion: '2026.09.01.6', nodeMajor: 24 };
 
-test('source quality v17 contains the trusted runtime and still validates exact v16 inventory', async () => {
+test('input v19 preserves exact v18, v17 and v16 inventories', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'forge-source-quality-bundle-'));
   try {
     const version = '2026.10.09.1-source-quality-test';
@@ -40,7 +40,27 @@ test('source quality v17 contains the trusted runtime and still validates exact 
     const bundle = path.join(root, `bundle-${version}`);
     const manifestPath = path.join(bundle, 'runner.manifest.json');
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-    assert.equal(manifest.schemaVersion, 'forge-host-runner-bundle/v17');
+    assert.equal(manifest.schemaVersion, 'forge-host-runner-bundle/v19');
+    const inputPaths = ['lib/verification-inputs.mjs', 'lib/release-inputs.mjs'];
+    for (const file of inputPaths) {
+      assert.ok(manifest.files.some(entry => entry.path === file));
+      await rm(path.join(bundle, file));
+    }
+    manifest.files = manifest.files.filter(file => !inputPaths.includes(file.path));
+    manifest.schemaVersion = 'forge-host-runner-bundle/v18';
+    manifest.treeSha256 = treeHash(manifest.files);
+    await writeFile(manifestPath, JSON.stringify(manifest));
+    await validateHostRunnerBundle(bundle, compatibility);
+    const directPaths = ['lib/forge-managed-files.mjs', 'lib/forge-delivery-phase-browser-session.mjs'];
+    for (const file of directPaths) {
+      assert.ok(manifest.files.some(entry => entry.path === file));
+      await rm(path.join(bundle, file));
+    }
+    manifest.files = manifest.files.filter(file => !directPaths.includes(file.path));
+    manifest.schemaVersion = 'forge-host-runner-bundle/v17';
+    manifest.treeSha256 = treeHash(manifest.files);
+    await writeFile(manifestPath, JSON.stringify(manifest));
+    await validateHostRunnerBundle(bundle, compatibility);
     assert.ok(manifest.files.some(file => file.path === 'lib/backend-source-quality/runtime.zip'));
     assert.ok(manifest.files.some(file => file.path === 'lib/forge-backend-source-quality.mjs'));
     const additions = manifest.files.filter(file => file.path.startsWith('lib/backend-source-quality/')

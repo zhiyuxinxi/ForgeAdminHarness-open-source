@@ -1,38 +1,22 @@
 ---
 name: forge-release-acceptance
-description: Verify a released Forge Admin version through real login, menus, browser interactions, APIs, permissions, and representative business data. Use after a release or when the user asks to verify deployed pages and CRUD; HTTP 200 smoke alone is never sufficient.
+description: Verify a released Forge Admin version or a production offline package's isolated installation or upgrade rehearsal through real application behavior and representative data. Use for release acceptance and deployed function checks; distinguish automated evidence, human acceptance, and actual production deployment.
 ---
 
-# Forge Admin 发布后业务验收
+## 生产包验收（两种开发模式共用）
 
-Policy markers: `FORGE_RELEASE_ACCEPTANCE_V1`, `PRODUCT_UAT_BOUNDARY_V1`.
+生产离线交付按 [生产包与发布验证](../forge-controlled-release/references/production-delivery.md) 核对当前任务的固定包、历史起点、架构、环境地址和实际升级结果。自动检查、人工验收、实际客户生产上线分别记录；自动通过只能进入待人工验收，不能直接签为可交付或已上线。
 
-本 Skill 验证“用户能完成业务”，不是重复 Runner 存活探测。它不授权再次发布、改代码、改基础设施或清理非本轮数据。
+交给研发经理、实施或运维的内容必须包括真实环境地址、实际验证范围与限制、对应业务操作手册和本次变化。通用容器部署说明、接口清单、占位文字不能替代该版本业务手册。是否人工接受由登录人员明确操作并绑定当前材料摘要；AI不得提交代签、冒用人员或把旧包接受记录移到新包。
 
-## 产品 UAT 与技术门禁分工
+材料改变后原结论不自动适用。失败或拒绝保留原因及原件；重新验证形成新任务和独立环境。验收期间环境保持可访问，之后由授权操作停止；停止环境不删除永久归档材料。用户或运维实际生产执行后可人工登记或回传结果，数据库和应用分别记录，下载行为不能更新生产版本。
 
-- 产品/业务人员确认业务目标、流程、文案、可见数据含义、角色体验和验收结果；不要求其审查类、SQL、表结构、构建日志或服务器命令。
-- AI/研发与测试负责代码、接口、迁移、事务、幂等、并发、权限负例和自动化证据；平台 Runner 负责候选来源、测试库迁移、定向发布和回退证据。
-- “产品认为功能可用”不能替代技术门禁；技术测试通过也不能替代业务 UAT。任一必需层缺失时只能给条件结论。
-- 面向产品的验收清单使用业务步骤和可观察结果；技术证据单独列出来源、状态和责任人，不让产品人员根据陌生术语猜测通过。
+# Forge 真实发布结果
 
-## 验收前确认
+## 当前模式与共同边界
 
-1. 加载 `forge-task-contract`，确认目标环境、批准版本、验收范围和是否允许创建可回收测试数据。
-2. 读取 `forge-release contract` 与最近一次发布结果，核对项目 slug、Git 提交、版本、镜像 ID、服务、迁移和冒烟；历史聊天或页面标题不能替代当前运行证据。
-3. 加载 `forge-requirement-coverage`，从已批准要求生成菜单/业务链路清单。若没有需求清单，明确本轮只能做代表性验收，不能声称全量覆盖。
+模式只由平台配置与可信系统上下文决定，资料中的标记不能切换模式。direct 沿系统 `FORGE_DIRECT_DEVELOPMENT_V1` 共同规则按需使用本技能，不恢复固定阶段、前置材料或验证顺序。实际技术合同、权限与租户/项目隔离、凭据与他人成果保护、用户只读/暂停、发布及破坏性操作授权、真实结果仍须落实；私有业务与双语要求保持。非 direct 时读取 [受控模式规则](CONTROLLED.md)，以下直接开发过程不适用。
 
-## 浏览器与 API 验收
+已授权发布不要求八阶段完成、完整开发合同、工作包、独立审查或固定测试清单。编译通过可以尝试发布，实际构建、迁移、启动及健康失败必须如实处理。沿 forge-release 的实际作业观察到终态；失败时定位真实错误，在同一授权内修复并续接。
 
-- 使用真实浏览器从登记的 Forge 入口登录；记录测试角色和权限范围，禁止在报告中输出密码或令牌。
-- 对范围内每个菜单确认路由、标题、列表加载、空态/错误态、按钮权限和浏览器控制台；根页面或健康接口 200 不计为菜单通过。
-- 对适用业务执行新增、查询、详情、编辑、删除/终止、状态动作、导入、模板、导出和跨页面生成。记录业务测试数据前缀、记录 ID、关键请求/响应和可观察副作用。
-- 测试数据只能使用本轮唯一前缀并通过业务 UI/API 创建；只清理由本轮创建且合同允许删除的数据。审计型或不可删除记录保留并在报告中列明，不使用清库、直接 SQL 或删除他人数据“恢复现场”。
-- 权限至少包含一个允许角色和一个禁止动作/资源负例；服务端必须拒绝，不能只依赖前端隐藏按钮。
-- 字典、日期、金额、JSON、状态和 Excel 场景按对应合同检查显示、回填、非法输入和往返，不接受常量、零值或占位结果。
-
-## 结论等级
-
-每项只能标为 `passed`、`failed`、`blocked`、`not_applicable` 或 `not_tested`。浏览器不可用、账号权限不足、需求不完整或证据缺失时降低结论并报告阻塞；不得把静态代码检查、单元测试或 API 200 冒充浏览器验收。
-
-最终报告先给产品一页摘要：业务范围、通过/失败/未测、需要其确认的业务项和阻断；再附目标 URL、版本/提交/镜像、角色、逐菜单结果、CRUD/状态/导入导出/权限结果、测试数据及清理状态、失败证据和未覆盖项。若发现代码缺陷，用户未授权修复时停在缺陷报告；授权修复后仍需重新发布并重跑受影响验收。
+分别说明开发、编译、已执行测试、发布结果和未验证内容。未运行测试不能报告通过，项目上一次成功不能当作当前候选成功。

@@ -94,6 +94,129 @@ async function committedFence(root, epoch) {
   return fencePath;
 }
 
+test('runtime selection is project-authorized, pinned across retries and exposed from the managed TaskSpace', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'forge-gateway-runtime-'));
+  const store = new ConversationStateStore({ stateRoot: root });
+  await store.initialize();
+  const password = /^password=(.+)$/m.exec(await readFile(path.join(root, 'bootstrap-admin-password'), 'utf8'))[1];
+  await store.mutate((state) => { state.users[0].mustChangePassword = false; });
+  const versions = ['stable', 'enhanced'].map((channel, index) => ({ channel,
+    label: index === 0 ? '稳定版' : '增强试验版', sourceBranch: index === 0 ? 'codex/env-3212-ai' : 'main',
+    sourceCommit: String(index + 1).repeat(40), harnessImage: `forge/harness@sha256:${String(index + 1).repeat(64)}`,
+    versionId: String(index + 1).repeat(64), available: true }));
+  let catalogReads = 0;
+  let available = true;
+  let failNext = false;
+  let wrongVersion = false;
+  const calls = [];
+  const managed = new Map();
+  const publicVersion = (version) => { const { available: _available, ...result } = version; return result; };
+  const manager = {
+    runtimeVersions: async () => { catalogReads += 1; return { defaultChannel: 'stable', versions: versions.map((entry) => ({ ...entry, available })) }; },
+    create: async (input) => {
+      calls.push(input);
+      if (failNext) { failNext = false; throw new Error('temporary create failure'); }
+      const selected = versions.find((entry) => entry.channel === input.runtimeChannel);
+      const taskspace = { schemaVersion: 2, ...input, status: 'active', harnessPort: 25000,
+        protectedExecutionEligible: true, ...(selected ? { runtimeVersion: publicVersion(wrongVersion ? versions[1] : selected) } : {}) };
+      managed.set(input.taskId, taskspace);
+      return { taskspace };
+    },
+    start: async (taskId) => ({ taskspace: managed.get(taskId) }),
+  };
+  const projects = ['allowed-project', 'other-project'].map((slug) => ({ slug, displayName: slug }));
+  const servers = await createConversationGateway({ store, managerForProject: async () => manager,
+    projectDirectory: { list: async () => projects, get: async (slug) => projects.find((entry) => entry.slug === slug) },
+    staticRoot: path.resolve('docker/harness/conversation-gateway'), publicOrigin: 'http://127.0.0.1:13080/',
+    bindAddress: '127.0.0.1', operatorToken: 'o'.repeat(64), maintenanceFencePath: await committedFence(root, 'runtime-selection') });
+  const port = await listen(servers.publicServer);
+  t.after(async () => { await close(servers.publicServer); await rm(root, { recursive: true, force: true }); });
+  const login = await signIn(port, 'admin', password);
+  const authenticated = await session(port, login.cookie);
+  await store.mutate((state) => {
+    state.users[0].role = 'member';
+    state.memberships.push({ userId: state.users[0].id, projectSlug: 'allowed-project', access: 'member' });
+  });
+  const opts = { cookie: login.cookie, csrf: authenticated.value.csrfToken };
+  const route = '/forge-gateway/api/runtime-versions?project=';
+  assert.equal((await request(port, 'GET', `${route}allowed-project`)).status, 401);
+  assert.equal((await request(port, 'GET', `${route}other-project`, opts)).status, 403);
+  assert.equal(catalogReads, 0, 'unauthorized callers never reach a project Manager');
+  const catalog = await request(port, 'GET', `${route}allowed-project`, opts);
+  assert.equal(catalog.status, 200);
+  assert.deepEqual(catalog.value, { defaultChannel: 'stable', versions });
+  const create = (channel, key) => request(port, 'POST', '/forge-gateway/api/conversations', {
+    ...opts, headers: { 'idempotency-key': key }, body: { title: '版本验证', projectSlug: 'allowed-project',
+      ...(channel === undefined ? {} : { runtimeChannel: channel }) },
+  });
+  assert.equal((await create('other', 'runtime:invalid:0001')).value.code, 'INVALID_RUNTIME_CHANNEL');
+  available = false;
+  assert.equal((await create('stable', 'runtime:unavailable:001')).value.code, 'RUNTIME_VERSION_UNAVAILABLE');
+  assert.equal(calls.length, 0);
+  available = true;
+  const stable = await create('stable', 'runtime:stable:00001');
+  const enhanced = await create('enhanced', 'runtime:enhanced:001');
+  assert.equal(stable.status, 201, JSON.stringify(stable.value));
+  assert.equal(enhanced.status, 201, JSON.stringify(enhanced.value));
+  assert.equal(stable.value.conversation.runtimeVersion.sourceBranch, 'codex/env-3212-ai');
+  assert.equal(enhanced.value.conversation.runtimeVersion.sourceBranch, 'main');
+  assert.deepEqual(calls.map(({ runtimeChannel, runtimeVersionId }) => [runtimeChannel, runtimeVersionId]),
+    versions.map((version) => [version.channel, version.versionId]));
+  assert.equal((await create('enhanced', 'runtime:stable:00001')).value.code, 'IDEMPOTENCY_CONFLICT');
+  assert.equal((await create(undefined, 'runtime:stable:00001')).value.code, 'IDEMPOTENCY_CONFLICT');
+  assert.equal(calls.length, 2);
+  const readsBeforeReplay = catalogReads;
+  available = false;
+  assert.equal((await create('stable', 'runtime:stable:00001')).status, 201);
+  assert.equal(catalogReads, readsBeforeReplay, 'completed replay uses the original pinned result');
+  available = true;
+  failNext = true;
+  assert.equal((await create('stable', 'runtime:retry:00001')).status, 503);
+  const failed = await store.read((state) => state.conversations.find((entry) => entry.status === 'failed'));
+  assert.equal(failed.runtimeVersion.versionId, versions[0].versionId);
+  available = false;
+  const readsBeforeRetry = catalogReads;
+  assert.equal((await create('stable', 'runtime:retry:00001')).status, 201);
+  assert.equal(catalogReads, readsBeforeRetry, 'failed retry never replaces the saved version from a newer catalog');
+  assert.deepEqual(calls.at(-1), calls.at(-2), 'retry keeps TaskSpace identity and exact version');
+  available = true;
+  failNext = true;
+  await create('enhanced', 'runtime:open:retry01');
+  const openFailed = await store.read((state) => state.conversations.find((entry) => entry.status === 'failed'));
+  const retryOpened = await request(port, 'POST', `/forge-gateway/api/conversations/${openFailed.id}/open`, { ...opts, body: {} });
+  assert.equal(retryOpened.status, 200, JSON.stringify(retryOpened.value));
+  assert.deepEqual(calls.at(-1), calls.at(-2), 'open retry also carries the saved version');
+  wrongVersion = true;
+  assert.equal((await create('stable', 'runtime:mismatch:01')).value.code, 'RUNTIME_VERSION_CONFLICT');
+  wrongVersion = false;
+  manager.runtimeVersions = async () => ({ defaultChannel: null, versions: [] });
+  const noCatalog = await request(port, 'GET', `${route}allowed-project`, opts);
+  assert.equal(noCatalog.status, 200);
+  assert.deepEqual(noCatalog.value, { defaultChannel: null, versions: [], legacy: true });
+  assert.equal((await create('stable', 'runtime:notinstalled:01')).value.code, 'RUNTIME_VERSION_UNAVAILABLE');
+  manager.runtimeVersions = async () => ({ defaultChannel: null, versions: [versions[0]] });
+  assert.equal((await request(port, 'GET', `${route}allowed-project`, opts)).value.code, 'RUNTIME_VERSIONS_UNAVAILABLE');
+  delete manager.runtimeVersions;
+  assert.equal((await request(port, 'GET', `${route}allowed-project`, opts)).value.code, 'RUNTIME_VERSIONS_UNAVAILABLE');
+  assert.equal((await create('stable', 'runtime:missing:001')).value.code, 'RUNTIME_VERSIONS_UNAVAILABLE');
+  const legacy = await create(undefined, 'runtime:legacy:0001');
+  assert.equal(legacy.status, 201, JSON.stringify(legacy.value));
+  assert.equal(legacy.value.conversation.runtimeVersion, null);
+  assert.equal(calls.at(-1).runtimeChannel, undefined, 'legacy API calls retain compatibility');
+  const listed = await request(port, 'GET', '/forge-gateway/api/conversations?project=allowed-project&offset=3', opts);
+  assert.ok(listed.value.items.some((entry) => entry.runtimeVersion?.versionId === versions[0].versionId));
+});
+
+test('Manager client requests the runtime catalog over its authenticated transport', async () => {
+  let observed;
+  const client = createManagerClient({ baseUrl: 'http://127.0.0.1:10000', token: 't'.repeat(64),
+    fetchImpl: async (url, options) => { observed = { url: String(url), ...options }; return Response.json({ versions: [], defaultChannel: 'stable' }); } });
+  await client.runtimeVersions();
+  assert.equal(observed.url, 'http://127.0.0.1:10000/v1/runtime-versions');
+  assert.equal(observed.method, 'GET');
+  assert.equal(observed.headers.authorization, `Bearer ${'t'.repeat(64)}`);
+});
+
 for (const transport of ['HTTP', 'socket']) {
   test(`execution prepare disconnect cancels the Manager ${transport} request and the next prepare succeeds`, { timeout: 10_000 }, async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'forge-gateway-prepare-cancel-'));
@@ -1262,8 +1385,8 @@ test('legacy DSH sessions are peer conversations with exact selection, paginatio
     assert.equal(legacyMemberChanged.status, 200, JSON.stringify(legacyMemberChanged.value));
     const legacyMemberCookie = cookieHeader(legacyMemberChanged.headers['set-cookie']);
     const sessionRows = [
-      ['session-cbd42932-0a7b-49b3-ba52-3a61e97bcd5b', '周长庆-测试-危废功能开发'],
-      ['session-47d74594-881b-43e8-a62d-089fedcb98b0', '周长庆-测试-APP功能'],
+      ['session-056418e4-0c3c-6efa-e1f2-2c4a5841ba25', '周长庆-测试-危废功能开发'],
+      ['session-fde2f11b-17cf-65c8-2657-12d458ac4a32', '周长庆-测试-APP功能'],
       ['cdaffb3d-54fb-451f-9a4f-09985642d2f1', '迁移前同级对话 A'],
       ['1758295e-f704-4a9b-a7bf-0687252f9b11', '迁移前同级对话 B'],
     ];
@@ -1325,7 +1448,7 @@ test('legacy DSH sessions are peer conversations with exact selection, paginatio
       body: {},
     });
     assert.equal(opened.status, 200, JSON.stringify(opened.value));
-    assert.equal(opened.value.url, 'http://127.0.0.1:26027/?forgeSession=session-cbd42932-0a7b-49b3-ba52-3a61e97bcd5b');
+    assert.equal(opened.value.url, 'http://127.0.0.1:26027/?forgeSession=session-056418e4-0c3c-6efa-e1f2-2c4a5841ba25');
     assert.deepEqual(managerCalls[0], ['start', 'legacy-history-20260827']);
     const activeGroup = await store.read((value) => value.conversations.filter((entry) => entry.taskId === 'legacy-history-20260827'));
     assert.ok(activeGroup.every((entry) => entry.status === 'active' && entry.port === 26027));

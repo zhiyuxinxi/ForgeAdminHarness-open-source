@@ -84,8 +84,8 @@ for session_file in "${source_sessions[@]}"; do
     | tail -n 1)"
   reviewed_title=''
   case "${session_id}" in
-    session-1758295e-f704-4a9b-a7bf-0687252f9b11) reviewed_title='DEEPSEEK_OK' ;;
-    session-cdaffb3d-54fb-451f-9a4f-09985642d2f1) reviewed_title='读取文档并计算哈希值' ;;
+    session-18c561b3-41b7-9253-1f1f-13c672671cab) reviewed_title='DEEPSEEK_OK' ;;
+    session-9e2bdd9c-9f2f-6494-b91a-93444148311d) reviewed_title='读取文档并计算哈希值' ;;
   esac
   jq --compact-output --arg sessionId "${session_id}" --arg conversationId "${conversation_id}" \
     --arg fallbackAt "${fallback_at}" --arg embeddedTitle "${embedded_title}" \

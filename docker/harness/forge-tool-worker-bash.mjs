@@ -5,6 +5,7 @@ import {
   parseControlledReleasePreparationCommand,
   parseControlledReleaseMutationCommand,
 } from './forge-controlled-command.mjs';
+import { currentDirectToolPolicy } from './forge-direct-development.mjs';
 
 // Only these two installed clients require the private Broker token. They read
 // that fixed token locally and send typed Broker requests; caller paths are
@@ -38,11 +39,15 @@ export function createToolWorkerBashExecutor(ExistingSandboxBashExecutor, truste
     }
     run(spec) {
       const argv = trustedToolArgv(spec.command);
-      return argv ? trustedExecutor.runArgv(this.trustedSpec(spec), argv) : super.run(spec);
+      return argv ? trustedExecutor.runArgv(this.trustedSpec(spec), argv) : super.run(this.developmentSpec(spec));
     }
     start(spec) {
       const argv = trustedToolArgv(spec.command);
-      return argv ? trustedExecutor.startArgv(this.trustedSpec(spec), argv) : super.start(spec);
+      return argv ? trustedExecutor.startArgv(this.trustedSpec(spec), argv) : super.start(this.developmentSpec(spec));
+    }
+    developmentSpec(spec) {
+      if (process.env.FORGE_DEVELOPMENT_MODE !== 'direct') return spec;
+      return { ...spec, sandboxPolicy: currentDirectToolPolicy() };
     }
   };
 }

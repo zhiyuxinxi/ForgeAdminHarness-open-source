@@ -158,6 +158,7 @@ function definitionsFromTaskContract(taskContract) {
     ...(Object.hasOwn(taskContract, 'roleGrantDecisions') ? ['roleGrantDecisions'] : []),
     ...(Object.hasOwn(taskContract, 'semanticResources') ? ['semanticResources'] : []),
     ...(Object.hasOwn(taskContract, 'requestedVerificationProfiles') ? ['requestedVerificationProfiles'] : []),
+    ...(Object.hasOwn(taskContract, 'developmentMode') ? ['developmentMode'] : []),
   ]), 'task contract');
   if (typeof taskContract.contractId !== 'string' || !SHA256.test(taskContract.contractId)
     || taskContract.schemaVersion !== 1
@@ -171,7 +172,7 @@ function definitionsFromTaskContract(taskContract) {
   }
   if (taskContract.dualReview !== undefined) normalizeForgeDualReviewBinding(taskContract.dualReview);
   if (taskContract.roleGrantDecisions !== undefined) normalizeForgeRoleGrantDecisions(taskContract.roleGrantDecisions, taskContract.ownedPaths);
-  if (Object.hasOwn(taskContract, 'semanticResources') || Object.hasOwn(taskContract, 'requestedVerificationProfiles')) {
+  if (Object.hasOwn(taskContract, 'developmentMode') || Object.hasOwn(taskContract, 'semanticResources') || Object.hasOwn(taskContract, 'requestedVerificationProfiles')) {
     validateForgeTaskExecutionContract(taskContract);
   }
   const suspended = new Set(uniqueIds(taskContract.suspendedReviewObligations ?? [], 'suspendedReviewObligations'));
@@ -253,6 +254,7 @@ export function createForgeObligationLedger(taskContract) {
   const compiled = compileForgeObligationLedgerContract(taskContract);
   return sealLedger({
     schemaVersion: FORGE_OBLIGATION_LEDGER_SCHEMA_VERSION,
+    ...(taskContract.developmentMode === 'direct' ? { developmentMode: 'direct' } : {}),
     ledgerType: FORGE_OBLIGATION_LEDGER_TYPE,
     taskContractId: compiled.taskContractId,
     initialSourceFingerprint: compiled.initialSourceFingerprint,
@@ -427,14 +429,18 @@ function declaredGovernanceDefinitions(definitions, taskContract, acceptanceCont
 }
 
 function validateLedgerDocument(ledger, expectedTaskContract, acceptanceContract) {
-  exactKeys(ledger, LEDGER_KEYS, 'obligation ledger');
+  exactKeys(ledger, new Set([...LEDGER_KEYS, ...(Object.hasOwn(ledger, 'developmentMode') ? ['developmentMode'] : [])]), 'obligation ledger');
+  if (Object.hasOwn(ledger, 'developmentMode') && (ledger.developmentMode !== 'direct'
+    || (expectedTaskContract !== undefined && expectedTaskContract.developmentMode !== 'direct'))) {
+    fail('LEDGER_CONTRACT_INVALID', 'Direct ledger must retain its direct task authority.');
+  }
   if (ledger.schemaVersion !== FORGE_OBLIGATION_LEDGER_SCHEMA_VERSION
     || ledger.ledgerType !== FORGE_OBLIGATION_LEDGER_TYPE
     || typeof ledger.taskContractId !== 'string' || !SHA256.test(ledger.taskContractId)
     || typeof ledger.initialSourceFingerprint !== 'string' || !SHA256.test(ledger.initialSourceFingerprint)
     || typeof ledger.sourceFingerprint !== 'string' || !SHA256.test(ledger.sourceFingerprint)
     || !Number.isSafeInteger(ledger.generation) || ledger.generation < 0
-    || !Array.isArray(ledger.definitions) || ledger.definitions.length < 1
+    || !Array.isArray(ledger.definitions) || (ledger.developmentMode !== 'direct' && ledger.definitions.length < 1)
     || !Array.isArray(ledger.history)
     || typeof ledger.ledgerDigest !== 'string' || !DIGEST.test(ledger.ledgerDigest)) {
     fail('LEDGER_DOCUMENT_INVALID', 'Ledger document is incomplete or invalid.');

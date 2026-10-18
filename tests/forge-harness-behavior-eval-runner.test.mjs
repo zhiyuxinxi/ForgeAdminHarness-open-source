@@ -1455,7 +1455,7 @@ test('database continuation binds the retained state, original request and revie
   const promptRelative = 'prompts/crud-complete.v1.md';
   const sourceCommit = '908e13bdc08ec2cbb071d355a2c33a77c970bdd3';
   const taskId = 'eval-crud-complete';
-  const sessionId = 'session-123e4567-e89b-42d3-a456-426614174000';
+  const sessionId = 'session-3fb9fd7e-b007-1efc-50c5-cb9e7418415b';
   const prompt = Buffer.from('original business request\n');
   const patch = Buffer.from('reviewed database patch\n');
   const state = Buffer.from(JSON.stringify({ sourceCommit, taskId, caseFamily: 'crud-complete', sessionId }));
@@ -1533,7 +1533,7 @@ test('backend continuation binds its parent request and patch before reusing the
   const promptRelative = 'prompts/crud-complete.v1.md';
   const sourceCommit = '908e13bdc08ec2cbb071d355a2c33a77c970bdd3';
   const taskId = 'eval-crud-complete';
-  const sessionId = 'session-123e4567-e89b-42d3-a456-426614174000';
+  const sessionId = 'session-3fb9fd7e-b007-1efc-50c5-cb9e7418415b';
   const prompt = Buffer.from('original business request\n');
   const patch = Buffer.from('reviewed cumulative backend patch\n');
   const state = Buffer.from(JSON.stringify({ sourceCommit, taskId, caseFamily: 'crud-complete',
@@ -1609,7 +1609,7 @@ test('frontend retry continuation binds the exact active FE01 review, prompt, ar
   const promptRelative = 'prompts/crud-complete.v1.md';
   const sourceCommit = '908e13bdc08ec2cbb071d355a2c33a77c970bdd3';
   const taskId = 'eval-crud-complete';
-  const sessionId = 'session-123e4567-e89b-42d3-a456-426614174000';
+  const sessionId = 'session-3fb9fd7e-b007-1efc-50c5-cb9e7418415b';
   const attemptId = '123e4567-e89b-42d3-a456-426614174001';
   const prompt = Buffer.from('original business request\n');
   const currentPhasePrompt = Buffer.from('current frontend prompt\n');
@@ -1717,7 +1717,7 @@ test('access wiring continuation binds accepted six-stage input and seeds only g
   const parentRun = path.dirname(parentCase);
   const sourceCommit = '908e13bdc08ec2cbb071d355a2c33a77c970bdd3';
   const taskId = 'eval-crud-complete';
-  const sessionId = 'session-123e4567-e89b-42d3-a456-426614174000';
+  const sessionId = 'session-3fb9fd7e-b007-1efc-50c5-cb9e7418415b';
   const promptRelative = 'prompts/crud-complete.v1.md';
   const request = Buffer.from('original business request\n');
   const nextPrompt = Buffer.from('Controller-generated access wiring prompt\n');
@@ -1805,7 +1805,7 @@ test('cross-layer continuation binds accepted seven-stage input and seeds only g
   const parentRun = path.dirname(parentCase);
   const sourceCommit = '908e13bdc08ec2cbb071d355a2c33a77c970bdd3';
   const taskId = 'eval-crud-complete';
-  const sessionId = 'session-123e4567-e89b-42d3-a456-426614174000';
+  const sessionId = 'session-3fb9fd7e-b007-1efc-50c5-cb9e7418415b';
   const promptRelative = 'prompts/crud-complete.v1.md';
   const request = Buffer.from('original business request\n');
   const nextPrompt = Buffer.from('Controller-generated cross-layer prompt\n');

@@ -110,6 +110,32 @@ test('registry covers every requested database/backend quality area and frontend
   assert.equal(report.coverage.domains.delivery.total, 2);
 });
 
+test('tool Skills cover their capability without becoming mandatory routing requirements', async () => {
+  const { registry, catalogs } = await currentInputs();
+  const report = validateForgeQualityCapabilityRegistry(registry, catalogs);
+  for (const [id, skill] of [
+    ['frontend.browser-visual', 'browser-playwright'],
+    ['backend.crud-http-contract', 'api-bruno'],
+    ['backend.layering', 'code-ast-grep'],
+  ]) {
+    const capability = report.capabilities.find(item => item.capabilityId === id);
+    assert.ok(capability.supportingSkills.includes(skill));
+    assert.ok(!capability.requiredSkills.includes(skill));
+    assert.ok(registry.routingProfiles.every(profile => !profile.requiredSkills.includes(skill)));
+  }
+  assert.equal(report.coverage.complete, false);
+  assert.equal(report.blockingGaps.length, 39);
+});
+
+test('optional tool references still reject missing Skills and orphaned catalog entries', async () => {
+  const { registry, catalogs } = await currentInputs();
+  const capability = registry.capabilities.find(item => item.capabilityId === 'frontend.browser-visual');
+  capability.supportingSkills = ['missing-browser'];
+  expectCode('QUALITY_SKILL_REFERENCE_MISSING', () => validateForgeQualityCapabilityRegistry(registry, catalogs));
+  capability.supportingSkills = [];
+  expectCode('QUALITY_SKILL_ORPHANED', () => validateForgeQualityCapabilityRegistry(registry, catalogs));
+});
+
 test('every capability exposes exact references, proof level, status, and an honest gap shape', async () => {
   const report = await loadCurrentForgeQualityCapabilityRegistry();
   for (const capability of report.capabilities) {

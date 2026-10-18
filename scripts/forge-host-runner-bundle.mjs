@@ -37,7 +37,9 @@ const DEAD_WRITER_SCHEMA = 'forge-host-runner-bundle/v13';
 const BUSINESS_DATA_PREVIEW_SCHEMA = 'forge-host-runner-bundle/v14';
 const BUSINESS_DATA_CONSUMPTION_SCHEMA = 'forge-host-runner-bundle/v15';
 const TYPECHECK_SCHEMA = 'forge-host-runner-bundle/v16';
-const SCHEMA = 'forge-host-runner-bundle/v17';
+const SOURCE_QUALITY_SCHEMA = 'forge-host-runner-bundle/v17';
+const DIRECT_SCHEMA = 'forge-host-runner-bundle/v18';
+const SCHEMA = 'forge-host-runner-bundle/v19';
 const MANIFEST = 'runner.manifest.json';
 const ACTIVE = 'active.json';
 const PENDING = 'activation.pending.json';
@@ -157,12 +159,22 @@ const TYPECHECK_SOURCE_MAP = Object.freeze([
   ['docker/harness/frontend-typecheck.mjs', 'lib/frontend-typecheck.mjs'],
   ['docker/harness/vue-typecheck-entity-compat.mjs', 'lib/vue-typecheck-entity-compat.mjs'],
 ]);
-const SOURCE_MAP = Object.freeze([
+const SOURCE_QUALITY_SOURCE_MAP = Object.freeze([
   ...TYPECHECK_SOURCE_MAP,
   ['docker/harness/forge-backend-source-quality.mjs', 'lib/forge-backend-source-quality.mjs'],
   ['docker/harness/forge-backend-source-quality-runner.mjs', 'lib/forge-backend-source-quality-runner.mjs'],
   ...['run.py', 'backend-quality.py', 'pom.xml', 'pmd.xml', 'checkstyle.xml', 'manifest.json', 'runtime.zip', 'runtime-manifest.json']
     .map(name => [`docker/harness/backend-source-quality/${name}`, `lib/backend-source-quality/${name}`]),
+]);
+const DIRECT_SOURCE_MAP = Object.freeze([
+  ...SOURCE_QUALITY_SOURCE_MAP,
+  ['docker/harness/forge-managed-files.mjs', 'lib/forge-managed-files.mjs'],
+  ['docker/harness/forge-delivery-phase-browser-session.mjs', 'lib/forge-delivery-phase-browser-session.mjs'],
+]);
+const SOURCE_MAP = Object.freeze([
+  ...DIRECT_SOURCE_MAP,
+  ['docker/harness/verification-inputs.mjs', 'lib/verification-inputs.mjs'],
+  ['docker/harness/release-inputs.mjs', 'lib/release-inputs.mjs'],
 ]);
 const SECRET_PATTERNS = Object.freeze([
   /-----BEGIN (?:DSA |EC |OPENSSH |RSA )?PRIVATE KEY-----/u,
@@ -265,7 +277,8 @@ function validateManifest(value) {
       && value.schemaVersion !== SOURCE_PROVENANCE_SCHEMA && value.schemaVersion !== WORKFLOW_INVENTORY_SCHEMA
        && value.schemaVersion !== SEMANTIC_RESOURCE_SCHEMA && value.schemaVersion !== DEAD_WRITER_SCHEMA
        && value.schemaVersion !== BUSINESS_DATA_PREVIEW_SCHEMA
-       && value.schemaVersion !== BUSINESS_DATA_CONSUMPTION_SCHEMA && value.schemaVersion !== TYPECHECK_SCHEMA && value.schemaVersion !== SCHEMA)
+       && value.schemaVersion !== BUSINESS_DATA_CONSUMPTION_SCHEMA && value.schemaVersion !== TYPECHECK_SCHEMA
+       && value.schemaVersion !== SOURCE_QUALITY_SCHEMA && value.schemaVersion !== DIRECT_SCHEMA && value.schemaVersion !== SCHEMA)
     || typeof value.bundleVersion !== 'string' || !VERSION.test(value.bundleVersion)) throw new Error('Host Runner manifest identity is invalid.');
   if (!Array.isArray(value.compatibleProfileCatalogVersions) || value.compatibleProfileCatalogVersions.length < 1
     || value.compatibleProfileCatalogVersions.length > 16 || new Set(value.compatibleProfileCatalogVersions).size !== value.compatibleProfileCatalogVersions.length
@@ -309,7 +322,9 @@ function validateManifest(value) {
                         : value.schemaVersion === DEAD_WRITER_SCHEMA ? DEAD_WRITER_SOURCE_MAP
                           : value.schemaVersion === BUSINESS_DATA_PREVIEW_SCHEMA ? BUSINESS_DATA_PREVIEW_SOURCE_MAP
                             : value.schemaVersion === BUSINESS_DATA_CONSUMPTION_SCHEMA ? BUSINESS_DATA_CONSUMPTION_SOURCE_MAP
-                              : value.schemaVersion === TYPECHECK_SCHEMA ? TYPECHECK_SOURCE_MAP : SOURCE_MAP))))
+                              : value.schemaVersion === TYPECHECK_SCHEMA ? TYPECHECK_SOURCE_MAP
+                                : value.schemaVersion === SOURCE_QUALITY_SCHEMA ? SOURCE_QUALITY_SOURCE_MAP
+                                  : value.schemaVersion === DIRECT_SCHEMA ? DIRECT_SOURCE_MAP : SOURCE_MAP))))
       .map(([, target]) => target).sort(comparePath);
   if (!Array.isArray(value.files) || value.files.length !== expected.length) throw new Error('Host Runner file inventory is incomplete.');
   const seen = new Set();
@@ -898,6 +913,8 @@ function isLifecycleManagerSchema(schemaVersion) {
     || schemaVersion === SEMANTIC_RESOURCE_SCHEMA
     || schemaVersion === DEAD_WRITER_SCHEMA
     || schemaVersion === BUSINESS_DATA_PREVIEW_SCHEMA
+    || schemaVersion === SOURCE_QUALITY_SCHEMA
+    || schemaVersion === DIRECT_SCHEMA
     || schemaVersion === SCHEMA;
 }
 
@@ -1035,7 +1052,7 @@ async function switchVersionLocked(options, operation, roots, inheritedManagerPi
     ? await transitionManagerPin(root, selected, previous, active, options)
     : await validateManagerPin(root, inheritedManagerPin, options);
   const hasRequiredManagerPin = ![CROSS_LAYER_SCHEMA, SEMANTIC_REVIEW_SCHEMA, DEPENDENCY_SEED_SCHEMA,
-    PREPARED_DEPENDENCY_SCHEMA, DUAL_REVIEW_SCHEMA, SOURCE_PROVENANCE_SCHEMA, WORKFLOW_INVENTORY_SCHEMA, SEMANTIC_RESOURCE_SCHEMA, DEAD_WRITER_SCHEMA, BUSINESS_DATA_PREVIEW_SCHEMA, SCHEMA]
+    PREPARED_DEPENDENCY_SCHEMA, DUAL_REVIEW_SCHEMA, SOURCE_PROVENANCE_SCHEMA, WORKFLOW_INVENTORY_SCHEMA, SEMANTIC_RESOURCE_SCHEMA, DEAD_WRITER_SCHEMA, BUSINESS_DATA_PREVIEW_SCHEMA, DIRECT_SCHEMA, SCHEMA]
     .includes(selected.manifest.schemaVersion) || active?.schemaVersion === 2;
   if (previous?.version === options.version && active?.version === options.version && !hasRequiredManagerPin) {
     throw new Error('Active v3 Host Runner lacks a durable manager pin and requires reviewed repair.');

@@ -31,7 +31,10 @@ export const FORGE_FOCUSED_BACKEND_VERIFICATION_SUPPORTED = true;
 export const FORGE_ORDINARY_FINAL_VERIFICATION_SUPPORTED = true;
 export const PROTECTED_EXECUTION_STATE_SCHEMA_VERSION = 3;
 export const EXECUTION_POLICY_SCHEMA_VERSION = 1;
-export const MAX_CLAIMABLE_PROMPT_BYTES = 1024 * 1024;
+// Image bytes are base64 on the browser wire. Do not apply the text budget
+// to screenshots, while keeping both transport and authorization text bounded.
+export const MAX_CLAIMABLE_PROMPT_BYTES = 32 * 1024 * 1024;
+export const MAX_CLAIMABLE_PROMPT_TEXT_BYTES = 1024 * 1024;
 export const EXECUTION_CONTEXT_TTL_MS = 15 * 60 * 1000;
 export const MAX_EXECUTION_STATE_BYTES = 2 * 1024 * 1024;
 export const PROTECTED_EXECUTION_RECOVERY_MODE = 'expired-unsubmitted-exact-context-v1';
@@ -212,6 +215,10 @@ const SOURCE_INSPECTION_FINDING = /^只读(?:检查|核对)(?:当前|现有)[A-Z
 // A source review's confirmed repair findings describe evidence. Only an
 // independent implementation request enables this exception; turn bans still win.
 const READ_ONLY_SOURCE_REVIEW_FINDING = /^(?:当前\s*)?只读(?:源码|源文件)(?:审阅|审查|检查|核对)(?:已)?(?:确认|发现)(?:了)?(?:以下|下列|[一二两三四五六七八九十百0-9]{1,3}(?:项|个))(?:问题)?(?:需要|仍需|需|待)(?:你)?(?:在(?:原|当前|既有)候选上)?修复(?:[：:]\s*(?:第[一二两三四五六七八九十0-9]{1,3})?)?$/u;
+// A completed review reports a concrete gap; it is not an inspection command.
+// It is exempt only alongside an independent repair/verification continuation.
+const READ_ONLY_REVIEW_GAP = /^只读(?:源码|源文件)?(?:审查|审阅|检查)(?:已)?发现[：:]\s*(?!请|是否|确认|不要|不得|禁止|本轮|本次)[^，,。；;！？!?\r\n]{1,160}(?:仅|没有|缺少|未接入|未覆盖|存在)[^，,。；;！？!?\r\n]{1,160}$/u;
+const CONTINUED_CANDIDATE_VERIFICATION = /^(?:请\s*)?继续(?:当前|原)[^，,。；;！？!?\r\n]{0,48}候选[，,]\s*(?:补齐|补充|完成)[^，,。；;！？!?\r\n]{0,96}(?:验证|测试)后保存候选(?:[，,]\s*不发布)?[。！!\s]*$/u;
 const DIRECT_CANDIDATE_RELEASE_CLAUSE = /^(?:现在\s*)?(?:请\s*)?(?:发布|发版|部署|上线)(?:当前|本轮|本次|本对话)(?:已完成的)?[^，,。；;！？!?\r\n]{0,80}候选[。！!\s]*$/u;
 // A completed diagnostic statement reports evidence; it does not constrain a
 // separate explicit implementation request. Global write prohibitions still win.
@@ -294,6 +301,11 @@ export function hasGlobalReadOnlyIntent(prompt) {
       const before = line.slice(0, match.index);
       const cellSubject = table ? before.slice(before.lastIndexOf('|') + 1).replace(/[，,\s]+$/u, '').trim() : '';
       const stateSubject = before.replace(/[，,\s]+$/u, '').split(/[。；;！？!?]/u).at(-1).trim();
+      // Preserve attribution across comma-separated historical/quoted instructions.
+      // A later explicitly current clause still supplies its own authority.
+      const indirect = (/^(?:之前|此前|上一轮|历史记录[：:]|文档写着[：:])/u.test(stateSubject || text)
+        && !/^(?:本轮|本次|当前|现在|这轮|此次)/u.test(text))
+        || /^[^。；;！？!?]*[？?]/u.test(line.slice(match.index));
       const businessReadOnly = /^只读/u.test(text) && !turnRestriction
         && (READ_ONLY_UI_PROPERTY_CLAUSE.test(text)
           || READ_ONLY_BUSINESS_STATE_RULE.test(text)
@@ -306,7 +318,7 @@ export function hasGlobalReadOnlyIntent(prompt) {
             && /^只读取哪些共享(?:业务)?对象$/u.test(text))
           || (/^只读$/u.test(text)
             && /(?:记录|单据|表单|字段|控件)\s*(?:置|设(?:置)?为|保持为?)\s*[^，,。；;！？!?]{1,128}$/u.test(stateSubject)));
-      return { text, businessReadOnly, turnRestriction };
+      return { text, businessReadOnly, turnRestriction, indirect };
     }).filter(clause => clause.text);
   });
   const clauses = contextualClauses.map(clause => clause.text);
@@ -328,7 +340,8 @@ export function hasGlobalReadOnlyIntent(prompt) {
       const text = sentence.trim();
       return !/[？?]\s*$/u.test(text) && !QUESTION_REQUEST.test(text)
         && !ATTRIBUTED_RELEASE_SENTENCE.test(text)
-        && DIRECT_CANDIDATE_RELEASE_CLAUSE.test(text.split(/[，,]/u)[0]);
+        && (DIRECT_CANDIDATE_RELEASE_CLAUSE.test(text.split(/[，,]/u)[0])
+          || CONTINUED_CANDIDATE_VERIFICATION.test(text));
     });
   // Keep conditional delivery commands attached to their sentence: questions,
   // quotations and recorded instructions do not authorize continued work.
@@ -338,11 +351,11 @@ export function hasGlobalReadOnlyIntent(prompt) {
       return !/[？?]\s*$/u.test(text) && !QUESTION_REQUEST.test(text)
         && !ATTRIBUTED_RELEASE_SENTENCE.test(text) && POST_IMPLEMENTATION_RELEASE_CLAUSE.test(text);
     });
-  const implementing = clauses.some((clause) => DIRECT_IMPLEMENTATION_CLAUSE.test(clause)
+  const implementing = clauses.some((clause, index) => !contextualClauses[index].indirect && (DIRECT_IMPLEMENTATION_CLAUSE.test(clause)
     || AUTHORIZED_IMPLEMENTATION_CLAUSE.test(clause)
     || SCOPED_FILE_WRITE_AUTHORIZATION.test(clause)
     || METADATA_INITIALIZATION_CLAUSE.test(clause)
-    || CONTINUED_DELIVERY_CLAUSE.test(clause))
+    || CONTINUED_DELIVERY_CLAUSE.test(clause)))
     // Keep commas in an explicit "authorize preparation, then repair" sequence.
     // A bounded reference read is still not an implementation authorization.
     || prompt.split(/[。；;！？!?\r\n]+/u)
@@ -359,6 +372,7 @@ export function hasGlobalReadOnlyIntent(prompt) {
       && !READ_ONLY_FILE_DIGEST_FACT.test(clause)
       && !(verificationCheckpoint && BOUNDED_EVIDENCE_READ_CLAUSE.test(clause))
       && !(authorizesReviewRepair && READ_ONLY_SOURCE_REVIEW_FINDING.test(clause))
+      && !(authorizesReviewRepair && READ_ONLY_REVIEW_GAP.test(clause))
       && !((implementing || controlledPreparation) && (CHANGED_VERIFICATION_CLAUSE.test(clause)
         || /^只读原件摘要[0-9a-f]{64}$/u.test(clause)))
       && !(implementing && !READ_ONLY_SOURCE_REVIEW_FINDING.test(clause) && (contextualClauses[index].businessReadOnly
@@ -479,6 +493,11 @@ export function classifyPinnedDshPromptBody(body, route) {
     });
   }
 
+  if (Buffer.byteLength(text.map((part) => part.text).join('\n'), 'utf8') > MAX_CLAIMABLE_PROMPT_TEXT_BYTES) {
+    return readOnlyClassification(route, body, 'PROMPT_TEXT_EXCEEDS_CLAIM_LIMIT', {
+      rpcId: envelope.rpcId, dshSessionId: payload.sessionId, mode: payload.mode,
+    });
+  }
   const base = {
     schemaVersion: PROTECTED_EXECUTION_SCHEMA_VERSION,
     route,
@@ -735,7 +754,7 @@ function validatePrepareRequest(value) {
     mode: value.mode === undefined ? null : (['queue', 'steer'].includes(value.mode) ? value.mode : (() => { throw new ProtectedExecutionError('EXECUTION_INPUT_INVALID', 'mode is invalid.'); })()),
     bodyDigest: optionalString(value.bodyDigest, SHA256_PATTERN, 'bodyDigest'),
     textDigest: optionalString(value.textDigest, SHA256_PATTERN, 'textDigest'),
-    promptText: typeof value.promptText === 'string' && Buffer.byteLength(value.promptText, 'utf8') <= MAX_CLAIMABLE_PROMPT_BYTES
+    promptText: typeof value.promptText === 'string' && Buffer.byteLength(value.promptText, 'utf8') <= MAX_CLAIMABLE_PROMPT_TEXT_BYTES
       ? value.promptText : '',
     bodyBytes,
     imageCount: Number.isSafeInteger(value.imageCount) && value.imageCount >= 0 ? value.imageCount : 0,
@@ -966,7 +985,7 @@ function validateStoredState(value) {
   if (legacy) exactKeys(value, legacyKeys, 'protected execution state');
   else if (previous) exactKeys(value, [...legacyKeys, 'lifecycle', 'recovery'], 'protected execution state');
   else if (value?.schemaVersion === PROTECTED_EXECUTION_STATE_SCHEMA_VERSION) {
-    exactKeys(value, [...legacyKeys, 'lifecycle', 'recovery', 'tombstones'], 'protected execution state');
+    exactKeys(value, [...legacyKeys, 'lifecycle', 'recovery', 'tombstones', 'releaseCancelledGeneration'], 'protected execution state');
   } else {
     throw new ProtectedExecutionError('EXECUTION_STATE_INVALID', 'Execution state version is invalid.', 503);
   }
@@ -984,6 +1003,11 @@ function validateStoredState(value) {
     throw new ProtectedExecutionError('EXECUTION_STATE_INVALID', 'Execution state timestamp is invalid.', 503);
   }
   const current = validateProtectedExecutionContext(value.current);
+  if (value.releaseCancelledGeneration !== undefined
+    && (!Number.isSafeInteger(value.releaseCancelledGeneration) || value.releaseCancelledGeneration < 1
+      || value.releaseCancelledGeneration > value.generation)) {
+    throw new ProtectedExecutionError('EXECUTION_STATE_INVALID', 'Release cancellation generation is invalid.', 503);
+  }
   if (current.generation !== value.generation) {
     throw new ProtectedExecutionError('EXECUTION_STATE_INVALID', 'Execution state generation is inconsistent.', 503);
   }
@@ -1651,7 +1675,8 @@ async function resolveProtectedExecutionPreparation({
     backendTestBindings: authority.taskContract?.backendTestBindings,
     dualReview: authority.taskContract?.dualReview,
     roleGrantDecisions: authority.taskContract?.roleGrantDecisions,
-    semanticResources: authority.taskContract?.semanticResources });
+    semanticResources: authority.taskContract?.semanticResources,
+    developmentMode: authority.taskContract?.developmentMode });
   const contract = authority.taskContract ?? compiledContract;
   // selectAuthority already validated the complete stored derivation.
   // Retain its older UI/TDD requirements instead of rewriting accepted history
@@ -1802,12 +1827,17 @@ export async function prepareProtectedExecutionContext({
   trustedPolicyInput,
   trustedPhase,
   previousCompletion,
+  trustedReleaseCancellation = false,
   minimumGeneration,
   expectedExecution,
 }) {
   const { input, policy, authority, contract } = await resolveProtectedExecutionPreparation({
     projectRoot, projectSlug, taskMetadata, request, policyPath, trustedPolicyInput, trustedPhase,
   });
+  // Only the trusted Manager may add its validated semantic pause/cancel.
+  // Client request fields never supply this out-of-band decision.
+  const releaseCancellation = cancelsPendingRelease(input)
+    || (trustedReleaseCancellation === true && input.classification === 'claimable-text' && input.route === 'session.prompt');
   const historicalCompletion = validatePreviousCompletion(previousCompletion, projectSlug, taskMetadata, input);
   if (historicalCompletion !== undefined && (trustedPolicyInput !== undefined
     || authority.authorityClass !== 'production-read-only' || authority.testOnly
@@ -1987,6 +2017,8 @@ export async function prepareProtectedExecutionContext({
       lifecycle: { status: 'prepared', consumedAt: null },
       recovery: null,
       tombstones: [...(previous?.tombstones ?? [])],
+      ...((previous?.releaseCancelledGeneration !== undefined || releaseCancellation)
+        ? { releaseCancelledGeneration: releaseCancellation ? generation : previous.releaseCancelledGeneration } : {}),
     };
     validateStoredState(state);
     await atomicWriteJson(statePath, state);
@@ -2875,6 +2907,38 @@ export async function readProtectedExecutionContext({ projectRoot, taskMetadata,
     }
     return Object.freeze({ ...context });
   });
+}
+
+// A status question starts a separate tool context; it does not cancel an
+// already admitted release. Only an explicit direct-user stop revokes that job.
+function cancelsPendingRelease(input) {
+  if (input.classification !== 'claimable-text' || input.route !== 'session.prompt') return false;
+  const text = input.promptText.replace(/```[^]*?```|~~~[^]*?~~~/gu, ' ')
+    .replace(/“[^”]*”|‘[^’]*’|「[^」]*」|『[^』]*』|"[^"]*"|'[^']*'/gu, ' ');
+  return text.split(/[，,。；;！？!?\r\n]+/u).some(clause =>
+    /^(?:请\s*)?(?:(?:先|暂时)?(?:停止|暂停|取消|撤回)(?:(?:当前|本次|正在进行的|所有|全部)(?:的)?)?(?:任务|执行|工作|发布|发版|部署|上线)?|(?:不要|暂不|先不|禁止)(?:继续)?(?:发布|发版|部署|上线|执行))(?:了|吧)?\s*$/u.test(clause.trim())
+      || /^(?:please\s+)?(?:stop|pause|cancel|abort)(?:\s+(?:the|this|current|pending))?(?:\s+(?:release|deployment|task|execution))?\s*$/iu.test(clause.trim()));
+}
+
+export async function assertAdmittedProductionRelease({ projectRoot, taskMetadata, context }) {
+  const admitted = validateProtectedExecutionContext(context);
+  const state = validateStoredState(await readState(executionStatePath(projectRoot, taskMetadata.taskId)));
+  if (admitted.authorityClass !== 'production-task-writer' || admitted.testOnly !== false
+    || admitted.actionCeiling !== 'release' || taskMetadata.status !== 'active'
+    || taskMetadata.accessMode !== 'conversation'
+    || state.generation < admitted.generation
+    || !['projectSlug', 'taskId', 'actorUserId', 'conversationId'].every(key =>
+      state[key] === admitted[key] && taskMetadata[key] === admitted[key])
+    || state.actorUsername !== admitted.actorUsername || taskMetadata.actorId !== admitted.actorUsername
+    || state.current.dshSessionId !== admitted.dshSessionId
+    || (state.generation === admitted.generation && state.current.executionId !== admitted.executionId)) {
+    throw new ProtectedExecutionError('TASKSPACE_RELEASE_AUTHORITY_STALE', 'The admitted release no longer belongs to this active TaskSpace.', 409);
+  }
+  if ((state.releaseCancelledGeneration ?? 0) > admitted.generation) {
+    throw new ProtectedExecutionError('TASKSPACE_RELEASE_CANCELLED', 'The user cancelled the admitted release before promotion; its prepared candidate is retained.', 409);
+  }
+  // Admission already verified the live lease. A running job is bound to that
+  // exact candidate and cannot acquire rights from a later (even read-only) turn.
 }
 
 export async function readCurrentProtectedExecutionContextForTask({ projectRoot, taskMetadata, now = Date.now(), allowExpiredForRenewal = false }) {

@@ -179,7 +179,7 @@ export function buildHistoryPacket({ projectSlug, sourceCommit, recordedAt, menu
     }
   }
   return { schemaVersion: 1, projectSlug, sourceCommit, recordedAt,
-    source: { kind: 'verified-source-projection', revision: sourceCommit, label: '示例客户历史文档、生产菜单配置及数据库结构只读提取' },
+    source: { kind: 'verified-source-projection', revision: sourceCommit, label: `${projectSlug} 历史文档、菜单配置及数据库结构只读提取` },
     menus, batches: [...batches.values()], requirements, requirementVersions,
     assets: [...assets.values()], currentAssetVersionIds: [...currentAssetVersionIds],
     coverage: { menuConfigurationCount: menus.length, specificationSectionCount: requirements.length,

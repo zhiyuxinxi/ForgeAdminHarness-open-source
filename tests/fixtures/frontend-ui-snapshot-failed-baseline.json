@@ -20,7 +20,7 @@
     "failedStage": "test-database-snapshot",
     "completedAt": "2026-10-09T15:38:29.391Z",
     "provenance": {
-      "taskId": "c-c7ba1f99ab71b692f464657e",
+      "taskId": "c-08b0129c16e6ebfad0c81ee6",
       "conversationId": "5f3f83c4-5495-41e4-933e-4e7c2f751855",
       "candidateCommit": "5ca42d28cc755cacfe8ebcbcbc0b4e96784d4a81"
     },
@@ -64,7 +64,7 @@
     "startedAt": "2026-10-09T14:46:38.484Z",
     "completedAt": "2026-10-09T14:47:24.239Z",
     "provenance": {
-      "taskId": "c-c7ba1f99ab71b692f464657e",
+      "taskId": "c-08b0129c16e6ebfad0c81ee6",
       "conversationId": "5f3f83c4-5495-41e4-933e-4e7c2f751855",
       "candidateCommit": "ec1f50e417ac418d4b599f3830f75adeae0ad511"
     },
@@ -99,7 +99,7 @@
     "startedAt": "2026-10-09T14:38:51.137Z",
     "completedAt": "2026-10-09T14:46:32.887Z",
     "provenance": {
-      "taskId": "c-c7ba1f99ab71b692f464657e",
+      "taskId": "c-08b0129c16e6ebfad0c81ee6",
       "conversationId": "5f3f83c4-5495-41e4-933e-4e7c2f751855",
       "candidateCommit": "ec1f50e417ac418d4b599f3830f75adeae0ad511"
     },

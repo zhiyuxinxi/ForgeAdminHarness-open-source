@@ -50,6 +50,17 @@ function protocolReceipt(body) {
 const run = (request, extra = {}) => executeForgeBusinessDataConsumption({ request, readContext: async () => context,
   inspectSource: async () => ({ head: context.sourceCommit, fingerprint: context.workspaceFingerprint }), consume: async body => protocolReceipt(body), now, ...extra });
 
+test('semantic data intent is resolved from the protected request and preserves exact approval', async () => {
+  const body=await fixture();let checked=0,consumed=0;
+  const authorizeIntent=async input=>{checked++;assert.equal(input.promptTextDigest,context.textDigest);
+    assert.equal(input.actorUserId,context.actorUserId);return {authorized:true,operation:input.operation,rpcId:input.rpcId};};
+  await run(body,{authorizeIntent,consume:async input=>{consumed++;return protocolReceipt(input);}});
+  assert.equal(checked,1);assert.equal(consumed,1);
+  await assert.rejects(run(body,{authorizeIntent:async()=>({authorized:true,operation:'cancel',rpcId:context.rpcId})}),{code:'DATA_APPLY_INTENT_REQUIRED'});
+  const changed=structuredClone(body);changed.proposal.objects[0].changes[0].after='未批准的新值';
+  await assert.rejects(run(changed,{authorizeIntent}),{code:'OBJECT_BINDING_STALE'});
+});
+
 test('data consume: exact note action and scope reject injected targets, expanded objects and changed values before dispatch', async () => {
   const original = await fixture();
   assert.equal(validateTaskspaceAction(original).action, BUSINESS_DATA_APPLY_ACTION);

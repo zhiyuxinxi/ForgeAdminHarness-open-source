@@ -90,10 +90,14 @@ function parse(argv) {
       || values.profiles.some((profile) => !PROFILE_NAMES.has(profile))) {
       throw new Error(`VERIFY_PROFILE_UNKNOWN: unique reviewed --profile values are required; allowedProfiles=${PROFILE_LIST.join(',')}`);
     }
-    const selected = new Set(values.profiles);
-    const canonical = PROFILE_LIST.filter((profile) => selected.has(profile));
-    if (canonical.some((profile, index) => profile !== values.profiles[index])) {
-      throw new Error('VERIFY_PROFILE_ORDER_INVALID: admission profiles must use the reviewed catalog order.');
+    if (process.env.FORGE_DEVELOPMENT_MODE === 'direct') {
+      values.profiles = validateVerifyAction({ action: 'admit', profiles: values.profiles }).profiles;
+    } else {
+      const selected = new Set(values.profiles);
+      const canonical = PROFILE_LIST.filter((profile) => selected.has(profile));
+      if (canonical.some((profile, index) => profile !== values.profiles[index])) {
+        throw new Error('VERIFY_PROFILE_ORDER_INVALID: admission profiles must use the reviewed catalog order.');
+      }
     }
   } else if (['capability', 'run'].includes(command)) {
     if (!PROFILE_NAMES.has(values.profile)) {

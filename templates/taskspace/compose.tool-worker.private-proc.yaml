@@ -1,0 +1,7 @@
+# Selected only after inspecting the configured image's private-proc capability.
+# Its inner sandbox restores sensitive proc/sys paths before executing any tool.
+# Do not select this file for older images or by a model-controlled policy flag.
+services:
+  harness-tool-worker:
+    security_opt:
+      - systempaths=unconfined

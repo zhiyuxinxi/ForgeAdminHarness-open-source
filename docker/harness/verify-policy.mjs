@@ -330,6 +330,50 @@ function requiredString(value, pattern, label) {
   return value;
 }
 
+// Admission is capability evidence from the protected container Runner, not a
+// test result. The acceptance service uses this only for trusted direct tasks.
+export function validateContainerExecutionAdmissionReceipt(value, options = {}) {
+  exactKeys(value, ['schemaVersion', 'receiptType', 'admissionId', 'projectSlug', 'taskId',
+    'runner', 'profiles', 'source', 'cache', 'executor', 'issuedAt', 'expiresAt',
+    'outcome', 'reasonCode', 'truth'], 'container admission');
+  if (value.schemaVersion !== 1 || value.receiptType !== 'forge-verify/execution-admission'
+    || value.outcome !== 'ready' || value.reasonCode !== null) throw new Error('Container admission is not ready.');
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+  requiredString(value.admissionId, uuid, 'container admission ID');
+  requiredString(value.projectSlug, /^[a-z0-9][a-z0-9-]{1,47}$/u, 'container admission project');
+  requiredString(value.taskId, /^[a-z0-9][a-z0-9-]{1,47}$/u, 'container admission task');
+  if ((options.projectSlug !== undefined && value.projectSlug !== options.projectSlug)
+    || (options.taskId !== undefined && value.taskId !== options.taskId)) throw new Error('Container admission identity mismatch.');
+  const profiles = validateVerifyAction({ action: 'admit', profiles: value.profiles }).profiles;
+  exactKeys(value.runner, ['bootId', 'revision'], 'container admission runner');
+  requiredString(value.runner.bootId, uuid, 'container runner boot ID');
+  requiredString(value.runner.revision, /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u, 'container runner revision');
+  exactKeys(value.source, ['head', 'workspaceFingerprint', 'dependencyManifestFingerprint'], 'container admission source');
+  requiredString(value.source.head, /^[0-9a-f]{40,64}$/u, 'container source HEAD');
+  requiredString(value.source.workspaceFingerprint, SHA256_PATTERN, 'container source fingerprint');
+  requiredString(value.source.dependencyManifestFingerprint, SHA256_PATTERN, 'container dependency fingerprint');
+  exactKeys(value.cache, ['mode', 'compatible', 'packDigest'], 'container admission cache');
+  if (value.cache.mode !== 'project-scoped-immutable-pack' || value.cache.compatible !== true) throw new Error('Container admission cache is unproven.');
+  requiredString(value.cache.packDigest, SHA256_PATTERN, 'container cache digest');
+  const proofs = ['proven', 'dockerApiProven', 'toolchainImageProven', 'samePathBindProven', 'stateWriteProven', 'cleanupProven'];
+  exactKeys(value.executor, proofs, 'container admission executor');
+  if (proofs.some(key => value.executor[key] !== true)) throw new Error('Container execution capability is unproven.');
+  const truths = ['executionProven', 'verificationProven', 'semanticCorrectnessProven', 'databaseIntegrationProven', 'releaseProven'];
+  exactKeys(value.truth, truths, 'container admission truth');
+  if (truths.some(key => value.truth[key] !== false)) throw new Error('Container admission must not claim execution or release.');
+  for (const key of ['issuedAt', 'expiresAt']) {
+    if (typeof value[key] !== 'string' || !Number.isFinite(Date.parse(value[key]))
+      || new Date(value[key]).toISOString() !== value[key]) throw new Error('Container admission timestamp is invalid.');
+  }
+  const issued = Date.parse(value.issuedAt), expires = Date.parse(value.expiresAt);
+  if (expires - issued < 30_000 || expires - issued > 15 * 60_000) throw new Error('Container admission lease is invalid.');
+  if (options.observedAt !== undefined) {
+    const now = Date.parse(options.observedAt);
+    if (!Number.isFinite(now) || now < issued || now >= expires) throw new Error('Container admission is not current.');
+  }
+  return { executionMode: 'container-toolchain', profiles, receipt: value };
+}
+
 function uniqueStrings(value, pattern, maximum, label) {
   if (!Array.isArray(value) || value.length < 1 || value.length > maximum) {
     throw new Error(`${label} must contain from 1 to ${maximum} values.`);
@@ -348,15 +392,19 @@ function frontendFiles(value, pattern, maximum, label) {
 }
 
 function orderedProfiles(value) {
-  const profiles = uniqueStrings(value, /^[a-z][a-z0-9-]{1,63}$/u, VERIFY_PROFILE_NAMES.length, 'verify profiles');
+  const direct = process.env.FORGE_DEVELOPMENT_MODE === 'direct';
+  // Source-quality is already an optional capability/run profile. Direct
+  // admission accepts that same set without changing the signed base catalog.
+  const catalog = direct ? [...VERIFY_PROFILE_NAMES, SOURCE_QUALITY_PROFILE] : VERIFY_PROFILE_NAMES;
+  const profiles = uniqueStrings(value, /^[a-z][a-z0-9-]{1,63}$/u, catalog.length, 'verify profiles');
   if (profiles.some((profile) => !PROFILE_SET.has(profile))) throw new Error('verify profile is not allowed.');
   const selected = new Set(profiles);
-  const canonical = VERIFY_PROFILE_NAMES.filter((profile) => selected.has(profile));
+  const canonical = catalog.filter((profile) => selected.has(profile));
   if (canonical.length !== profiles.length
-    || canonical.some((profile, index) => profile !== profiles[index])) {
+    || (!direct && canonical.some((profile, index) => profile !== profiles[index]))) {
     throw new Error('verify profiles must use the reviewed catalog order.');
   }
-  return profiles;
+  return direct ? canonical : profiles;
 }
 
 function validateSelectors(profile, value) {
@@ -442,7 +490,10 @@ export function validateVerifyAction(value) {
       || Object.hasOwn(value, 'receiptId'))) {
       throw new Error(`Background execution is supported only for ${BACKGROUND_VERIFICATION_PROFILES.join(', ')} without receipt reuse.`);
     }
-    if (Object.hasOwn(value, 'receiptId') && ['backend-red-test', 'frontend-red-test', SOURCE_QUALITY_PROFILE].includes(profile)) {
+    if (Object.hasOwn(value, 'receiptId') && profile === SOURCE_QUALITY_PROFILE) {
+      throw new Error('Backend source quality is optional diagnostics, not a checkpoint obligation. Keep its existing report; do not rerun or rebind it solely because code was saved. Read it with forge-verify receipt --receipt-id <original-id>.');
+    }
+    if (Object.hasOwn(value, 'receiptId') && ['backend-red-test', 'frontend-red-test'].includes(profile)) {
       throw new Error('verify receipt reuse is not supported for diagnostic profiles.');
     }
     return {
@@ -497,9 +548,11 @@ export function validateVerificationContract(value, expectedProjectSlug) {
       throw new Error(`verification ${field} must be an absolute path.`);
     }
   }
-  if (!Array.isArray(value.profiles)
-    || value.profiles.length !== VERIFY_PROFILE_NAMES.length
-    || value.profiles.some((name, index) => name !== VERIFY_PROFILE_NAMES[index])) {
+  // Schema 1 installations from toolkit 78 predate the optional H5 test
+  // profile. Preserve that exact catalog without accepting arbitrary profiles.
+  const catalogs = [VERIFY_PROFILE_NAMES, VERIFY_PROFILE_NAMES.filter(name => name !== 'frontend-h5-test')];
+  if (!Array.isArray(value.profiles) || !catalogs.some(catalog => value.profiles.length === catalog.length
+    && value.profiles.every((name, index) => name === catalog[index]))) {
     throw new Error('verification profiles must equal the reviewed ordered profile catalog.');
   }
   if (!value.limits || typeof value.limits !== 'object' || Array.isArray(value.limits)) {
@@ -527,13 +580,14 @@ export function selectorDigest(selectors) {
   return crypto.createHash('sha256').update(JSON.stringify(selectors), 'utf8').digest('hex');
 }
 
-export function verificationIdempotencyDigest({ projectSlug, taskId, sourceFingerprint, profile, selectors, idempotencyKey, admissionId }) {
+export function verificationIdempotencyDigest({ projectSlug, taskId, sourceFingerprint, profile, selectors, idempotencyKey, admissionId, developmentMode }) {
   for (const [label, value] of Object.entries({ projectSlug, taskId, profile, idempotencyKey, admissionId })) {
     if (typeof value !== 'string' || value.length === 0) throw new Error(`${label} is required for verify idempotency.`);
   }
   requiredString(sourceFingerprint, SHA256_PATTERN, 'verify sourceFingerprint');
   return crypto.createHash('sha256').update(JSON.stringify({
     projectSlug, taskId, sourceFingerprint, profile, selectors, idempotencyKey, admissionId,
+    ...(developmentMode === 'direct' ? { developmentMode } : {}),
   }), 'utf8').digest('hex');
 }
 

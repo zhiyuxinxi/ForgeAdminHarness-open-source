@@ -27,6 +27,22 @@ import {
 import { compileForgeTaskExecutionContract } from '../docker/harness/forge-task-execution-contract.mjs';
 
 const base = '0123456789abcdef0123456789abcdef01234567';
+test('direct development omits the retired prepare_task registration', t => {
+  const previous = process.env.FORGE_DEVELOPMENT_MODE;
+  t.after(() => {
+    if (previous === undefined) delete process.env.FORGE_DEVELOPMENT_MODE;
+    else process.env.FORGE_DEVELOPMENT_MODE = previous;
+  });
+  const definitions = [];
+  const ctx = { tools: { register: value => definitions.push(value) } };
+  process.env.FORGE_DEVELOPMENT_MODE = 'direct';
+  registerPrepareTaskTool(ctx, value => value, async () => ({}));
+  assert.equal(definitions.length, 0);
+  delete process.env.FORGE_DEVELOPMENT_MODE;
+  registerPrepareTaskTool(ctx, value => value, async () => ({}));
+  assert.equal(definitions.length, 1);
+  assert.equal(definitions[0].name, 'prepare_task');
+});
 const actorUserId = '123e4567-e89b-42d3-a456-426614174000';
 
 test('prepare_task waits within its existing thirty-second bound and never retries an unconfirmed request', async (t) => {
@@ -303,7 +319,7 @@ test('an empty tool-continuation step cannot erase the direct prompt read-only c
   assert.equal(controller.states.get(agent).promptReadOnlyConstraint, true);
 });
 
-async function protectedTransitionFixture(root, actionCeiling = 'workspace-write') {
+async function protectedTransitionFixture(root, actionCeiling = 'workspace-write', developmentMode) {
   const prompt = '仅在导航栏创建安保模块即可，放至领导引领力后面';
   const rpcId = '123e4567-e89b-42d3-a456-426614174111';
   const sessionId = 'session-one';
@@ -335,10 +351,11 @@ async function protectedTransitionFixture(root, actionCeiling = 'workspace-write
   });
   const taskAuthority = {
     actionCeiling,
-    ownedPaths: ['forge-admin-ui/src'],
-    taskProfiles: ['frontend-admin'],
+    ownedPaths: developmentMode === 'direct' ? ['.'] : ['forge-admin-ui/src'],
+    taskProfiles: developmentMode === 'direct' ? ['project-files'] : ['frontend-admin'],
   };
-  const contract = compileForgeTaskExecutionContract({ prompt, ...taskAuthority });
+  const contract = compileForgeTaskExecutionContract({ prompt, ...taskAuthority }, { developmentMode });
+  if (developmentMode === 'direct') taskAuthority.contract = contract;
   const sourceFingerprint = 'b'.repeat(64);
   const productionAuthorityId = '123e4567-e89b-42d3-a456-426614174222';
   const controllerGrantDigest = 'c'.repeat(64);
@@ -378,6 +395,42 @@ async function protectedTransitionFixture(root, actionCeiling = 'workspace-write
   const strip = ({ idempotent: _idempotent, refreshed: _refreshed, ...context }) => context;
   return { prompt, content, request, metadata, initial: strip(initial), prepared: strip(prepared), contract };
 }
+
+test('direct prepare runtime accepts refreshed fingerprint only for the same direct task and HEAD', async t => {
+  const before = process.env.FORGE_DEVELOPMENT_MODE;
+  process.env.FORGE_DEVELOPMENT_MODE = 'direct';
+  t.after(() => before === undefined ? delete process.env.FORGE_DEVELOPMENT_MODE : process.env.FORGE_DEVELOPMENT_MODE = before);
+  const root = await mkdtemp(path.join(os.tmpdir(), 'forge-direct-prepare-refresh-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const fixture = await protectedTransitionFixture(root, 'git-checkpoint', 'direct');
+  const initial = fixture.prepared;
+  const nextContext = { ...initial, executionId: '123e4567-e89b-42d3-a456-426614174555',
+    generation: initial.generation + 1, workspaceFingerprint: 'd'.repeat(64) };
+  const handlers = new Map();
+  const controller = installPhaseBudgetGuard({ on(name, handler) { handlers.set(name, handler); },
+    tools: { guard() { return () => {}; } } }, input => ({ role: 'user', ...input }), {
+    resolveExecutionContext: async () => structuredClone(initial),
+    prepareTaskClient: async () => ({ status: 'prepared', summary: 'Refresh current request.',
+      currentTask: { goal: fixture.prompt, ownedPaths: ['.'], taskProfiles: ['project-files'] },
+      availableScopes: [], context: structuredClone(nextContext) }),
+  });
+  const agent = { session: { id: fixture.request.dshSessionId, events: [] }, steer() {}, cancel() {} };
+  await handlers.get('agent/pre-step')({ agent, turn: 1, step: 1, signal: new AbortController().signal }, async () => ({
+    kind: 'enter', messages: [{ role: 'user', source: { kind: 'user', rpcId: fixture.request.rpcId }, content: fixture.content }],
+  }));
+  const current = controller.states.get(agent); current.mutationCount = 1; current.mutationSequence = 1;
+  const args = { operation: 'propose', proposal: { goal: fixture.prompt,
+    ownedPaths: ['forge-admin-ui/src/page.vue'], taskProfiles: ['frontend-admin'], references: [] } };
+  nextContext.sourceCommit = 'e'.repeat(40);
+  nextContext.productionAuthorityDigest = digestProductionTaskAuthorityBinding(nextContext);
+  await assert.rejects(controller.prepareTask(args, { agent, name: 'prepare_task', callId: 'wrong-head' }),
+    { code: 'PREPARE_TASK_CONTEXT_MISMATCH' });
+  nextContext.sourceCommit = initial.sourceCommit;
+  nextContext.productionAuthorityDigest = digestProductionTaskAuthorityBinding(nextContext);
+  assert.equal((await controller.prepareTask(args, { agent, name: 'prepare_task', callId: 'same-head' })).status, 'prepared');
+  assert.equal(controller.states.get(agent).executionWorkspaceFingerprint, nextContext.workspaceFingerprint);
+  assert.equal(controller.states.get(agent).actionCeiling, 'git-checkpoint');
+});
 
 for (const actionCeiling of ['workspace-write', 'release']) test(`prepared ordinary task binds a strictly newer generation in the same DSH turn and refreshes admission (${actionCeiling})`, async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'forge-prepare-transition-'));

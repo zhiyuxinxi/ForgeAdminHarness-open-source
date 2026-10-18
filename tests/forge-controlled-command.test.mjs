@@ -896,6 +896,21 @@ test('parsing admits only exact read-only release inspection commands', () => {
   }
 });
 
+test('project runtime logs use the read-only inspection route with bounded selectors', () => {
+  for (const command of ['forge-release logs',
+    'forge-release logs --services forge-admin,forge-ui --tail 1000 --since 24h',
+    '/usr/local/bin/forge-release logs --since 86400s --tail 1']) {
+    assert.equal(parseControlledReleaseInspectionCommand(command)?.action, 'logs', command);
+    assert.equal(isReadExecution({ name: 'bash', arguments: { command } }), true, command);
+  }
+  for (const suffix of ['--services mysql', '--services forge-admin,forge-admin',
+    '--tail 0', '--tail 1001', '--tail 2 --tail 3', '--since 25h', '--since 0s',
+    '--since 86401s', '--follow', '--project other', '--container other',
+    '--operation-id 11111111-1111-4111-8111-111111111111', '; id', '| cat']) {
+    assert.equal(parseControlledReleaseInspectionCommand(`forge-release logs ${suffix}`), null, suffix);
+  }
+});
+
 test('release operation tracking inspection is exact, read-only and cannot submit work', () => {
   const operationId = '11111111-1111-4111-8111-111111111111';
   const command = `forge-release status --operation-id ${operationId}`;

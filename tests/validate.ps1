@@ -1150,7 +1150,7 @@ if ($projectMaterialsText -notmatch 'O_NOFOLLOW' -or
     throw 'Project material intake, approval, provenance, and immutable audit boundaries are incomplete.'
 }
 Write-Host 'PASS private upload, quarantined intake, reviewed sharing, safe prototype expansion, and audit-v2 boundaries'
-$guanghuiDeploymentPolicy = $deploymentPolicy.environment.name -ceq 'wuhan-demoteam-phase2'
+$demo_bilingualDeploymentPolicy = $deploymentPolicy.environment.name -ceq 'wuhan-demoteam-phase2'
 $safetyDeploymentPolicy = $deploymentPolicy.environment.name -ceq 'wuhan-safety-project-management'
 if ($safetyDeploymentPolicy) {
     if ($deploymentPolicy.mode -cne 'auto-deploy' -or
@@ -1183,7 +1183,7 @@ if ($safetyDeploymentPolicy) {
         }
     }
 }
-if ($guanghuiDeploymentPolicy) {
+if ($demo_bilingualDeploymentPolicy) {
     if ($deploymentPolicy.mode -cne 'auto-deploy' -or
         @($deploymentPolicy.repository.allowedBranches).Count -ne 1 -or
         $deploymentPolicy.repository.allowedBranches[0] -cne 'codex/demoteam-phase2-activation' -or
@@ -1192,17 +1192,17 @@ if ($guanghuiDeploymentPolicy) {
         (@($deploymentPolicy.commands.PSObject.Properties.Name | Sort-Object) -join ',') -cne 'deploy,preflight,verify') {
         throw 'The demoteam Phase 2 activation policy must keep its exact branch and three reviewed command stages.'
     }
-    $guanghuiApplicationBootstrap = $deploymentPolicy.authorization.reference -ceq 'owner-confirmed-complete-demoteam-phase2-application-login-20260915'
+    $demo_bilingualApplicationBootstrap = $deploymentPolicy.authorization.reference -ceq 'owner-confirmed-complete-demoteam-phase2-application-login-20260915'
     foreach ($stage in @('preflight', 'deploy', 'verify')) {
         $stageCommand = if ($stage -ceq 'deploy') { $deploymentPolicy.commands.deploy } else { $deploymentPolicy.commands.$stage[0] }
-        $expectedArgv = if ($guanghuiApplicationBootstrap) {
+        $expectedArgv = if ($demo_bilingualApplicationBootstrap) {
             @('python', 'scripts/deploy-demoteam-phase2-application.py', $stage, '--manifest',
                 'docs/validation-evidence/2026-09-15-demoteam-phase2-application-manifest.json')
         } else {
             @('python', 'scripts/deploy-demoteam-phase2.py', $stage, '--manifest',
                 'docs/validation-evidence/2026-09-15-demoteam-phase2-activation-manifest.json')
         }
-        $expectedId = if ($guanghuiApplicationBootstrap) { "demoteam-phase2-application-$stage" } else { "demoteam-phase2-$stage" }
+        $expectedId = if ($demo_bilingualApplicationBootstrap) { "demoteam-phase2-application-$stage" } else { "demoteam-phase2-$stage" }
         if ($stageCommand.id -cne $expectedId -or @($stageCommand.argv).Count -ne $expectedArgv.Count) {
             throw "The demoteam Phase 2 $stage command identity or argument count differs from the reviewed activation."
         }
@@ -1216,12 +1216,12 @@ if ($guanghuiDeploymentPolicy) {
 if ($deploymentPolicy.schemaVersion -ne 1 -or
     $deploymentPolicy.status -cne 'owner-authorized' -or
     $deploymentPolicy.mode -notin @('auto-deploy', 'preview-only') -or
-    ($deploymentPolicy.environment.name -cne 'wuhan-forge-delivery' -and -not $guanghuiDeploymentPolicy -and -not $safetyDeploymentPolicy) -or
+    ($deploymentPolicy.environment.name -cne 'wuhan-forge-delivery' -and -not $demo_bilingualDeploymentPolicy -and -not $safetyDeploymentPolicy) -or
     $deploymentPolicy.repository.expectedRemoteIdentity -cne 'github.com/zhiyuxinxi/forgeadminharness' -or
     $deploymentPolicy.execution.requireVerifiedGitPush -ne $true -or
     $deploymentPolicy.execution.persistCommandOutput -ne $false -or
     $deploymentPolicy.execution.automaticRollback -ne $false -or
-    (-not $guanghuiDeploymentPolicy -and -not $safetyDeploymentPolicy -and $deploymentPolicy.mode -ceq 'auto-deploy' -and
+    (-not $demo_bilingualDeploymentPolicy -and -not $safetyDeploymentPolicy -and $deploymentPolicy.mode -ceq 'auto-deploy' -and
         (($deploymentPolicyText -notmatch 'deploy-conversation-archive\.ps1' -or
           $deploymentPolicyText -notmatch 'wuhan-conversation-archive-deploy') -and
          ($deploymentPolicyText -notmatch 'deploy-lyl-conversation-repair\.ps1' -or
@@ -1352,7 +1352,7 @@ if ($deploymentPolicy.schemaVersion -ne 1 -or
           $deploymentPolicyText -notmatch 'phase-capture-deploy') -and
          ($deploymentPolicyText -notmatch 'deploy-clean-a9-access-scope\.ps1' -or
           $deploymentPolicyText -notmatch 'access-scope-deploy'))) -or
-    (-not $guanghuiDeploymentPolicy -and -not $safetyDeploymentPolicy -and $deploymentPolicy.mode -ceq 'preview-only' -and
+    (-not $demo_bilingualDeploymentPolicy -and -not $safetyDeploymentPolicy -and $deploymentPolicy.mode -ceq 'preview-only' -and
         ($deploymentPolicyText -notmatch 'deploy-clean-a9-capture\.ps1' -or
          $deploymentPolicyText -notmatch 'wuhan-clean-a9-capture-deploy')) -or
     $deploymentPolicyText -match '(?i)(password|passwd|token|secret|api[-_]?key)\s*[=:]' -or

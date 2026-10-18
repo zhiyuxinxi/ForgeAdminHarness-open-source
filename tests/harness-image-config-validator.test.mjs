@@ -139,7 +139,7 @@ test('target Config permits only the reviewed VPN overlay delta from its foundat
   );
 });
 
-test('vpn78 target uses the physically split vpn77 foundation and closes policy, suite, and eval-runtime versions', () => {
+test('current image pins and the separate historical eval snapshot remain explicit', () => {
   const versions = repositoryText('config/versions.env');
   const dockerfile = repositoryText('docker/harness/Dockerfile');
   const overlay = repositoryText('docker/harness/Dockerfile.overlay');
@@ -155,24 +155,26 @@ test('vpn78 target uses the physically split vpn77 foundation and closes policy,
 
   assert.match(versions, /^HARNESS_FOUNDATION_IMAGE=forge-delivery\/deepseek-harness:0\.1\.1-rc\.2-vpn77-base$/mu);
   assert.match(versions, /^HARNESS_FOUNDATION_IMAGE_REVISION=vpn-forge-delivery-toolkit-77-base$/mu);
-  assert.match(versions, /^HARNESS_IMAGE=forge-delivery\/deepseek-harness:0\.1\.1-rc\.2-scoped-direct-release-20260923-1$/mu);
-  assert.match(versions, /^CONVERSATION_MANAGER_IMAGE=forge-delivery\/deepseek-harness:0\.1\.1-rc\.2-toolchain-cache-reuse-20260923-1$/mu);
-  assert.match(versions, /^RELEASE_RUNNER_IMAGE=forge-delivery\/deepseek-harness:0\.1\.1-rc\.2-ui-only-db-scope-20260922-1$/mu);
-  assert.match(versions, /^HARNESS_IMAGE_REVISION=vpn-forge-delivery-toolkit-78$/mu);
-  assert.match(versions, /^HARNESS_SKILL_BUNDLE_VERSION=2026\.09\.22\.6$/mu);
-  assert.match(versions, /^FORGE_EXTERNAL_SKILL_BUNDLE_VERSION=2026\.09\.22\.6$/mu);
+  const current = Object.fromEntries([...versions.matchAll(/^([A-Z_]+)=(.+)$/gmu)].map(([, key, value]) => [key, value]));
+  for (const key of ['HARNESS_IMAGE', 'CONVERSATION_MANAGER_IMAGE', 'RELEASE_RUNNER_IMAGE']) {
+    assert.match(current[key], /^(?:[\w./-]+:[\w.-]+|[\w./:-]+@sha256:[a-f0-9]{64})$/u, key);
+    assert.doesNotMatch(current[key], /:(?:latest|main|master)$/u, key);
+  }
+  assert.match(current.HARNESS_IMAGE_REVISION, /^[\w.-]+$/u);
+  assert.match(current.HARNESS_SKILL_BUNDLE_VERSION, /^\d{4}\.\d{2}\.\d{2}\.\d+$/u);
+  assert.equal(current.FORGE_EXTERNAL_SKILL_BUNDLE_VERSION, skillCatalog.bundleVersion);
   assert.match(versions, /^FORGE_PHASE_PROFILE_CATALOG_VERSION=2026\.09\.03\.22$/mu);
-  assert.match(versions, /^FORGE_HOST_RUNNER_BUNDLE_VERSION=2026\.09\.23\.6-integrated-receipt-reuse$/mu);
+  assert.match(versions, /^FORGE_HOST_RUNNER_BUNDLE_VERSION=2026\.10\.13\.2-natural-intent$/mu);
   assert.match(dockerfile, /^ARG HARNESS_IMAGE_REVISION=vpn-forge-delivery-toolkit-77-base$/mu);
   assert.match(dockerfile, /^ARG HARNESS_SKILL_BUNDLE_VERSION=2026\.09\.01\.5$/mu);
-  assert.match(overlay, /^ARG HARNESS_IMAGE_REVISION=vpn-forge-delivery-toolkit-78$/mu);
-  assert.match(overlay, /^ARG HARNESS_SKILL_BUNDLE_VERSION=2026\.09\.22\.6$/mu);
-  assert.equal(skillCatalog.bundleVersion, '2026.09.22.6');
+  assert.match(overlay, /^ARG HARNESS_IMAGE_REVISION=vpn-forge-delivery-toolkit-130$/mu);
+  assert.match(overlay, /^ARG HARNESS_SKILL_BUNDLE_VERSION=2026\.09\.27\.1$/mu);
+  assert.match(skillCatalog.bundleVersion, /^\d{4}\.\d{2}\.\d{2}\.\d+$/u);
   assert.equal(governancePolicy.policyVersion, '2026.09.20.2');
-  assert.equal(capabilityRegistry.registryVersion, '2026.09.03.2');
+  assert.match(capabilityRegistry.registryVersion, /^\d{4}\.\d{2}\.\d{2}\.\d+$/u);
   assert.equal(uiContract.contractVersion, '2026.09.03.1');
   assert.equal(behaviorSuite.suiteVersion, '2026.09.14.1');
-  assert.equal(skillEval.bundleVersion, '2026.09.22.6');
+  assert.equal(skillEval.bundleVersion, '2026.10.15.3');
   assert.equal(runtimeTrustLock.packageVersion, '2026.09.14.3');
   assert.match(runner, /^readonly RUNNER_VERSION="1\.19\.86"$/mu);
   assert.match(runner, /^readonly EXPECTED_RUNTIME_PACKAGE_VERSION="2026\.09\.14\.3"$/mu);
@@ -541,7 +543,7 @@ test('governance and verification runtime assets stay identical across both Dock
     assert.deepEqual(mappings, expectedMappings);
   }
   for (const dockerfile of dockerfiles) {
-    assert.match(dockerfile, /RUN --network=none\s+\\\r?\n\s+--mount=type=bind,source=docker\/harness\/skills\.catalog\.json,target=\/run\/forge-image-build\/skills\.catalog\.json,ro\s+\\\r?\n\s+(?:chmod|install)/u);
+    assert.match(dockerfile, /RUN --network=none\s+\\\r?\n\s+--mount=type=bind,source=docker\/harness\/skills\.catalog\.json,target=\/run\/forge-image-build\/skills\.catalog\.json,ro\s+\\\r?\n\s+node \/usr\/local\/lib\/forge-tool-worker-native-patch\.mjs \/opt\/forge-harness-runtime\/node_modules\s+\\\r?\n\s+&& (?:find|chmod|install)/u);
     assert.match(dockerfile, /loadCurrentForgeQualityCapabilityRegistry\(\{skillCatalogPath:"\/run\/forge-image-build\/skills\.catalog\.json"\}\)/u);
   }
 });
@@ -744,4 +746,23 @@ test('registered incremental tool worker activation binds exact version and actu
   input.image.Config.Labels['unreviewed-worker-label'] = 'true';
   refresh();
   assert.throws(() => validateIncrementalArtifact(input), /unreviewed Config change/);
+});
+
+test('registered incremental private proc capability requires the installed sandbox binding', () => {
+  const input = incrementalFixture();
+  const manifest = JSON.parse(input.manifestBytes), proof = JSON.parse(input.consumerBytes);
+  const refresh = () => {
+    manifest.targetConfigDigest = input.configDigest(input.image.Config);
+    input.manifestBytes = Buffer.from(JSON.stringify(manifest));
+    input.manifestSha256 = createHash('sha256').update(input.manifestBytes).digest('hex');
+    input.consumerBytes = Buffer.from(JSON.stringify(proof));
+    input.consumerSha256 = createHash('sha256').update(input.consumerBytes).digest('hex');
+  };
+  input.image.Config.Labels['io.forge.tool-worker.private-proc'] = 'v1'; refresh();
+  assert.throws(() => validateIncrementalArtifact(input), /private proc activation is not bound/);
+  const file = '/usr/local/lib/forge-direct-worker-sandbox.mjs';
+  manifest.installedObservation.modules[file] = proof.actualConsumer.installedBindings[file] = input.observation.modules[file] = '7'.repeat(64);
+  refresh(); assert.equal(validateIncrementalArtifact(input).ok, true);
+  input.image.Config.Labels['io.forge.tool-worker.private-proc'] = 'v2'; refresh();
+  assert.throws(() => validateIncrementalArtifact(input), /unsupported private proc version/);
 });

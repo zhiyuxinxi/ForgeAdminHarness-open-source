@@ -1,6 +1,7 @@
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { describeGovernedTool } from './forge-phase-budget-guard.mjs';
+import { usesDirectDevelopmentPrompt } from './forge-direct-development-prompt.mjs';
 import { generateCapabilityInventory, verifyCapabilityInventoryFixtures } from './forge-capability-inventory.mjs';
 
 const RECEIPT_SCHEMA = 'forge-agent-preset-prompt-contract/v1';
@@ -28,7 +29,9 @@ async function inspectPreset(ctx, preset, includeInventory = false) {
   const scope = await ctx.agentPresets.standingKeyFor(preset);
   const assembly = await ctx.systemPrompt.assemble({ scope });
   const prompt = assembly.sections.map((section) => section.text).join('\n\n');
-  const missingMarkers = REQUIRED_MARKERS.filter((marker) => !prompt.includes(marker));
+  const requiredMarkers = usesDirectDevelopmentPrompt()
+    ? ['FORGE_DIRECT_DEVELOPMENT_V1', 'FORGE_EVIDENCE_TRUTH_V1'] : REQUIRED_MARKERS;
+  const missingMarkers = requiredMarkers.filter((marker) => !prompt.includes(marker));
   const completeSections = assembly.sections.filter((section) => section.complete === true);
   const modelFacingTools = assembly.tools.map((tool) => tool.name);
   const skillAccessMode = modelFacingTools.includes('skill') ? 'native-skill-tool' : null;

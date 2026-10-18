@@ -29,7 +29,7 @@ export function admittedVerificationProfile(profile, profiles) {
 export function validateSourceQualityReport(report, exitCode) {
   if (!report || typeof report !== 'object' || report.schemaVersion !== 1
     || report.bundleSha256 !== SOURCE_QUALITY_BUNDLE_SHA256 || report.mode !== 'fast'
-    || !['passed', 'not_applicable', 'findings', 'error'].includes(report.status)
+    || !['passed', 'not_applicable', 'advisory', 'findings', 'error'].includes(report.status)
     || !Array.isArray(report.files) || !Array.isArray(report.findings) || !Array.isArray(report.errors)
     || report.files.length > 32 || Buffer.byteLength(JSON.stringify(report)) > SOURCE_QUALITY_MAX_BYTES
     || report.files.some(file => !JAVA_FILE.test(file.path ?? '')
@@ -38,7 +38,10 @@ export function validateSourceQualityReport(report, exitCode) {
     throw new Error('Backend source quality report is missing or invalid.');
   }
   const wanted = report.status === 'error' ? 2 : report.status === 'findings' ? 1 : 0;
-  if (exitCode !== wanted || (wanted === 0 && (report.errors.length || report.findings.length))
+  const advisory = report.status === 'advisory';
+  if (exitCode !== wanted || (wanted === 0 && (report.errors.length || (!advisory && report.findings.length)))
+    || (advisory && (report.scannerExitCode !== 1 || !report.findings.length
+      || report.findings.some(finding => finding.reviewKind !== 'structure')))
     || (wanted === 1 && (!report.findings.length || report.errors.length))
     || (wanted === 2 && !report.errors.length)
     || (report.status === 'not_applicable' && report.files.length !== 0)) {

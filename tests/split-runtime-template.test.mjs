@@ -224,8 +224,13 @@ test('host Runner is an external rollback unit while Broker keeps only the exist
   assert.equal(contract.executionMode, 'host-toolchain');
   assert.equal(contract.runnerRevision, 'forge-host-runner-__FORGE_HOST_RUNNER_BUNDLE_VERSION__');
   assert.equal(contract.profileCatalogVersion, '__FORGE_PHASE_PROFILE_CATALOG_VERSION__');
-  assert.equal(contract.profiles.length, 13);
-  assert.ok(contract.profiles.includes('frontend-admin-typecheck'));
+  assert.deepEqual(contract.profiles, [
+    'governance', 'backend-red-test', 'frontend-red-test',
+    'backend-module-compile', 'backend-module-test', 'backend-test-class',
+    'frontend-admin-lint', 'frontend-admin-test', 'frontend-admin-typecheck',
+    'frontend-admin-build', 'frontend-h5-test', 'frontend-h5-build',
+    'changed-safe', 'full-regression',
+  ]);
   assert.equal(Object.keys(contract.toolchains).sort().join(','), 'forgeGovernance,git,java,javaHome,maven,node,pnpm');
   assert.match(unit, /ExecStart=__HOST_NODE_PATH__ __HOST_RUNNER_ROOT__\/current\/lib\/host-verification-runner\.mjs/u);
   assert.match(unit, /NoNewPrivileges=true/u);

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
+import crypto from 'node:crypto';
 
 const source = await readFile(new URL('../docker/harness/conversation-gateway/gateway.js', import.meta.url), 'utf8');
 const markup = await readFile(new URL('../docker/harness/conversation-gateway/index.html', import.meta.url), 'utf8');
@@ -21,13 +22,16 @@ function fixture(t) {
     getAttribute(key) { return this.attributes[key] ?? null; }
     focus() { document.activeElement = this; }
     click() { if (!this.disabled) this.dispatchEvent(new Event('click')); }
+    reset() {}
+    showModal() { this.open = true; }
+    close() { this.open = false; }
   }
   const nodes = new Map([...markup.matchAll(/<(\w+)[^>]*\bid="([^"]+)"[^>]*>/g)].map(([html, tag, id]) => {
     const node = new Element(tag); node.id = id; node.hidden = /\bhidden\b/.test(html); return [`#${id}`, node];
   }));
-  const document = { querySelector: (selector) => nodes.get(selector), createElement: (tag) => new Element(tag) };
+  const document = { querySelector: (selector) => nodes.get(selector), getElementById: (id) => nodes.get(`#${id}`), createElement: (tag) => new Element(tag) };
   const requests = [];
-  const context = vm.createContext({ document, URL, URLSearchParams, AbortController, Blob, Intl, setTimeout, clearTimeout,
+  const context = vm.createContext({ document, crypto, URL, URLSearchParams, AbortController, Blob, Intl, setTimeout, clearTimeout,
     window: { location: { assign: () => assert.fail('unexpected navigation') }, history: { replaceState() {} } },
     fetch: (url, options = {}) => new Promise((resolve, reject) => {
       requests.push({ url, options, resolve });
@@ -37,7 +41,7 @@ function fixture(t) {
   vm.runInContext(source.slice(0, source.indexOf('for (const closeButton of')), context);
   const run = (script) => vm.runInContext(script, context);
   run("state.session={user:{id:'member',role:'member'}}; state.selectedProjectSlug='demo';");
-  t.after(() => run('closeConversationOutputs(); stopReleaseStatus(); clearTimeout(state.provisioningTimer)'));
+  t.after(() => run('closeConversationOutputs(); stopReleaseStatus(); clearTimeout(state.provisioningTimer); clearTimeout(toastTimer)'));
   return { nodes, requests, run, get: (id) => nodes.get(`#${id}`),
     async reply(index, value, status = 200) {
       requests[index].resolve(new Response(typeof value === 'string' ? value : JSON.stringify(value), { status,
@@ -47,6 +51,78 @@ function fixture(t) {
     show: () => run("showConversationOutputs({id:'conversation-one',title:'订单模块'})"),
   };
 }
+
+test('runtime selector submits either branch and preserves the original request after failure', async (t) => {
+  const f = fixture(t);
+  const catalog = { defaultChannel: 'stable', versions: [
+    { channel: 'stable', label: '稳定版', available: true },
+    { channel: 'enhanced', label: '增强试验版', available: true },
+  ] };
+  let show = f.run('showNewConversationDialog()');
+  assert.equal(f.get('conversation-submit').disabled, true);
+  assert.equal(f.requests[0].url, '/forge-gateway/api/runtime-versions?project=demo');
+  await f.reply(0, catalog); await show;
+  assert.equal(f.get('conversation-runtime-channel').value, 'stable');
+  assert.match(f.get('conversation-runtime-channel').textContent, /稳定版.*增强试验版/);
+  f.get('conversation-title').value = '稳定版验证';
+  let pending = f.run('submitNewConversation({preventDefault(){}})');
+  assert.equal(JSON.parse(f.requests[1].options.body).runtimeChannel, 'stable');
+  assert.equal(f.get('conversation-runtime-channel').disabled, true);
+  await f.reply(1, { message: '创建服务暂不可用' }, 503); await pending;
+  assert.match(f.get('conversation-error').textContent, /保留本次选择/);
+  pending = f.run('submitNewConversation({preventDefault(){}})');
+  assert.equal(f.requests[2].options.body, f.requests[1].options.body);
+  assert.equal(f.requests[2].options.headers['idempotency-key'], f.requests[1].options.headers['idempotency-key']);
+  await f.reply(2, { message: '创建服务暂不可用' }, 503); await pending;
+  show = f.run('showNewConversationDialog()'); await f.reply(3, catalog); await show;
+  f.get('conversation-runtime-channel').value = 'enhanced';
+  f.get('conversation-title').value = '增强版验证';
+  pending = f.run('submitNewConversation({preventDefault(){}})');
+  assert.equal(JSON.parse(f.requests[4].options.body).runtimeChannel, 'enhanced');
+  assert.notEqual(f.requests[4].options.headers['idempotency-key'], f.requests[1].options.headers['idempotency-key']);
+  await f.reply(4, { message: '创建服务暂不可用' }, 503); await pending;
+});
+
+test('a project without a runtime catalog retains legacy creation and the same retry request', async (t) => {
+  const f = fixture(t);
+  const show = f.run('showNewConversationDialog()');
+  await f.reply(0, { defaultChannel: null, versions: [], legacy: true }); await show;
+  assert.equal(f.get('conversation-submit').disabled, false);
+  assert.equal(f.get('conversation-runtime-channel').disabled, true);
+  assert.match(f.get('conversation-runtime-channel').textContent, /当前项目版本/);
+  f.get('conversation-title').value = '原项目继续开发';
+  let pending = f.run('submitNewConversation({preventDefault(){}})');
+  assert.deepEqual(JSON.parse(f.requests[1].options.body), { title: '原项目继续开发', projectSlug: 'demo' });
+  await f.reply(1, { message: '暂时无法创建' }, 503); await pending;
+  pending = f.run('submitNewConversation({preventDefault(){}})');
+  assert.equal(f.requests[2].options.body, f.requests[1].options.body);
+  assert.equal(f.requests[2].options.headers['idempotency-key'], f.requests[1].options.headers['idempotency-key']);
+  await f.reply(2, { message: '暂时无法创建' }, 503); await pending;
+});
+
+test('an installed catalog with no available versions cannot use legacy creation', async (t) => {
+  const f = fixture(t);
+  const show = f.run('showNewConversationDialog()');
+  await f.reply(0, { defaultChannel: 'stable', versions: [{ channel: 'stable', label: '稳定版', available: false }] }); await show;
+  assert.equal(f.get('conversation-submit').disabled, true);
+  assert.match(f.get('conversation-error').textContent, /没有可用/);
+  await f.run('submitNewConversation({preventDefault(){}})');
+  assert.equal(f.requests.length, 1);
+});
+
+test('runtime catalog failure cannot silently submit a default and old conversations remain unregistered', async (t) => {
+  const f = fixture(t);
+  const show = f.run('showNewConversationDialog()');
+  await f.reply(0, { message: 'Harness 版本列表暂不可用' }, 503); await show;
+  assert.equal(f.get('conversation-submit').disabled, true);
+  assert.equal(f.get('conversation-runtime-channel').disabled, true);
+  assert.match(f.get('conversation-error').textContent, /版本列表暂不可用/);
+  await f.run('submitNewConversation({preventDefault(){}})');
+  assert.equal(f.requests.length, 1);
+  f.run("state.conversations=[{id:'old',title:'旧对话',status:'stopped',taskId:'old',projectSlug:'demo'}, {id:'new',title:'新对话',status:'active',taskId:'new',projectSlug:'demo',runtimeVersion:{label:'增强试验版',sourceBranch:'main',sourceCommit:'123456789abcdef',harnessImage:'harness:enhanced'}}];renderConversations();");
+  assert.match(f.get('conversation-list').textContent, /Harness 原有版本（未登记）/);
+  assert.match(f.get('conversation-list').textContent, /增强试验版 · main · 123456789abc/);
+});
 
 const file = { name: '01-result.md', displayName: '阶段结果.md', downloadName: '03-数据实现_阶段结果.md',
   usageLabel: '阶段结果 · 先看这份', usageHint: '阅读本阶段结果与待解决问题。', primary: true, bytes: 42, mediaType: 'text/markdown' };

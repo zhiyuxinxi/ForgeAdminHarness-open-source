@@ -4,7 +4,33 @@ import {
   sourceTransitionCanonicalDigest,
   validateSourceTransition,
   validateTaskspaceAction,
+  validateTaskspaceMetadata,
 } from '../docker/harness/taskspace-policy.mjs';
+
+test('TaskSpace metadata preserves an optional version binding without changing legacy schemas', () => {
+  const legacy = {
+    schemaVersion: 1, projectSlug: 'fixture-project', taskId: 'task-01', actorId: 'owner',
+    conversationId: 'conversation-01', branch: 'task/owner/task-01', baseCommit: 'a'.repeat(40),
+    status: 'active', createdAt: '2026-10-16T00:00:00Z', updatedAt: '2026-10-16T00:00:00Z',
+    accessTokenHash: 'b'.repeat(64), harnessPort: 20001, accessMode: 'conversation',
+    lastCandidate: null, lastRelease: null,
+  };
+  const current = { ...legacy, schemaVersion: 2, actorUserId: '11111111-1111-4111-8111-111111111111' };
+  assert.equal(validateTaskspaceMetadata(legacy, legacy.projectSlug), legacy);
+  assert.equal(validateTaskspaceMetadata(current, current.projectSlug), current);
+  for (const [channel, sourceBranch] of [['stable', 'codex/env-3212-ai'], ['enhanced', 'main']]) {
+    const runtimeVersion = { channel, sourceBranch, sourceCommit: 'c'.repeat(40), versionId: 'd'.repeat(64),
+      harnessImage: `sha256:${'e'.repeat(64)}`, environment: { FORGE_DEVELOPMENT_MODE: 'direct' } };
+    const bound = { ...current, runtimeVersion };
+    assert.equal(validateTaskspaceMetadata(bound, current.projectSlug).runtimeVersion, runtimeVersion);
+    assert.throws(() => validateTaskspaceMetadata({ ...legacy, runtimeVersion }), /unsupported field/u);
+    for (const invalid of [null, [], { ...runtimeVersion, channel: 'other' },
+      { ...runtimeVersion, versionId: 'moving-tag' }, { ...runtimeVersion, sourceCommit: 'main' },
+      { ...runtimeVersion, sourceBranch: 'other-branch' }]) {
+      assert.throws(() => validateTaskspaceMetadata({ ...current, runtimeVersion: invalid }), /runtime|Runtime/u);
+    }
+  }
+});
 
 const start = {
   action: 'integrate',

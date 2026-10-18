@@ -11,7 +11,7 @@ import {
   validateSkillBundle,
 } from '../docker/harness/validate-skill-bundle.mjs';
 
-test('RULE-CLOSURE-013 rejects a mandatory inline executor absent from the Skill bundle', async (t) => {
+test('inline prose does not require a script or execute it', async (t) => {
   const temporaryParent = await realpath(os.tmpdir());
   const root = await mkdtemp(path.join(temporaryParent, 'coverage-required-executor-'));
   t.after(async () => {
@@ -34,12 +34,7 @@ test('RULE-CLOSURE-013 rejects a mandatory inline executor absent from the Skill
   entry.treeSha256 = await sha256SkillTree(skillRoot);
   await writeFile(catalogPath, JSON.stringify(catalog, null, 2) + '\n');
   // This only validates text; the declared command must never be executed by this test.
-  await assert.rejects(
-    () => validateSkillBundle({ skillsRoot: path.join(root, 'skills'), catalogPath, strict: true }),
-    error => error instanceof SkillBundleValidationError
-      && error.issues.some(issue => JSON.stringify(issue).includes('coverage-required-check.mjs')),
-    'A valid hash must not let a missing mandatory executor enter a built bundle.',
-  );
+  assert.equal((await validateSkillBundle({ skillsRoot:path.join(root,'skills'),catalogPath,strict:true })).skillCount,2);
   // Supplying the actual script and its catalog tree hash closes this missing
   // file defect. Neither validation nor this test invokes the declared script.
   await mkdir(path.join(skillRoot, 'scripts'));
@@ -49,7 +44,7 @@ test('RULE-CLOSURE-013 rejects a mandatory inline executor absent from the Skill
   assert.equal((await validateSkillBundle({ skillsRoot: path.join(root, 'skills'), catalogPath, strict: true })).skillCount, 2);
 });
 
-test('executor references cannot escape the owning Skill and prohibitions do not require absent scripts', async (t) => {
+test('quoted prose and synonyms do not impose script-existence gates', async (t) => {
   const parent = await realpath(os.tmpdir());
   const root = await mkdtemp(path.join(parent, 'coverage-required-executor-'));
   t.after(async () => {
@@ -83,8 +78,7 @@ test('executor references cannot escape the owning Skill and prohibitions do not
     await writeFile(skillFile, `${original}\n${text}\n`);
     entry.contentSha256 = await sha256File(skillFile); entry.treeSha256 = await sha256SkillTree(skillRoot);
     await writeFile(catalogPath, JSON.stringify(catalog, null, 2) + '\n');
-    if (rejected) await assert.rejects(validateSkillBundle(options), error => error.issues?.some(item => item.code === 'required-executor-unavailable'));
-    else assert.equal((await validateSkillBundle(options)).skillCount, 2);
+    assert.equal((await validateSkillBundle(options)).skillCount, 2);
   }
 });
 

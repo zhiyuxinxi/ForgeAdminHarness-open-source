@@ -38,11 +38,11 @@ function spec(overrides = {}) {
   return {
     schemaVersion: 1,
     projectSlug: 'forge-base',
-    taskId: 'c-cc0713efbd23bf8c60fd5d00',
+    taskId: 'c-74e71f6eec2dbb67795de549',
     actorUserId: '123e4567-e89b-42d3-a456-426614174000',
     actorUsername: 'liuhc',
     conversationId: '92d8c45a-3dc6-449b-8d5f-06e7b75a0bf0',
-    dshSessionId: 'session-ccb499ad-daab-4edf-8745-453ed3e5f32c',
+    dshSessionId: 'session-1259e947-690f-51cc-31c3-8a818c68099c',
     promptText: PROMPT,
     sourceCommit: '1'.repeat(40),
     workspaceFingerprint: '2'.repeat(64),

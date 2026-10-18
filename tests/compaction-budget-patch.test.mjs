@@ -19,6 +19,7 @@ const moduleUrl = installed ? pathToFileURL(nativePath).href : `data:text/javasc
 const { BasicCompactionEngine } = await import(moduleUrl);
 const { Session } = await import(pathToFileURL(nativeRequire.resolve('@deepseek-ai/dsh-session')).href);
 const { TokenMeter } = await import(pathToFileURL(nativeRequire.resolve('@deepseek-ai/dsh-token-meter')).href);
+const { LlmError, resolveRetryPolicy } = await import(pathToFileURL(nativeRequire.resolve('@deepseek-ai/dsh-llm')).href);
 const agentPath = nativeRequire.resolve('@deepseek-ai/dsh-agent');
 const originalAgent = readFileSync(process.env.FORGE_TEST_AGENT_SOURCE || agentPath, 'utf8');
 const patchedAgent = patchAgentModelSelection(originalAgent);
@@ -26,7 +27,7 @@ if (installed) assert.equal(patchedAgent, originalAgent, 'installed model select
 const agentModuleUrl = installed ? pathToFileURL(agentPath).href : `data:text/javascript;base64,${Buffer.from(patchedAgent.replace(/^import (.+) from "([^"]+)";$/gmu, (_, names, name) => `import ${names} from ${JSON.stringify(name.startsWith('node:') ? name : pathToFileURL(nativeRequire.resolve(name)).href)};`)).toString('base64')}`;
 const { installModelSelection } = await import(agentModuleUrl);
 
-function fixture({ contextWindow = 24000, fail = false, config = {} } = {}) {
+function fixture({ contextWindow = 24000, defaultMaxTokens, fail = false, config = {}, streamHook, retryPolicy = resolveRetryPolicy({ mode: 'normal', maxRetries: 2, backoff: { initialDelayMs: 1, maxDelayMs: 10, jitterRatio: 0 } }, 'test') } = {}) {
   const listeners = new Map();
   const calls = [];
   const modelInfoCalls = [];
@@ -35,11 +36,13 @@ function fixture({ contextWindow = 24000, fail = false, config = {} } = {}) {
     inject() {}, on(name, fn) { listeners.set(name, fn); }, get() {},
     logger: { info() {}, warn() {} }, sessions: { async flush() {} },
     llm: {
-      async resolveModelInfo(provider, model) { modelInfoCalls.push({ provider, model }); return { context: { contextWindow } }; },
+      providerRetryPolicy() { return retryPolicy; },
+      async resolveModelInfo(provider, model) { modelInfoCalls.push({ provider, model }); return { context: { contextWindow }, defaultMaxTokens }; },
       async *stream(options) {
         calls.push(options);
         if (fail) { fail = false; throw Object.assign(new Error('pi-ai stream idle timeout after 300000ms'), { code: 'TIMEOUT' }); }
-        assert.ok(ctx.tokenMeter.estimateMessage({ role: 'user', content: [{ type: 'text', text: JSON.stringify({ system: options.system, tools: options.tools, messages: options.messages }) }] }) + options.maxTokens + 1024 <= contextWindow * engine.config.thresholdRatio, 'every native summary call is within the configured estimate, including serialized fields; not an exact tokenizer proof');
+        if (streamHook) { yield* streamHook(options, calls.length); return; }
+        assert.ok(ctx.tokenMeter.estimateMessage({ role: 'user', content: [{ type: 'text', text: JSON.stringify({ system: options.system, tools: options.tools, messages: options.messages }) }] }) + options.maxTokens + 1024 <= contextWindow, 'every native summary call is within model capacity, including serialized fields and output reserve; not an exact tokenizer proof');
         yield { type: 'text-delta', index: 0, text: 'The original task, accepted contracts, failed checks, and next verification remain required.' };
         yield { type: 'finish', reason: { kind: 'stop' } };
       },
@@ -125,7 +128,7 @@ test('compaction selection upgrades complete v1 and rejects partial v2 on both n
 });
 
 test('native compaction bounds real summary prefixes and preserves a failed pending turn for normal continuation', async () => {
-  const f = fixture({ fail: true });
+  const f = fixture({ fail: true, retryPolicy: resolveRetryPolicy({ mode: 'normal', maxRetries: 0 }, 'test') });
   for (let i = 0; i < 4; i += 1) f.session.append('user/message', f.user(`old-${i}`, 'a'.repeat(6000)), { surfaceOp: 'append' });
   const originalEvents = JSON.stringify(f.session.events);
   f.session.append('turn/start', { turn: 48 });
@@ -181,4 +184,219 @@ test('native compaction bounds real summary prefixes and preserves a failed pend
   assert.ok(liveShape.session.events.some((event) => event.type === 'compaction/summary' && event.data.llmStreamCall));
   assert.equal(patchCompactionBudget(patched), patched);
   assert.throws(() => patchCompactionBudget(patched.replace('forge-compaction-budget-v1', 'incomplete-compaction-budget')), /Unsupported/);
+});
+
+function seedRecovery(f) {
+  f.session.append('user/message', f.user('original-task', 'Keep the authorized goal and completed work. '.repeat(130)), { surfaceOp: 'append' });
+  for (let i = 0; i < 3; i++) f.session.append('user/message', f.user(`retained-evidence-${i}`, 'a'.repeat(6000)), { surfaceOp: 'append' });
+  f.session.append('turn/start', { turn: 1 });
+  f.session.append('step/start', { turn: 1, step: 1 });
+  f.session.append('assistant/message', { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'tool-call', id: 'completed-write', name: 'write', arguments: '{"path":"already-written"}' }] } }, { surfaceOp: 'append' });
+  f.session.append('tool/result', { turn: 1, step: 1, message: { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'completed-write', content: [{ type: 'text', text: 'already completed' }] }] } }, { surfaceOp: 'append' });
+  f.session.append('step/end', { turn: 1, step: 1 });
+  f.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } });
+  f.session.append('turn/start', { turn: 2 });
+  return JSON.stringify(f.session.events);
+}
+
+async function* validSummary() {
+  yield { type: 'text-delta', index: 0, text: 'Original goal retained. The write already completed; do not repeat it. Continue the pending task.' };
+  yield { type: 'finish', reason: { kind: 'stop' } };
+}
+
+test('compaction transport recovery resumes the same pre-step and discards partial output without replaying tools', async () => {
+  const f = fixture({ streamHook: async function* (options, attempt) {
+    if (attempt === 1) {
+      yield { type: 'text-delta', index: 0, text: 'INCOMPLETE CHECKPOINT MUST BE DISCARDED' };
+      yield { type: 'finish', reason: { kind: 'error', failure: { code: 'TRANSPORT', message: 'terminated', requestId: 'incident-request' } } };
+    } else yield* validSummary();
+  } });
+  const before = seedRecovery(f);
+  const pending = f.user('continue-same-turn', 'Continue the original task.');
+  const decision = { kind: 'enter', messages: [pending], assembly: {} };
+  let nextCalls = 0;
+  assert.equal(await f.listeners.get('agent/pre-step')({ agent: f.agent, signal: new AbortController().signal }, async () => { nextCalls++; return decision; }), decision);
+  assert.equal(nextCalls, 1);
+  assert.equal(f.calls.length, 2);
+  assert.equal(JSON.stringify(f.session.events.slice(0, JSON.parse(before).length)), before);
+  assert.equal(f.session.events.filter((e) => e.type === 'tool/result').length, 1);
+  assert.equal(f.session.events.filter((e) => e.type === 'llm/retry').length, 1);
+  assert.equal(f.session.events.filter((e) => e.type === 'llm/retry-started').length, 1);
+  assert.equal(f.session.events.find((e) => e.type === 'llm/retry').data.failure.requestId, 'incident-request');
+  assert.ok(f.session.events.some((e) => e.type === 'compaction/summary'));
+  assert.ok(!JSON.stringify(f.session.events).includes('INCOMPLETE CHECKPOINT MUST BE DISCARDED'));
+  assert.deepEqual(f.calls[0].messages, f.calls[1].messages);
+});
+
+test('persistent compaction failure stops within provider budget, retains original surface and typed cause', async () => {
+  const f = fixture({ streamHook: async function* () {
+    yield { type: 'finish', reason: { kind: 'error', failure: { code: 'TRANSPORT', message: 'terminated', status: 502, requestId: 'request-final' } } };
+  } });
+  const before = seedRecovery(f);
+  const surface = [...f.session.surface.nodes];
+  const pending = f.user('pending-preserved-once', 'Continue original work.');
+  await assert.rejects(f.listeners.get('agent/pre-step')({ agent: f.agent, signal: new AbortController().signal }, async () => ({ kind: 'enter', messages: [pending], assembly: {} })), (error) => {
+    assert.ok(error instanceof LlmError);
+    assert.equal(error.failure.code, 'TRANSPORT');
+    assert.equal(error.failure.status, 502);
+    assert.equal(error.failure.requestId, 'request-final');
+    assert.match(error.message, /已自动重试 2 次/);
+    assert.equal(error.cause.failure.message, 'terminated');
+    return true;
+  });
+  assert.equal(f.calls.length, 3);
+  assert.equal(JSON.stringify(f.session.events.slice(0, JSON.parse(before).length)), before);
+  assert.deepEqual(f.session.surface.nodes.slice(0, surface.length), surface);
+  assert.equal(f.session.events.filter((e) => e.type === 'compaction/summary').length, 0);
+  assert.equal(f.session.events.filter((e) => e.type === 'user/message' && e.data.id === pending.id).length, 1);
+});
+
+test('compaction does not retry authentication, invalid requests, truncated summaries or provider aborts', async () => {
+  for (const reason of [
+    { kind: 'error', failure: { code: 'AUTH', message: 'authentication failed' } },
+    { kind: 'error', failure: { code: 'INVALID_REQUEST', message: 'invalid input' } },
+    { kind: 'max-tokens' },
+    { kind: 'aborted', failure: { code: 'TRANSPORT', message: 'user stopped' } },
+  ]) {
+    const f = fixture({ streamHook: async function* () { yield { type: 'finish', reason }; } });
+    await assert.rejects(f.engine.summarize({ messages: [] }, f.agent, new AbortController().signal));
+    assert.equal(f.calls.length, 1, reason.kind);
+    assert.equal(f.session.events.filter((e) => e.type === 'llm/retry').length, 0);
+  }
+});
+
+test('compaction user cancellation interrupts active stream and backoff without another request', async () => {
+  for (const duringBackoff of [false, true]) {
+    const controller = new AbortController();
+    const stop = new Error('explicit user stop');
+    const f = fixture({
+      retryPolicy: resolveRetryPolicy({ mode: 'normal', maxRetries: 2, backoff: { initialDelayMs: 1000, maxDelayMs: 1000 } }, 'test'),
+      streamHook: async function* () {
+        if (!duringBackoff) controller.abort(stop);
+        yield { type: 'finish', reason: { kind: 'error', failure: { code: 'TRANSPORT', message: 'terminated' } } };
+      },
+    });
+    f.ctx.sessions.flush = async () => { if (duringBackoff) setTimeout(() => controller.abort(stop), 5); };
+    await assert.rejects(f.engine.summarize({ messages: [] }, f.agent, controller.signal), (error) => error === stop);
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.session.events.filter((e) => e.type === 'llm/retry-started').length, 0);
+  }
+});
+
+test('compaction bounds always policy and honors excessive Retry-After without an early retry', async () => {
+  const f = fixture({ retryPolicy: resolveRetryPolicy({ mode: 'always', backoff: { initialDelayMs: 1, maxDelayMs: 1, jitterRatio: 0 } }, 'test'), streamHook: async function* () { throw new LlmError('terminated', 'TRANSPORT'); } });
+  await assert.rejects(f.engine.summarize({ messages: [] }, f.agent, new AbortController().signal), /TRANSPORT/);
+  assert.equal(f.calls.length, resolveRetryPolicy(undefined, 'test').maxRetries + 1);
+  const delayed = fixture({ streamHook: async function* () { yield { type: 'finish', reason: { kind: 'error', failure: { code: 'RATE_LIMIT', message: 'wait', providerRetryAfterMs: 10000 } } }; } });
+  await assert.rejects(delayed.engine.summarize({ messages: [] }, delayed.agent, new AbortController().signal), (error) => error.failure.providerRetryAfterMs === 10000);
+  assert.equal(delayed.calls.length, 1);
+});
+
+test('each automatic summary consumes another original node even when the next node exceeds the soft batch budget', async () => {
+  const f = fixture({ contextWindow: 8000 });
+  const originals = new Set();
+  for (let i = 0; i < 3; i++) originals.add(f.session.append('user/message', f.user(`large-original-${i}`, 'x'.repeat(20000)), { surfaceOp: 'append' }).seq);
+  const history = JSON.stringify(f.session.events);
+  f.session.append('turn/start', { turn: 1 });
+  const pending = f.user('continue', 'Report the previous result.');
+  const decision = { kind: 'enter', messages: [pending], assembly: {} };
+  assert.equal(await f.listeners.get('agent/pre-step')({ agent: f.agent, signal: new AbortController().signal }, async () => decision), decision);
+  const summaries = f.session.events.filter((event) => event.type === 'compaction/summary');
+  assert.equal(summaries.length, 3);
+  for (const summary of summaries) assert.ok(summary.data.shadowedSeqs.some((seq) => originals.delete(seq)), 'each bounded summary must include previously unprocessed original history');
+  assert.equal(originals.size, 0);
+  assert.equal(JSON.stringify(f.session.events.slice(0, JSON.parse(history).length)), history);
+});
+
+test('checkpoint-only pressure does not call the model again and only continues within actual capacity', async () => {
+  for (const hardOverflow of [false, true]) {
+    const f = fixture({ contextWindow: 8000 });
+    const first = f.session.append('user/message', f.user('original', 'x'.repeat(12000)), { surfaceOp: 'append' });
+    f.session.append('turn/start', { turn: 1 });
+    await f.engine.compactRegion(first.seq, first.seq, f.agent, new AbortController().signal);
+    const surface = [...f.session.surface.nodes];
+    const pending = f.user('pending-checkpoint', 'p'.repeat(hardOverflow ? 40000 : 14000));
+    const decision = { kind: 'enter', messages: [pending], assembly: {} };
+    const run = f.listeners.get('agent/pre-step')({ agent: f.agent, signal: new AbortController().signal }, async () => decision);
+    if (hardOverflow) {
+      await assert.rejects(run, /exceeds model context capacity 8000.*original messages preserved.*new original history/);
+      assert.deepEqual(f.session.events.filter((event) => event.type === 'user/message' && event.data.id === pending.id).map((event) => event.data), [pending]);
+    } else {
+      assert.equal(await run, decision);
+      assert.deepEqual(f.session.surface.nodes, surface);
+      assert.equal(f.session.events.filter((event) => event.type === 'user/message' && event.data.id === pending.id).length, 0, 'normal agent loop still owns successful pending-message admission');
+    }
+    assert.equal(f.calls.length, 1, 'the existing checkpoint is never sent alone for another summary');
+  }
+});
+
+test('nonshrinking summary retains original context, continuing only when the complete request fits capacity', async () => {
+  for (const hardOverflow of [false, true]) {
+    const f = fixture({ contextWindow: hardOverflow ? 10000 : 24000, config: { maxTokens: 4096, thresholdRatio: 0.3 }, streamHook: async function* () {
+      yield { type: 'text-delta', index: 0, text: 's'.repeat(10000) };
+      yield { type: 'finish', reason: { kind: 'stop' } };
+    } });
+    const first = f.session.append('user/message', f.user('original-small', 'x'.repeat(6000)), { surfaceOp: 'append' });
+    f.session.append('turn/start', { turn: 1 });
+    const pending = f.user('pending-shrink', 'p'.repeat(hardOverflow ? 40000 : 6000));
+    const decision = { kind: 'enter', messages: [pending], assembly: {} };
+    const run = f.listeners.get('agent/pre-step')({ agent: f.agent, signal: new AbortController().signal }, async () => decision);
+    if (hardOverflow) await assert.rejects(run, /exceeds model context capacity 10000.*summary is not smaller/);
+    else assert.equal(await run, decision);
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.session.surface.nodes[0], first.seq);
+    assert.equal(f.session.events.filter((event) => event.type === 'compaction/summary').length, 0);
+    assert.match(f.session.events.find((event) => event.type === 'compaction/end').data.error, /summary is not smaller/);
+  }
+});
+
+test('pre-step preserves cancellation, provider failure and commit failure even below model capacity', async () => {
+  for (const kind of ['cancel', 'provider', 'persistence']) {
+    const controller = new AbortController();
+    const stop = new Error('owner cancelled');
+    const disk = new Error('summary persistence failed');
+    const f = fixture({ streamHook: async function* () {
+      if (kind === 'cancel') controller.abort(stop);
+      if (kind === 'provider') throw new LlmError('authentication failed', 'AUTH');
+      yield* validSummary();
+    } });
+    const history = seedRecovery(f);
+    if (kind === 'persistence') {
+      const append = f.session.append.bind(f.session);
+      f.session.append = (type, ...args) => { if (type === 'compaction/summary') throw disk; return append(type, ...args); };
+    }
+    const pending = f.user(`pending-${kind}`, 'Keep the original authorized task.');
+    await assert.rejects(f.listeners.get('agent/pre-step')({ agent: f.agent, signal: controller.signal }, async () => ({ kind: 'enter', messages: [pending], assembly: {} })), (error) => kind === 'cancel' ? error === stop : kind === 'persistence' ? error === disk : error.failure.code === 'AUTH');
+    assert.equal(f.calls.length, 1);
+    assert.equal(JSON.stringify(f.session.events.slice(0, JSON.parse(history).length)), history);
+    assert.deepEqual(f.session.events.filter((event) => event.type === 'user/message' && event.data.id === pending.id).map((event) => event.data), [pending]);
+  }
+});
+
+test('current model output reserve replaces historical adapter defaults without rewriting request history', async () => {
+  for (const sameTarget of [false, true]) {
+    const f = fixture({ defaultMaxTokens: 96 });
+    const header = { config: { provider: 'openai-codex', model: sameTarget ? 'current-model' : 'old-model', maxTokens: 100000 }, adapterDefaults: { maxTokens: true }, system: 'Keep the original task.', tools: [] };
+    f.session.append('request/header', { header });
+    const recordedHeader = f.session.requestHeader();
+    selectForCompaction(f, { provider: 'openai-codex', model: 'current-model' });
+    f.session.append('turn/start', { turn: 1 });
+    const pending = f.user('current-query', 'Is the previous release available?');
+    const decision = { kind: 'enter', messages: [pending], assembly: {} };
+    assert.equal(await f.listeners.get('agent/pre-step')({ agent: f.agent, signal: new AbortController().signal }, async () => decision), decision);
+    assert.equal(f.calls.length, 0);
+    assert.deepEqual(f.session.requestHeader(), recordedHeader);
+    assert.ok(f.modelInfoCalls.every((info) => info.model === 'current-model'));
+  }
+  const f = fixture({ defaultMaxTokens: 24000 });
+  f.session.append('turn/start', { turn: 1 });
+  const pending = f.user('current-large-default', 'Continue.');
+  await assert.rejects(f.listeners.get('agent/pre-step')({ agent: f.agent, signal: new AbortController().signal }, async () => ({ kind: 'enter', messages: [pending], assembly: {} })), /exceeds model context capacity 24000/);
+});
+
+test('progress patch is idempotent and rejects missing hard-capacity and original-node checks', () => {
+  assert.equal(patchCompactionBudget(patched), patched);
+  for (const anchor of ['if (!(error instanceof ForgeCompactionNoProgressError)) throw error;', '(!requireOriginal || includesOriginal)', 'if (estimated > budget.window)']) {
+    assert.throws(() => patchCompactionBudget(patched.replace(anchor, '/* incomplete */')), /Incomplete compaction progress patch/);
+  }
 });

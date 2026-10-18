@@ -7,6 +7,7 @@ import {
   copyFile,
   lstat,
   mkdir,
+  open,
   readFile,
   readlink,
   readdir,
@@ -397,55 +398,87 @@ async function replaceCurrent(root, version) {
 
 async function activateVersion(options, operation) {
   const { root, versions } = await ensureInstallRoot(options.installRoot);
-  if (typeof options.version !== 'string' || !VERSION_PATTERN.test(options.version)) throw new Error('Skill activation version is invalid.');
-  const target = path.join(versions, options.version);
-  const bundle = await validateExternalSkillBundle(target, options);
-  const previous = await currentVersion(root, { optional: true });
-  let active = null;
-  try {
-    active = JSON.parse(await readFile(path.join(root, ACTIVE_NAME), 'utf8'));
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-  }
-  if (previous?.version === options.version
-    && active?.version === options.version
-    && (operation !== 'rollback' || active.operation === 'rollback')) {
-    return { activated: false, idempotent: true, version: options.version, previousVersion: active.previousVersion ?? null, treeSha256: bundle.treeSha256 };
-  }
   const transactionId = crypto.randomUUID();
   const pendingFile = path.join(root, PENDING_NAME);
-  await atomicJson(pendingFile, {
-    schemaVersion: 1,
-    transactionId,
-    operation,
-    fromVersion: previous?.version ?? null,
-    toVersion: options.version,
-    treeSha256: bundle.treeSha256,
-  });
+  // The existing pending transaction is also the cross-process exclusion point.
+  // Acquire it before reading the rollback target or the current preimage.
+  let reservation;
+  try { reservation = await open(pendingFile, 'wx', 0o600); }
+  catch (error) {
+    if (error.code === 'EEXIST') throw new Error('Another or incomplete Skill activation owns the pending transaction.');
+    throw error;
+  }
+  const readActive = async () => {
+    try { return await readFile(path.join(root, ACTIVE_NAME), 'utf8'); }
+    catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+  };
+  const ownsPending = async () => {
+    try { return JSON.parse(await readFile(pendingFile, 'utf8')).transactionId === transactionId; }
+    catch { return false; }
+  };
+  let previous;
+  let activeText;
+  let version;
   let switched = false;
+  let committed = false;
+  let releaseReservation = true;
   try {
-    const switchMode = await replaceCurrent(root, options.version);
+    try { await reservation.writeFile(JSON.stringify({ schemaVersion: 1, transactionId, operation })); }
+    finally { await reservation.close(); }
+    previous = await currentVersion(root, { optional: true });
+    activeText = await readActive();
+    const active = activeText === null ? null : JSON.parse(activeText);
+    version = options.version;
+    if (operation === 'rollback') {
+      if (!previous || active?.version !== previous.version) throw new Error('Skill activation state differs from the current pointer.');
+      if (active.operation === 'rollback') {
+        return { activated: false, idempotent: true, version: previous.version, previousVersion: active.previousVersion ?? null, treeSha256: active.treeSha256 };
+      }
+      version = active.previousVersion;
+    }
+    if (typeof version !== 'string' || !VERSION_PATTERN.test(version)) throw new Error('Skill activation version is invalid.');
+    const bundle = await validateExternalSkillBundle(path.join(versions, version), options);
+    if (previous?.version === version && active?.version === version) {
+      return { activated: false, idempotent: true, version, previousVersion: active.previousVersion ?? null, treeSha256: bundle.treeSha256 };
+    }
+    if (!await ownsPending() || (await currentVersion(root, { optional: true }))?.version !== previous?.version
+      || await readActive() !== activeText) throw new Error('Skill activation preimage changed before the current switch.');
+    await atomicJson(pendingFile, { schemaVersion: 1, transactionId, operation,
+      fromVersion: previous?.version ?? null, toVersion: version, treeSha256: bundle.treeSha256 });
+    const switchMode = await replaceCurrent(root, version);
     switched = true;
+    // Function form is an in-process fault injector, never a CLI option.
+    if (typeof options.failpoint === 'function') await options.failpoint();
     if (options.failpoint === 'after-current-switch') throw new Error('Injected activation failure after current switch.');
+    if (!await ownsPending() || (await currentVersion(root, { optional: true }))?.version !== version
+      || await readActive() !== activeText) throw new Error('Skill activation state changed before commit.');
     const state = {
       schemaVersion: 1,
       transactionId,
       operation,
-      version: options.version,
+      version,
       previousVersion: previous?.version ?? null,
       treeSha256: bundle.treeSha256,
       switchMode,
     };
     await atomicJson(path.join(root, ACTIVE_NAME), state);
-    await rm(pendingFile, { force: true });
+    committed = true;
     return { activated: true, idempotent: false, ...state };
   } catch (error) {
-    if (switched) {
-      if (previous === null) await rm(path.join(root, 'current'), { force: true });
-      else await replaceCurrent(root, previous.version);
+    if (switched && !committed) {
+      releaseReservation = false;
+      // Never restore an old pointer over another operation's current/active
+      // state, or delete a pending transaction this invocation no longer owns.
+      if (await ownsPending() && (await currentVersion(root, { optional: true }))?.version === version
+        && await readActive() === activeText) {
+        if (previous === null) await rm(path.join(root, 'current'), { force: true });
+        else await replaceCurrent(root, previous.version);
+        releaseReservation = true;
+      }
     }
-    await rm(pendingFile, { force: true });
     throw error;
+  } finally {
+    if (releaseReservation && await ownsPending()) await rm(pendingFile);
   }
 }
 
@@ -454,17 +487,7 @@ export async function activateExternalSkillBundle(options) {
 }
 
 export async function rollbackExternalSkillBundle(options) {
-  const { root } = await ensureInstallRoot(options.installRoot);
-  const current = await currentVersion(root);
-  const active = JSON.parse(await readFile(path.join(root, ACTIVE_NAME), 'utf8'));
-  if (active.version !== current.version) throw new Error('Skill activation state differs from the current pointer.');
-  if (active.operation === 'rollback') {
-    return { activated: false, idempotent: true, version: current.version, previousVersion: active.previousVersion ?? null, treeSha256: active.treeSha256 };
-  }
-  if (typeof active.previousVersion !== 'string' || !VERSION_PATTERN.test(active.previousVersion)) {
-    throw new Error('No prior Skill version is available for rollback.');
-  }
-  return activateVersion({ ...options, version: active.previousVersion }, 'rollback');
+  return activateVersion(options, 'rollback');
 }
 
 export async function doctorExternalSkillBundle(options) {

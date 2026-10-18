@@ -1,0 +1,84 @@
+# Explicit opt-in overlay. Keep the existing Gateway image/identity/network.
+# The dedicated trusted service alone receives Docker access. The Gateway sees
+# only the private IPC directory; it never receives archives or project files.
+# All paths must be real absolute host paths without symlinks. Archive, backup,
+# environment and project paths use identical container paths because Docker
+# bind-mount source paths are interpreted by the host daemon.
+services:
+  conversation-gateway:
+    environment:
+      PRODUCTION_DELIVERY_SOCKET: ${PRODUCTION_DELIVERY_SOCKET:?PRODUCTION_DELIVERY_SOCKET is required}
+    volumes:
+      - type: bind
+        source: ${PRODUCTION_IPC_ROOT:?PRODUCTION_IPC_ROOT is required}
+        target: ${PRODUCTION_IPC_ROOT:?PRODUCTION_IPC_ROOT is required}
+        read_only: true
+        bind:
+          create_host_path: false
+
+  production-delivery:
+    image: ${PRODUCTION_DELIVERY_IMAGE:?PRODUCTION_DELIVERY_IMAGE is required}
+    restart: unless-stopped
+    user: "0:0"
+    command: ["node", "/usr/local/lib/production-delivery-service.mjs"]
+    environment:
+      PRODUCTION_DELIVERY_CONFIG_FILE: /run/forge-production-config/config.json
+      PYTHONDONTWRITEBYTECODE: "1"
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: safe.directory
+      GIT_CONFIG_VALUE_0: ${PRODUCTION_PROJECT_ROOT:?PRODUCTION_PROJECT_ROOT is required}/workspace
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - type: bind
+        source: ${PRODUCTION_CONFIG_FILE:?PRODUCTION_CONFIG_FILE is required}
+        target: /run/forge-production-config/config.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${PRODUCTION_IPC_ROOT:?PRODUCTION_IPC_ROOT is required}
+        target: ${PRODUCTION_IPC_ROOT:?PRODUCTION_IPC_ROOT is required}
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${PRODUCTION_ARCHIVE_ROOT:?PRODUCTION_ARCHIVE_ROOT is required}
+        target: ${PRODUCTION_ARCHIVE_ROOT:?PRODUCTION_ARCHIVE_ROOT is required}
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${PRODUCTION_BACKUP_ROOT:?PRODUCTION_BACKUP_ROOT is required}
+        target: ${PRODUCTION_BACKUP_ROOT:?PRODUCTION_BACKUP_ROOT is required}
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${PRODUCTION_ENVIRONMENT_ROOT:?PRODUCTION_ENVIRONMENT_ROOT is required}
+        target: ${PRODUCTION_ENVIRONMENT_ROOT:?PRODUCTION_ENVIRONMENT_ROOT is required}
+        bind:
+          create_host_path: false
+      # Repeat this exact-project read-only mount for additional admitted projects.
+      - type: bind
+        source: ${PRODUCTION_PROJECT_ROOT:?PRODUCTION_PROJECT_ROOT is required}
+        target: ${PRODUCTION_PROJECT_ROOT:?PRODUCTION_PROJECT_ROOT is required}
+        read_only: true
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=128m"]
+    cap_drop: [ALL]
+    # Root reads only explicitly mounted project inputs and sets private IPC ownership.
+    cap_add: [CHOWN, DAC_READ_SEARCH]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    mem_limit: 768m
+    network_mode: bridge
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "5"

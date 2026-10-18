@@ -15,7 +15,9 @@ const usage = () => {
     '  forge-release capability',
     '  forge-release diagnose',
     '  forge-release preflight',
+    '  forge-release plan',
     '  forge-release status [--operation-id <UUID>]',
+    '  forge-release logs [--services forge-admin,forge-app,forge-flow,forge-ui] [--tail <1..1000>] [--since <1s..24h>]',
     '  forge-release prepare --expected-head <40lowerhex> --expected-fingerprint <64lowerhex> --plan-base64 <base64url-utf8-json>',
     "  forge-release prepare --expected-head <40lowerhex> --expected-fingerprint <64lowerhex> --plan-json '<single-line-json-object>'",
     '  forge-release checkpoint --path <repo-relative-path> [--path <repo-relative-path> ...] --message-base64 <base64url-utf8> --expected-head <40lowerhex> --expected-fingerprint <64lowerhex>',
@@ -30,13 +32,26 @@ const usage = () => {
 };
 
 const TASKSPACE_BROKER_URL = 'http://taskspace-broker:3100';
+const TASKSPACE_BROKER_URLS = new Set([
+  TASKSPACE_BROKER_URL,
+  'http://taskspace-broker-stable:3100',
+  'http://taskspace-broker-enhanced:3100',
+]);
 const TASKSPACE_TOKEN_FILE = '/run/forge-taskspace/broker-token';
 
 function resolveTaskspaceTransport(environment = process.env) {
   const taskspaceId = environment.FORGE_TASKSPACE_ID;
   if (typeof taskspaceId === 'string' && taskspaceId.length > 0) {
+    const brokerUrlValue = environment.FORGE_TASKSPACE_BROKER_URL || TASKSPACE_BROKER_URL;
+    if (!TASKSPACE_BROKER_URLS.has(brokerUrlValue)) {
+      throw new Error('FORGE_TASKSPACE_BROKER_URL must be an exact trusted TaskSpace Broker origin.');
+    }
+    const tokenFile = environment.FORGE_TASKSPACE_TOKEN_FILE;
+    if (tokenFile !== undefined && tokenFile !== '' && tokenFile !== TASKSPACE_TOKEN_FILE) {
+      throw new Error('FORGE_TASKSPACE_TOKEN_FILE must use the protected TaskSpace token path.');
+    }
     return {
-      brokerUrlValue: TASKSPACE_BROKER_URL,
+      brokerUrlValue,
       tokenFile: TASKSPACE_TOKEN_FILE,
     };
   }
@@ -67,10 +82,43 @@ async function parseArguments(argv) {
     usage();
     return null;
   }
-  if (!['contract', 'capability', 'diagnose', 'preflight', 'status', 'release', 'checkpoint', 'integrate'].includes(command)) {
+  if (!['contract', 'capability', 'diagnose', 'preflight', 'plan', 'status', 'logs', 'release', 'checkpoint', 'integrate'].includes(command)) {
     usage();
     process.exitCode = 2;
     return null;
+  }
+  if (command === 'logs') {
+    const options = {};
+    while (argv.length > 0) {
+      const option = argv.shift();
+      const value = argv.shift();
+      if (!['--services', '--tail', '--since'].includes(option)) throw new Error(`Unknown option: ${option}`);
+      if (!value) throw new Error(`${option} requires a value.`);
+      if (Object.hasOwn(options, option)) throw new Error(`${option} may only be provided once.`);
+      options[option] = value;
+    }
+    const result = { command, tail: 200 };
+    if (options['--services'] !== undefined) {
+      const services = options['--services'].split(',');
+      if (services.length < 1 || services.length > 4 || new Set(services).size !== services.length
+        || services.some(service => !['forge-admin', 'forge-app', 'forge-flow', 'forge-ui'].includes(service))) {
+        throw new Error('logs --services must name unique project business services.');
+      }
+      result.services = services;
+    }
+    if (options['--tail'] !== undefined) {
+      if (!/^[1-9][0-9]{0,3}$/u.test(options['--tail']) || Number(options['--tail']) > 1000) {
+        throw new Error('logs --tail must be an integer from 1 to 1000.');
+      }
+      result.tail = Number(options['--tail']);
+    }
+    if (options['--since'] !== undefined) {
+      const duration = /^([1-9][0-9]{0,4})(s|m|h)$/u.exec(options['--since']);
+      const seconds = duration ? Number(duration[1]) * ({ s: 1, m: 60, h: 3600 })[duration[2]] : 0;
+      if (seconds < 1 || seconds > 86400) throw new Error('logs --since must be a duration from 1s to 24h.');
+      result.sinceSeconds = seconds;
+    }
+    return result;
   }
   if (!['release', 'checkpoint', 'integrate'].includes(command)) {
     if (command === 'status' && argv.length === 2 && argv[0] === '--operation-id' && UUID_PATTERN.test(argv[1])) {
@@ -203,7 +251,6 @@ async function parseArguments(argv) {
   }
   const result = {
     command,
-    services: ['forge-admin', 'forge-app', 'forge-flow', 'forge-ui'],
     approvalRef: 'User requested release in the current Harness conversation.',
   };
   while (argv.length > 0) {
@@ -218,6 +265,74 @@ async function parseArguments(argv) {
   return result;
 }
 
+async function resolveDefaultReleaseServices(sendAction) {
+  const response = await sendAction({ action: 'contract' }, 15000);
+  const payload = JSON.parse(response.responseBody);
+  if (response.statusCode !== 200 || payload.ok !== true) {
+    throw new Error('Cannot resolve release services from the current project contract. No release was submitted.');
+  }
+  const contract = payload.result?.runnerContract ?? payload.result;
+  const services = contract?.release?.allowedReleaseServices;
+  const reviewedSets = [
+    ['forge-admin', 'forge-flow', 'forge-ui'],
+    ['forge-admin', 'forge-app', 'forge-flow', 'forge-ui'],
+  ];
+  if (!Array.isArray(services) || !reviewedSets.some(expected =>
+    services.length === expected.length && new Set(services).size === services.length
+      && expected.every(service => services.includes(service)))) {
+    throw new Error('The project contract has no reviewed release service set. No release was submitted.');
+  }
+  return [...services];
+}
+
+// Observe the already accepted operation; this function never submits a release.
+async function observeRelease(accepted, sendAction, {
+  now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
+  progress = () => {}, timeoutMs = 15 * 60 * 1000, intervalMs = 2000,
+} = {}) {
+  const { operationId, taskId } = accepted;
+  const incomplete = (code, message) => ({ ok: false, result: {
+    operation: 'release', operationId, taskId, status: 'unknown', terminal: false,
+    observerStatus: 'incomplete', errorCode: code, errorSummary: message,
+    recommendedAction: `Observe forge-release status --operation-id ${operationId}; do not resubmit release.`,
+  } });
+  if (!UUID_PATTERN.test(operationId ?? '') || typeof taskId !== 'string' || !taskId) {
+    return incomplete('RELEASE_OBSERVATION_IDENTITY_MISSING', 'Accepted release did not include its operation and task identity.');
+  }
+  const deadline = now() + timeoutMs;
+  let previousStage;
+  progress({ operationId, taskId, status: 'accepted' });
+  while (now() < deadline) {
+    let response;
+    try {
+      const raw = await sendAction({ action: 'status', operationId }, Math.min(15000, deadline - now()));
+      response = JSON.parse(raw.responseBody);
+      if (raw.statusCode !== 200 || response.ok !== true) {
+        return incomplete('RELEASE_OBSERVATION_UNAVAILABLE', 'Exact operation status is unavailable; the server job may still be running.');
+      }
+    } catch {
+      return incomplete('RELEASE_OBSERVATION_DISCONNECTED', 'Observation disconnected; the server job may still be running.');
+    }
+    const operation = response.result?.release?.operation;
+    if (operation?.operationId !== operationId || operation?.taskId !== taskId) {
+      return incomplete('RELEASE_OBSERVATION_IDENTITY_MISMATCH', 'Status did not match the originally accepted operation and task.');
+    }
+    if (['failed', 'interrupted'].includes(operation.status)
+      || (operation.status === 'success' && operation.stage === 'complete' && operation.completedAt)) {
+      return { ok: operation.status === 'success', result: {
+        ...operation, operation: 'release', terminal: true, observerStatus: 'finished',
+      } };
+    }
+    if (!['accepted', 'running'].includes(operation.status)) {
+      return incomplete('RELEASE_OBSERVATION_UNCONFIRMED', 'The operation has no confirmed release terminal result.');
+    }
+    const stage = `${operation.status}:${operation.stage}`;
+    if (stage !== previousStage) { progress(operation); previousStage = stage; }
+    await sleep(Math.min(intervalMs, Math.max(0, deadline - now())));
+  }
+  return incomplete('RELEASE_OBSERVATION_TIMEOUT', 'Observation timed out; the server job was not cancelled or resubmitted.');
+}
+
 async function main() {
   const parsed = await parseArguments(process.argv.slice(2));
   if (!parsed) return;
@@ -226,6 +341,10 @@ async function main() {
   const fs = await import('node:fs/promises');
   const body = parsed.command === 'capability'
     ? null
+    : parsed.command === 'logs'
+    ? { action: 'logs', tail: parsed.tail,
+        ...(parsed.services === undefined ? {} : { services: parsed.services }),
+        ...(parsed.sinceSeconds === undefined ? {} : { sinceSeconds: parsed.sinceSeconds }) }
     : parsed.command === 'prepare'
     ? { action: 'prepare', expectedHead: parsed.expectedHead,
         expectedFingerprint: parsed.expectedFingerprint, probePlan: parsed.probePlan }
@@ -256,6 +375,7 @@ async function main() {
       }
     : { action: parsed.command, ...(parsed.operationId === undefined ? {} : { operationId: parsed.operationId }) };
   const { brokerUrlValue, tokenFile } = resolveTaskspaceTransport();
+  if (parsed.command === 'logs' && !brokerUrlValue) body.action = 'runtime-logs';
   // Old clients omit this field and retain synchronous completion. The direct
   // Runner transport also stays synchronous; only Broker owns the operation.
   if (parsed.operationId && !brokerUrlValue && parsed.command === 'status') {
@@ -281,7 +401,7 @@ async function main() {
       throw new Error('TaskSpace token file is invalid.');
     }
   }
-  const sendAction = (requestBody) => {
+  const sendAction = (requestBody, timeoutMs) => {
     const payload = requestBody === null ? null : Buffer.from(JSON.stringify(requestBody));
     return new Promise((resolve, reject) => {
     const requestOptions = {
@@ -320,6 +440,10 @@ async function main() {
         responseBody: Buffer.concat(chunks).toString('utf8'),
       }));
     });
+    if (timeoutMs !== undefined) {
+      const timer = setTimeout(() => request.destroy(new Error('Release observation request timed out.')), timeoutMs);
+      request.once('close', () => clearTimeout(timer));
+    }
     request.once('error', (error) => {
       if (['ENOENT', 'ECONNREFUSED', 'EACCES'].includes(error.code)) {
         reject(new Error(
@@ -333,6 +457,9 @@ async function main() {
     request.end(payload ?? undefined);
     });
   };
+  if (parsed.command === 'release' && parsed.services === undefined) {
+    body.services = await resolveDefaultReleaseServices(sendAction);
+  }
   if (brokerUrl && (parsed.command === 'release' || (parsed.command === 'status' && parsed.operationId))) {
     // Negotiate before the single mutation. Never retry release to discover
     // support: an older Broker may already have accepted the original request.
@@ -344,13 +471,21 @@ async function main() {
       throw new Error('This Broker does not support exact release operation status; observe existing status/diagnose without resubmitting release.');
     }
   }
-  const { statusCode, responseBody } = await sendAction(body);
-  const result = JSON.parse(responseBody);
+  // Leave transport headroom for the Runner's bounded 30-second log read.
+  const { statusCode, responseBody } = await sendAction(body, parsed.command === 'logs' ? 35000 : undefined);
+  let result = JSON.parse(responseBody);
+  if (process.env.FORGE_DEVELOPMENT_MODE === 'direct' && parsed.command === 'release'
+    && statusCode >= 200 && statusCode < 300 && result.ok === true && result.result?.status === 'accepted') {
+    result = await observeRelease(result.result, sendAction, {
+      progress: operation => process.stderr.write(`${JSON.stringify({ operationId: operation.operationId,
+        status: operation.status, stage: operation.stage })}\n`),
+    });
+  }
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   if (statusCode < 200 || statusCode >= 300 || !result.ok) process.exitCode = 1;
 }
 
-module.exports = { resolveTaskspaceTransport };
+module.exports = { resolveTaskspaceTransport, observeRelease, parseArguments, resolveDefaultReleaseServices };
 
 if (require.main === module) {
   main().catch((error) => {

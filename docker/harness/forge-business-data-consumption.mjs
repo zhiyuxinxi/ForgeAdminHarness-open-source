@@ -102,7 +102,7 @@ export function validateBusinessDataConsumptionReceipt(receipt, body) {
   return structuredClone(receipt);
 }
 
-export async function executeForgeBusinessDataConsumption({ request: body, readContext, inspectSource, consume, now = Date.now() }) {
+export async function executeForgeBusinessDataConsumption({ request: body, readContext, inspectSource, authorizeIntent, consume, now = Date.now() }) {
   exact(body, ['action', 'operation', 'request', 'attestation', 'proposal', 'lookup', 'expectedExecutionId', 'expectedGeneration', 'promptText', 'callId'], 'Broker data operation');
   if (body.action !== BUSINESS_DATA_APPLY_ACTION) fail('DATA_APPLY_SCHEMA_INVALID', 'Invalid data action.');
   exact(body.lookup, LOOKUP, 'Execution lookup');
@@ -116,7 +116,12 @@ export async function executeForgeBusinessDataConsumption({ request: body, readC
     || typeof body.callId !== 'string' || !/^[^\p{Cc}]{1,256}$/u.test(body.callId)) {
     fail('DATA_APPLY_CONTEXT_MISMATCH', 'A current protected execution binding and direct request are required.');
   }
-  if (!hasDirectBusinessDataIntent(body.promptText, args.operation)) {
+  if (typeof authorizeIntent === 'function') {
+    const authorization = await authorizeIntent({ ...Object.fromEntries(['projectSlug', 'taskId', 'actorUserId', 'conversationId', 'dshSessionId', 'rpcId'].map(key => [key, context[key]])), promptTextDigest: context.textDigest, operation: args.operation });
+    if (authorization?.authorized !== true || authorization.operation !== args.operation || authorization.rpcId !== context.rpcId) {
+      fail('DATA_APPLY_INTENT_REQUIRED', 'The current protected request did not authorize this data operation.');
+    }
+  } else if (!hasDirectBusinessDataIntent(body.promptText, args.operation)) {
     fail('DATA_APPLY_INTENT_REQUIRED', 'This exact data operation requires a current direct user instruction; source-write authority is insufficient.');
   }
   const source = await inspectSource();

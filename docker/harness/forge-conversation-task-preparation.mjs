@@ -32,7 +32,7 @@ async function preserve(file, value) {
   }
 }
 
-async function verifyReferences(workspace, proposal) {
+async function verifyReferences(workspace, proposal, projectRoot) {
   if (!Array.isArray(proposal?.references) || proposal.references.length < 1 || proposal.references.length > 64) {
     throw taskspaceError('CONVERSATION_TASK_REFERENCE_REQUIRED', '请提供实际读取的相关代码文件作为任务范围依据。');
   }
@@ -49,7 +49,11 @@ async function verifyReferences(workspace, proposal) {
       || !/^[0-9a-f]{64}$/u.test(reference?.sha256 ?? '')) {
       throw taskspaceError('CONVERSATION_TASK_REFERENCE_INVALID', '任务依据必须是当前仓库内的普通文件及其真实摘要。');
     }
-    const target = path.join(root, ...relative.split('/'));
+    // Harness sees this platform-owned file through a read-only bind mount;
+    // the repository copy is only a placeholder and is not its source.
+    const target = relative === 'PROJECT_CONTEXT.md'
+      ? path.join(await realpath(projectRoot), 'governance', 'PROJECT_CONTEXT.md')
+      : path.join(root, ...relative.split('/'));
     const resolved = await realpath(target).catch(() => null);
     const info = await lstat(target).catch(() => null);
     if (resolved !== target || !info?.isFile() || info.isSymbolicLink() || info.nlink !== 1
@@ -152,7 +156,7 @@ async function prepareUnlocked({ projectRoot, taskMetadata, workspace, request, 
   }
   let backendTestBindings;
   if (request.operation === 'propose') {
-    const references = await verifyReferences(workspace, request.proposal);
+    const references = await verifyReferences(workspace, request.proposal, projectRoot);
     if (Array.isArray(request.proposal?.ownedPaths)) {
       backendTestBindings = deriveBackendTestBindings(request.proposal.ownedPaths, references);
     }

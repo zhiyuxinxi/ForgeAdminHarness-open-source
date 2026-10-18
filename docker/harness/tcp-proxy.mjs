@@ -100,6 +100,8 @@ function rejectWorkpodAction(response, rpcId, error) {
 const CONTINUATION_FAILURE_MESSAGES = Object.freeze({
   CONVERSATION_EXECUTION_BUSY: '上一轮对话或工具仍在执行，这条消息尚未派发，将在上一轮结束后继续。',
   CONVERSATION_DISPATCH_UNCONFIRMED: '上一条消息的接收结果暂未确认，本条消息尚未派发。请先查看原对话结果；系统不会自动重发结果未知的请求。',
+  CONVERSATION_INTENT_INVALID: '平台请求解释结果不一致，本次消息未进入业务执行。请保留原请求并联系平台维护人员，无需重复授权。',
+  CONVERSATION_INTENT_UNAVAILABLE: '平台请求解释服务不可用，本次消息未进入业务执行。请保留原请求并联系平台维护人员，无需重复授权。',
   CONVERSATION_PREPARATION_UNAVAILABLE: '请求准备未能完成，本次消息尚未进入模型。输入已恢复，可以稍后重新提交；原有任务与结果已保留。',
   ACCEPTANCE_SOURCE_OBSERVER_UNAVAILABLE: '当前工作区状态暂时无法核验，本次请求尚未进入模型，也未执行修改。请稍后重试；若持续出现，请联系平台维护人员。',
   CONVERSATION_WRITE_SCOPE_REQUIRED: '当前没有与本会话和代码版本匹配的待执行任务。请说明要实施的页面、接口或模块；本次未启动执行。',
@@ -1283,8 +1285,13 @@ export function createHarnessProxy(options) {
           rejectHttp(response, 503, undefined, request);
           return;
         }
+        // Never start a model turn after deliberately dropping its request
+        // identity. Report a transport limit at ingress, not an expired lease.
+        response.writeHead(413, { 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify({
+          ok: false, code: 'PROMPT_BODY_EXCEEDS_CLAIM_LIMIT',
+          message: '本次消息和图片超过 32 MiB 请求上限，或请求缺少有效长度；消息未执行。这是请求大小或格式错误，不是授权过期。',
+        }));
         request.resume();
-        forward();
         return;
       }
 

@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { publicReleaseOperation } from './project-release-status.mjs';
 import { deliveryResponse, DeliveryCenterError } from './delivery-center-http.mjs';
 import { createDeliveryCenterClient } from './delivery-center-service.mjs';
+import { createProductionDeliveryClient } from './production-delivery-client.mjs';
 import {
   appendFile,
   chmod,
@@ -80,6 +81,9 @@ const STATIC_FILES = Object.freeze({
   '/forge-gateway/assets/delivery-center.js': ['delivery-center.js', 'text/javascript; charset=utf-8'],
   '/forge-gateway/assets/delivery-center-views.js': ['delivery-center-views.js', 'text/javascript; charset=utf-8'],
   '/forge-gateway/assets/delivery-center.css': ['delivery-center.css', 'text/css; charset=utf-8'],
+  '/forge-gateway/assets/production-delivery.js': ['production-delivery.js', 'text/javascript; charset=utf-8'],
+  '/forge-gateway/assets/production-delivery-panel.html': ['production-delivery-panel.html', 'text/html; charset=utf-8'],
+  '/forge-gateway/assets/production-delivery.css': ['production-delivery.css', 'text/css; charset=utf-8'],
   '/forge-gateway/assets/platform-value.js': ['platform-value.js', 'text/javascript; charset=utf-8'],
   '/forge-gateway/assets/platform-value.css': ['platform-value.css', 'text/css; charset=utf-8'],
   '/forge-gateway/assets/platform-catalog.json': ['platform-catalog.json', 'application/json; charset=utf-8'],
@@ -91,6 +95,7 @@ const PAGE_FILES = Object.freeze({
   '/forge-gateway/forbidden': 'forbidden.html',
   '/forge-gateway/': 'index.html',
   '/forge-gateway/delivery-center': 'delivery-center.html',
+  '/forge-gateway/production-delivery': 'production-delivery.html',
   '/forge-gateway/platform-value': 'platform-value.html',
 });
 const SECURITY_HEADERS = Object.freeze({
@@ -571,6 +576,43 @@ function managerError(error) {
   return new GatewayError('MANAGER_UNAVAILABLE', '独立工作舱管理服务暂不可用，请稍后重试。', 503);
 }
 
+function publicRuntimeVersion(value) {
+  if (!value || !['stable', 'enhanced'].includes(value.channel)) return null;
+  const fields = ['channel', 'label', 'sourceBranch', 'sourceCommit', 'harnessImage', 'versionId'];
+  if (fields.some((field) => typeof value[field] !== 'string' || !value[field])) return null;
+  return Object.fromEntries(fields.map((field) => [field, value[field]]));
+}
+
+async function runtimeVersionsForManager(manager) {
+  try {
+    const value = await manager.runtimeVersions();
+    // A project without a catalog still uses its original Manager and creation
+    // path. Transport errors or malformed installed catalogs must not downgrade.
+    if (value?.defaultChannel === null && Array.isArray(value.versions) && value.versions.length === 0) {
+      return { defaultChannel: null, versions: [], legacy: true };
+    }
+    if (!Array.isArray(value?.versions) || !['stable', 'enhanced'].includes(value.defaultChannel)
+      || value.versions.some((entry) => !['stable', 'enhanced'].includes(entry?.channel))
+      || new Set(value.versions.map((entry) => entry.channel)).size !== value.versions.length) throw new Error('Invalid runtime catalog.');
+    return { defaultChannel: value.defaultChannel, versions: value.versions.map((entry) => {
+      const version = publicRuntimeVersion(entry);
+      if (entry.available === true && !version) throw new Error('Invalid runtime version.');
+      return { ...(version ?? { channel: entry.channel, label: entry.channel === 'stable' ? '稳定版' : '增强试验版' }), available: entry.available === true };
+    }) };
+  } catch {
+    throw new GatewayError('RUNTIME_VERSIONS_UNAVAILABLE', 'Harness 版本列表暂不可用，请稍后重新打开新建对话。', 503);
+  }
+}
+
+function managedRuntimeVersion(taskspace, conversation) {
+  const actual = publicRuntimeVersion(taskspace?.runtimeVersion);
+  if (conversation.runtimeChannel !== undefined
+    && (!actual || actual.channel !== conversation.runtimeChannel || actual.versionId !== conversation.runtimeVersion?.versionId)) {
+    throw new GatewayError('RUNTIME_VERSION_CONFLICT', '工作舱返回的 Harness 版本与创建时选择不一致。', 502);
+  }
+  return actual;
+}
+
 function safeManagerFailureDetails(value) {
   if (value?.code !== 'CONTROL_FAILED' || value.details === null || typeof value.details !== 'object') {
     return undefined;
@@ -726,6 +768,7 @@ export function createManagerClient({ baseUrl = undefined, socketPath = undefine
   };
   return {
     health: () => call('GET', '/healthz'),
+    runtimeVersions: () => call('GET', '/v1/runtime-versions'),
     create: (value) => call('POST', '/v1/taskspaces', value),
     releaseStatus: () => call('GET', '/v1/project-release-status'),
     status: (taskId) => call('GET', `/v1/taskspaces/${encodeURIComponent(taskId)}`),
@@ -781,6 +824,7 @@ export async function createConversationGateway(options) {
   const {
     store,
     deliveryStore,
+    productionClient,
     manager,
     managerForProject,
     managerTokenForProject = async (slug) => {
@@ -1244,20 +1288,39 @@ export async function createConversationGateway(options) {
     return result;
   };
 
-  const createConversation = async (context, scopedProjectSlug, title, idempotencyKey, requestId) => {
+  const createConversation = async (context, scopedProjectSlug, title, idempotencyKey, requestId, runtimeChannel) => {
     ensurePermission(context.user, 'conversation:create');
     await requireProjectAccess(context.user, scopedProjectSlug);
     const scopedManager = await resolveManager(scopedProjectSlug);
     const normalizedTitle = validateInput(normalizeConversationTitle, title, 'INVALID_CONVERSATION_TITLE');
     const key = validateInput(validateIdempotencyKey, idempotencyKey, 'INVALID_IDEMPOTENCY_KEY');
+    if (runtimeChannel !== undefined && !['stable', 'enhanced'].includes(runtimeChannel)) {
+      throw new GatewayError('INVALID_RUNTIME_CHANNEL', '请选择稳定版或增强试验版。', 400);
+    }
+    const findExisting = (state) => {
+      const existingKey = state.idempotency.find((entry) => entry.key === key && entry.userId === context.user.id
+        && entry.operation === 'conversation.create' && entry.projectSlug === scopedProjectSlug
+        && Date.parse(entry.createdAt) > clock() - IDEMPOTENCY_RETENTION_MS);
+      return existingKey && state.conversations.find((entry) => entry.id === existingKey.resultId);
+    };
+    const previous = await store.read(findExisting);
+    let selectedVersion;
+    if (!previous && runtimeChannel !== undefined) {
+      const catalog = await runtimeVersionsForManager(scopedManager);
+      const selected = catalog.versions.find((entry) => entry.channel === runtimeChannel && entry.available);
+      if (!selected) throw new GatewayError('RUNTIME_VERSION_UNAVAILABLE', '所选 Harness 版本当前不可用，请选择其他可用版本或稍后重试。', 409);
+      selectedVersion = publicRuntimeVersion(selected);
+    }
     const staged = await store.mutate((state) => {
-      const existingKey = state.idempotency.find((entry) => (
-        entry.key === key && entry.userId === context.user.id && entry.operation === 'conversation.create'
-        && entry.projectSlug === scopedProjectSlug
-      ));
-      if (existingKey !== undefined) {
-        const existingConversation = state.conversations.find((entry) => entry.id === existingKey.resultId);
-        if (existingConversation !== undefined) return { conversation: existingConversation, existing: true };
+      const existingConversation = findExisting(state);
+      if (existingConversation !== undefined) {
+        if (existingConversation.runtimeChannel !== runtimeChannel) {
+          throw new GatewayError('IDEMPOTENCY_CONFLICT', '同一创建请求不能更换 Harness 版本，请使用新的创建请求。', 409);
+        }
+        return { conversation: existingConversation, existing: true };
+      }
+      if (runtimeChannel !== undefined && !selectedVersion) {
+        throw new GatewayError('IDEMPOTENCY_EXPIRED', '原创建请求已过期，请重新打开新建对话。', 409);
       }
       const now = isoNow(clock);
       const conversation = {
@@ -1272,6 +1335,7 @@ export async function createConversationGateway(options) {
         updatedAt: now,
         lastOpenedAt: null,
         lastError: null,
+        ...(runtimeChannel === undefined ? {} : { runtimeChannel, runtimeVersion: selectedVersion }),
       };
       state.conversations.push(conversation);
       state.idempotency.push({
@@ -1299,15 +1363,21 @@ export async function createConversationGateway(options) {
         actorUserId: context.user.id,
         conversationId: staged.conversation.id,
         accessMode: 'conversation',
+        ...(staged.conversation.runtimeChannel === undefined ? {} : {
+          runtimeChannel: staged.conversation.runtimeChannel,
+          runtimeVersionId: staged.conversation.runtimeVersion.versionId,
+        }),
       });
       requireManagedTaskspaceIdentity(provisioned.taskspace, staged.conversation, context.user);
       requireManagedTaskspaceStatus(provisioned.taskspace, ['active', 'stopped']);
+      const runtimeVersion = managedRuntimeVersion(provisioned.taskspace, staged.conversation);
       const ready = await store.mutate((state) => {
         const conversation = state.conversations.find((entry) => entry.id === staged.conversation.id);
         conversation.status = provisioned.taskspace.status === 'stopped' ? 'stopped' : 'active';
         conversation.port = provisioned.taskspace.harnessPort;
         conversation.updatedAt = isoNow(clock);
         conversation.lastError = null;
+        if (runtimeVersion) conversation.runtimeVersion = runtimeVersion;
         return clone(conversation);
       });
       await audit({ projectSlug: scopedProjectSlug, actor: context.user.username, action: 'conversation.create', targetType: 'conversation', targetId: ready.id, result: 'success', requestId });
@@ -1385,6 +1455,7 @@ export async function createConversationGateway(options) {
     }
     requireManagedTaskspaceIdentity(managed.taskspace, conversation, context.user);
     requireManagedTaskspaceStatus(managed.taskspace, ['active', 'stopped', 'provisioning', 'provisioning-failed']);
+    const runtimeVersion = managedRuntimeVersion(managed.taskspace, conversation);
     return store.mutate((state) => {
       const entry = state.conversations.find((item) => item.id === conversationId);
       // Do not overwrite a concurrent stop/open operation with an older observation.
@@ -1394,6 +1465,7 @@ export async function createConversationGateway(options) {
       entry.lastError = entry.status === 'failed' ? 'TASKSPACE_PROVISIONING_FAILED'
         : entry.status === 'provisioning' ? 'MANAGER_TIMEOUT' : null;
       entry.updatedAt = isoNow(clock);
+      if (runtimeVersion) entry.runtimeVersion = runtimeVersion;
       return clone(entry);
     });
   };
@@ -1413,12 +1485,17 @@ export async function createConversationGateway(options) {
           actorUserId: context.user.id,
           conversationId: conversation.id,
           accessMode: 'conversation',
+          ...(conversation.runtimeChannel === undefined ? {} : {
+            runtimeChannel: conversation.runtimeChannel,
+            runtimeVersionId: conversation.runtimeVersion.versionId,
+          }),
         });
       } else {
         managed = await scopedManager.start(conversation.taskId);
       }
       requireManagedTaskspaceIdentity(managed.taskspace, conversation, context.user);
       requireManagedTaskspaceStatus(managed.taskspace, ['active']);
+      managedRuntimeVersion(managed.taskspace, conversation);
     } catch (error) {
       const known = managerError(error);
       await audit({ projectSlug: conversation.projectSlug, actor: context.user.username, action: 'conversation.open', targetType: 'conversation', targetId: conversation.id, result: 'failed', code: known.code, requestId });
@@ -1433,6 +1510,8 @@ export async function createConversationGateway(options) {
         item.status = 'active';
         item.port = managed.taskspace.harnessPort;
         item.lastError = null;
+        const runtimeVersion = managedRuntimeVersion(managed.taskspace, item);
+        if (runtimeVersion) item.runtimeVersion = runtimeVersion;
       }
       entry.updatedAt = isoNow(clock);
       entry.lastOpenedAt = entry.updatedAt;
@@ -1537,7 +1616,7 @@ export async function createConversationGateway(options) {
           redirect(response, '/forge-gateway/login');
           return;
         }
-        if (['/forge-gateway/', '/forge-gateway/delivery-center', '/forge-gateway/platform-value'].includes(parsed.pathname) && context?.user.mustChangePassword) {
+        if (['/forge-gateway/', '/forge-gateway/delivery-center', '/forge-gateway/production-delivery', '/forge-gateway/platform-value'].includes(parsed.pathname) && context?.user.mustChangePassword) {
           redirect(response, '/forge-gateway/change-password');
           return;
         }
@@ -1683,6 +1762,49 @@ export async function createConversationGateway(options) {
         return;
       }
 
+      if (parsed.pathname.startsWith('/forge-gateway/api/production/')) {
+        const context = await requireAuthentication(request);
+        if (context.user.mustChangePassword) throw new GatewayError('PASSWORD_CHANGE_REQUIRED', '请先完成密码修改。', 403);
+        if (!['GET', 'POST'].includes(request.method)) throw new GatewayError('METHOD_NOT_ALLOWED', '此操作不支持当前请求方式。', 405);
+        if (request.method === 'POST') requireCsrf(request, context);
+        const body = request.method === 'POST' ? await readJson(request) : undefined;
+        if (body !== undefined && (!body || typeof body !== 'object' || Array.isArray(body))) throw new GatewayError('INVALID_REQUEST', '提交内容无效。', 400);
+        if (body && Object.hasOwn(body, 'actor')) throw new GatewayError('INVALID_REQUEST', '操作人员由登录账号确定，请刷新后重试。', 400);
+        const project = request.method === 'POST' ? body.project : parsed.searchParams.get('project');
+        if (typeof project !== 'string' || !/^[a-z][a-z0-9-]{2,31}$/.test(project)
+          || parsed.searchParams.getAll('project').length > 1
+          || (request.method === 'POST' && parsed.searchParams.has('project') && parsed.searchParams.get('project') !== project)) {
+          throw new GatewayError('PROJECT_REQUIRED', '请选择有效的项目。', 400);
+        }
+        await requireProjectAccess(context.user, project);
+        if (!productionClient) throw new GatewayError('PRODUCTION_UNAVAILABLE', '生产交付服务尚未启用，请联系平台维护人员。', 503);
+        const upstreamPath = `${parsed.pathname}${parsed.search}`;
+        try {
+          if (request.method === 'GET' && /^\/forge-gateway\/api\/production\/jobs\/[^/]+\/download$/.test(parsed.pathname)) {
+            const result = await productionClient.download({ path: upstreamPath, range: request.headers.range });
+            const headers = { 'cache-control': 'no-store' };
+            for (const name of ['content-type', 'content-length', 'content-disposition', 'content-range', 'accept-ranges', 'etag']) {
+              if (result.headers?.[name] !== undefined) headers[name] = result.headers[name];
+            }
+            response.writeHead(result.status, responseHeaders(headers));
+            const disconnect = () => result.stream.destroy();
+            response.once('close', disconnect);
+            result.stream.once('error', () => response.destroy());
+            result.stream.once('end', () => response.off('close', disconnect));
+            result.stream.pipe(response);
+          } else {
+            const actor = { id: context.user.id, username: context.user.username, displayName: context.user.displayName };
+            json(response, 200, await productionClient.request({ method: request.method, path: upstreamPath, body, actor }));
+          }
+        } catch (error) {
+          if (response.headersSent) { response.destroy(); return; }
+          const status = Number.isInteger(error.status) && error.status >= 400 && error.status <= 599 ? error.status : 503;
+          throw new GatewayError(typeof error.code === 'string' ? error.code : 'PRODUCTION_UNAVAILABLE',
+            status < 500 && typeof error.message === 'string' ? error.message : '生产交付服务暂时无法完成操作，请稍后重试。', status);
+        }
+        return;
+      }
+
       if (parsed.pathname.startsWith('/forge-gateway/api/delivery/')) {
         await requireAuthentication(request);
         try {
@@ -1737,6 +1859,15 @@ export async function createConversationGateway(options) {
           availability: ['ready', 'partial'].includes(status.availability) ? status.availability : 'unknown',
           occupied: typeof status.occupied === 'boolean' ? status.occupied : null,
           operation: operation ? { ...operation, owner } : null });
+        return;
+      }
+
+      if (request.method === 'GET' && parsed.pathname === '/forge-gateway/api/runtime-versions') {
+        const context = await requireAuthentication(request);
+        ensurePermission(context.user, 'conversation:create');
+        const slug = parsed.searchParams.get('project');
+        await requireProjectAccess(context.user, slug);
+        json(response, 200, await runtimeVersionsForManager(await resolveManager(slug)));
         return;
       }
 
@@ -1970,7 +2101,7 @@ export async function createConversationGateway(options) {
         const body = await readJson(request);
         const scopedProjectSlug = body.projectSlug ?? legacyProject?.slug;
         if (typeof scopedProjectSlug !== 'string') throw new GatewayError('PROJECT_REQUIRED', '请先选择一个项目。', 400);
-        const conversation = await createConversation(context, scopedProjectSlug, body.title, request.headers['idempotency-key'], requestId);
+        const conversation = await createConversation(context, scopedProjectSlug, body.title, request.headers['idempotency-key'], requestId, body.runtimeChannel);
         json(response, conversation.status === 'provisioning' ? 202 : 201, { conversation: publicConversation(conversation) });
         return;
       }
@@ -2505,6 +2636,8 @@ async function startFromCommandLine() {
     store,
     deliveryStore: process.env.DELIVERY_CENTER_SOCKET
       ? createDeliveryCenterClient({ socketPath: process.env.DELIVERY_CENTER_SOCKET }) : undefined,
+    productionClient: process.env.PRODUCTION_DELIVERY_SOCKET
+      ? createProductionDeliveryClient({ socketPath: process.env.PRODUCTION_DELIVERY_SOCKET }) : undefined,
     manager,
     managerForProject,
     managerTokenForProject,

@@ -1319,7 +1319,7 @@ test('HTML enables guarded automatic upward history loading while retaining the 
     vm.runInNewContext(selectionScript, {
       URLSearchParams,
       location: {
-        search: '?forgeSession=session-cbd42932-0a7b-49b3-ba52-3a61e97bcd5b&view=chat',
+        search: '?forgeSession=session-056418e4-0c3c-6efa-e1f2-2c4a5841ba25&view=chat',
         pathname: '/',
         hash: '#latest',
       },
@@ -1328,7 +1328,7 @@ test('HTML enables guarded automatic upward history loading while retaining the 
     });
     assert.equal(
       stored.get('dsh.sessions.current'),
-      JSON.stringify({ sessionId: 'session-cbd42932-0a7b-49b3-ba52-3a61e97bcd5b' }),
+      JSON.stringify({ sessionId: 'session-056418e4-0c3c-6efa-e1f2-2c4a5841ba25' }),
     );
     assert.equal(replacements.length, 1);
     assert.equal(replacements[0][2], '/?view=chat#latest');

@@ -8,7 +8,7 @@ const groups = [{"operations":[{"method":"GET","path":"/business/fire-equipment/
 
 test('accepted API projection preserves all 92 explicit domain routes and rejects unknown or ambiguous paths', () => {
   const artifactDigest = '12575429eccf7cfb25395d629a46c495f773f7cbc1089a77af47cc45ef40156c';
-  const state = { taskId: 'c-534aaa6bfe0d70816f504e8e', workflowId: 'crud-production',
+  const state = { taskId: 'c-0e254375986948ea7b361297', workflowId: 'crud-production',
     sourceCommit: '34b0710eeb38467b9a6138c40c74b4f04e1caf72', acceptedArtifacts: { 'domain-api-contract': artifactDigest } };
   const domain = { artifactKind: 'domain-api-contract', artifactDigest, payload: { apiContracts: { endpoints: groups } } };
   const result = projectForgeAcceptedApiContract({ state, acceptedArtifacts: [domain] });

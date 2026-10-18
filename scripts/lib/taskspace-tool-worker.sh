@@ -41,4 +41,30 @@ taskspace_tool_worker_compose_args() {
   template="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../templates/taskspace" && pwd -P)/compose.tool-worker.yaml" || return 1
   [[ -f "${template}" && ! -L "${template}" ]] || return 1
   tool_worker_args_ref+=(--file "${template}")
+  # Direct development needs unprivileged Bubblewrap namespaces only in the
+  # separate credential-free worker. Legacy/default TaskSpaces keep the original
+  # Docker policies; status inspection never installs or loads a host profile.
+  local development_mode='' development_mode_count
+  development_mode_count="$(awk -F= '$1 == "FORGE_DEVELOPMENT_MODE" {n++} END {print n+0}' "${task_root}/task.env")"
+  if [[ "${development_mode_count}" != 0 ]]; then
+    [[ "${development_mode_count}" == 1 ]] || return 1
+    development_mode="$(_taskspace_network_env_exact_value "${task_root}/task.env" FORGE_DEVELOPMENT_MODE)" || return 1
+  fi
+  if [[ "${development_mode}" == direct ]]; then
+    template="$(dirname -- "${template}")/compose.tool-worker.direct.yaml"
+    [[ -f "${template}" && ! -L "${template}" ]] || return 1
+    tool_worker_args_ref+=(--file "${template}")
+    # Follow the existing tool-worker image capability contract. A tag name or
+    # a template installation alone never relaxes an older worker's proc mounts.
+    # Missing/local-unavailable images retain the original outer masks; normal
+    # preparation can select the capability after it has obtained the real image.
+    local image private_proc_capability=''
+    image="$(_taskspace_network_env_exact_value "${task_root}/task.env" HARNESS_IMAGE)" || return 1
+    if private_proc_capability="$(docker image inspect --format '{{index .Config.Labels "io.forge.tool-worker.private-proc"}}' "${image}" 2>/dev/null)" \
+      && [[ "${private_proc_capability}" == v1 ]]; then
+      template="$(dirname -- "${template}")/compose.tool-worker.private-proc.yaml"
+      [[ -f "${template}" && ! -L "${template}" ]] || return 1
+      tool_worker_args_ref+=(--file "${template}")
+    fi
+  fi
 }

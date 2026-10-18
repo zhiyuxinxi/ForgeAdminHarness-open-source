@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import { existsSync } from 'node:fs';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import {
@@ -22,7 +23,7 @@ import test from 'node:test';
 
 test('historical read-only inventory: original implementation prompt is not a global restriction', async () => {
   const prompt = (await readFile(new URL('./fixtures/customer-bilingual-initial-prompt.md', import.meta.url), 'utf8')).replace(/\r\n/gu, '\n');
-  assert.equal(crypto.createHash('sha256').update(prompt).digest('hex'), '5a6a12b7c970040ca74ec78c746fc5d1bee166a5ba22075ea080643e4f3708ca');
+  assert.equal(crypto.createHash('sha256').update(prompt).digest('hex'), '8a252f3be107c19321e2aaaab3f1c231e2cf2dfc9cc6dc37b326bdaac9a38089');
   assert.equal(hasGlobalReadOnlyIntent(prompt), false);
   assert.equal(hasGlobalReadOnlyIntent(`${prompt}\n本轮只读分析，不要修改代码。`), true);
 });
@@ -85,6 +86,16 @@ test('UI component scoped read: global prohibitions and absent or quoted authori
     scope + '？' + reading,
     '“' + scope + '”。' + reading,
   ]) assert.equal(hasGlobalReadOnlyIntent(prompt), true, prompt);
+});
+
+test('historical comma-separated authorization does not override the current source-read request', () => {
+  const historical = '之前我明确授权你先 prepare，再只修当前测试。';
+  assert.equal(hasGlobalReadOnlyIntent(historical + '只读 src/Example.java。'), true);
+  assert.equal(hasGlobalReadOnlyIntent('此前我明确授权你先 prepare，再只修当前测试。只读 src/Example.java。'), true);
+  assert.equal(hasGlobalReadOnlyIntent('我明确授权你先 prepare，再只修当前测试。只读 src/Example.java。'), false);
+  assert.equal(hasGlobalReadOnlyIntent(historical + '现在请修改当前测试。只读 src/Example.java。'), false);
+  assert.equal(hasGlobalReadOnlyIntent('之前要求保存，现在请修改当前测试。只读 src/Example.java。'), false);
+  assert.equal(hasGlobalReadOnlyIntent(historical + '现在请修改当前测试。本轮只读分析，不得修改代码。'), true);
 });
 
 test('CRUD scoped source read: exact original request remains an implementation', () => {
@@ -195,7 +206,8 @@ test('global read-only intent does not promote local scope exclusions across cla
   ]) assert.equal(hasGlobalReadOnlyIntent(prompt), false, prompt);
 });
 
-test('scoped method context inspection preserves explicit file-edit permission', async () => {
+test('scoped method context inspection preserves explicit file-edit permission', async (t) => {
+  if (!existsSync(new URL('../docs/long-tasks/acceptance-20260929/coverage-workflow-deploy-cas-callers-prompt.md', import.meta.url))) return t.skip('Private historical prompt is not included in the public distribution.');
   const request = await readFile(new URL('../docs/long-tasks/acceptance-20260929/coverage-workflow-deploy-cas-callers-prompt.md', import.meta.url), 'utf8');
   for (const prompt of [
     request,
@@ -369,7 +381,8 @@ test('read-only historical evidence does not revoke an explicit current repair',
   ]) assert.equal(hasGlobalReadOnlyIntent(prompt), true, prompt);
 });
 
-test('a read-only file digest fact does not turn review preparation into a read-only command', async () => {
+test('a read-only file digest fact does not turn review preparation into a read-only command', async (t) => {
+  if (!existsSync(new URL('../docs/long-tasks/acceptance-20260929/coverage-dual-review-recovery-prepare-prompt.md', import.meta.url))) return t.skip('Private historical prompt is not included in the public distribution.');
   const prompt = await readFile(new URL('../docs/long-tasks/acceptance-20260929/coverage-dual-review-recovery-prepare-prompt.md', import.meta.url), 'utf8');
   assert.equal(hasGlobalReadOnlyIntent(prompt), false);
   const fact = `只读需求文件 docs/contract.json 的 SHA256 仍为 ${'a'.repeat(64)}`;
@@ -387,7 +400,8 @@ test('a read-only file digest fact does not turn review preparation into a read-
   ]) assert.equal(hasGlobalReadOnlyIntent(text), true, text);
 });
 
-test('bounded source reading does not cancel an explicit authorized implementation', async () => {
+test('bounded source reading does not cancel an explicit authorized implementation', async (t) => {
+  if (!existsSync(new URL('../docs/long-tasks/acceptance-20260929/coverage-workflow-keep-version-implementation-prompt.md', import.meta.url))) return t.skip('Private historical prompt is not included in the public distribution.');
   for (const prompt of [
     await readFile(new URL('../docs/long-tasks/acceptance-20260929/coverage-workflow-keep-version-implementation-prompt.md', import.meta.url), 'utf8'),
     '修改这个测试。只读取直接相关源码。',
@@ -407,7 +421,8 @@ test('bounded source reading does not cancel an explicit authorized implementati
   ]) assert.equal(hasGlobalReadOnlyIntent(prompt), true, prompt);
 });
 
-test('read-only reference headings preserve an explicit repair inside an existing fixture', async () => {
+test('read-only reference headings preserve an explicit repair inside an existing fixture', async (t) => {
+  if (!existsSync(new URL('../docs/long-tasks/acceptance-20260929/coverage-optlock-persistence-fault-prompt.md', import.meta.url)) || !existsSync(new URL('../docs/long-tasks/acceptance-20260929/coverage-optlock-persistence-test-prompt.md', import.meta.url))) return t.skip('Private historical prompt is not included in the public distribution.');
   const prompt = await readFile(new URL('../docs/long-tasks/acceptance-20260929/coverage-optlock-persistence-fault-prompt.md', import.meta.url), 'utf8');
   const compileFix = await readFile(new URL('../docs/long-tasks/acceptance-20260929/coverage-optlock-persistence-test-prompt.md', import.meta.url), 'utf8');
   for (const text of [
@@ -428,7 +443,8 @@ test('read-only reference headings preserve an explicit repair inside an existin
   ]) assert.equal(hasGlobalReadOnlyIntent(text), true, text);
 });
 
-test('bounded explicit modification keeps read-only citations scoped to references', async () => {
+test('bounded explicit modification keeps read-only citations scoped to references', async (t) => {
+  if (!existsSync(new URL('../docs/long-tasks/acceptance-20260929/coverage-api-rbac-rejected-edit-recovery-prompt.md', import.meta.url))) return t.skip('Private historical prompt is not included in the public distribution.');
   const prompt = await readFile(new URL('../docs/long-tasks/acceptance-20260929/coverage-api-rbac-rejected-edit-recovery-prompt.md', import.meta.url), 'utf8');
   for (const text of [
     prompt,
@@ -446,7 +462,8 @@ test('bounded explicit modification keeps read-only citations scoped to referenc
   ]) assert.equal(hasGlobalReadOnlyIntent(text), true, text);
 });
 
-test('source-only correction preserves scoped read-only comparison and forbids global writes when requested', async () => {
+test('source-only correction preserves scoped read-only comparison and forbids global writes when requested', async (t) => {
+  if (!existsSync(new URL('../docs/long-tasks/acceptance-20260929/coverage-workflow-http-crypto-source-correction-prompt.md', import.meta.url))) return t.skip('Private historical prompt is not included in the public distribution.');
   const prompt = await readFile(new URL('../docs/long-tasks/acceptance-20260929/coverage-workflow-http-crypto-source-correction-prompt.md', import.meta.url), 'utf8');
   for (const text of [
     prompt,
@@ -467,7 +484,8 @@ test('source-only correction preserves scoped read-only comparison and forbids g
   ]) assert.equal(hasGlobalReadOnlyIntent(text), true, text);
 });
 
-test('read-only fixture references preserve direct owner implementation authorization', async () => {
+test('read-only fixture references preserve direct owner implementation authorization', async (t) => {
+  if (!existsSync(new URL('../docs/long-tasks/acceptance-20260929/coverage-optlock-permission-resume-after-preparation-prompt.md', import.meta.url)) || !existsSync(new URL('../docs/long-tasks/acceptance-20260929/coverage-workflow-authoritative-bootstrap-prompt.md', import.meta.url))) return t.skip('Private historical prompt is not included in the public distribution.');
   const prompt = await readFile(new URL('../docs/long-tasks/acceptance-20260929/coverage-workflow-authoritative-bootstrap-prompt.md', import.meta.url), 'utf8');
   const optlock = await readFile(new URL('../docs/long-tasks/acceptance-20260929/coverage-optlock-permission-resume-after-preparation-prompt.md', import.meta.url), 'utf8');
   for (const text of [prompt,
@@ -495,7 +513,8 @@ test('read-only fixture references preserve direct owner implementation authoriz
   ]) assert.equal(hasGlobalReadOnlyIntent(text), true, text);
 });
 
-test('authorized preparation followed by repair permits bounded reads of named source files', async () => {
+test('authorized preparation followed by repair permits bounded reads of named source files', async (t) => {
+  if (!existsSync(new URL('../docs/long-tasks/acceptance-20260929/coverage-controlled-query-deterministic-test-prompt.md', import.meta.url))) return t.skip('Private historical prompt is not included in the public distribution.');
   const prompt = await readFile(new URL('../docs/long-tasks/acceptance-20260929/coverage-controlled-query-deterministic-test-prompt.md', import.meta.url), 'utf8');
   for (const text of [
     prompt,
@@ -515,7 +534,8 @@ test('authorized preparation followed by repair permits bounded reads of named s
   ]) assert.equal(hasGlobalReadOnlyIntent(text), true, text);
 });
 
-test('reading status in an authorized metadata sequence is not global read-only', async () => {
+test('reading status in an authorized metadata sequence is not global read-only', async (t) => {
+  if (!existsSync(new URL('../docs/long-tasks/acceptance-20260929/coverage-cas-concurrent-resume-prompt.md', import.meta.url))) return t.skip('Private historical prompt is not included in the public distribution.');
   for (const prompt of [
     '创建交付状态记录。只读当前状态。',
     '先初始化交付状态；只读状态。',
@@ -3182,6 +3202,116 @@ test('Broker runtime resolves the same image text digest as the Manager', { skip
   }
 });
 
+test('source transition context lookup waits for slow Broker while ordinary deadlines and identity remain enforced', { skip: process.platform !== 'linux' }, async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'forge-transition-broker-'));
+  const tokenFile = `/run/forge-taskspace/transition-test-${crypto.randomUUID()}`;
+  const content = [{ type: 'text', text: '查看当前状态。' }];
+  const classified = classifyPinnedDshPromptBody(promptBody({ content }), 'session.prompt');
+  const token = crypto.randomBytes(32).toString('hex');
+  let server;
+  try {
+    await mkdir(path.dirname(tokenFile), { recursive: true });
+    await writeFile(tokenFile, token, { flag: 'wx', mode: 0o600 });
+    const { idempotent: _idempotent, refreshed: _refreshed, ...context } = await prepareProtectedExecutionContext({
+      projectRoot: root, projectSlug: metadata.projectSlug, taskMetadata: metadata,
+      request: authenticated(classified), now: Date.now(), policyPath,
+    });
+    let delayMs = 0;
+    let mismatch = false;
+    server = http.createServer(async (request, response) => {
+      const chunks = []; for await (const chunk of request) chunks.push(chunk);
+      const input = JSON.parse(Buffer.concat(chunks));
+      assert.equal(request.headers['x-forge-taskspace-token'], token);
+      assert.equal(input.rpcId, classified.rpcId);
+      assert.equal(input.textDigest, classified.textDigest);
+      const result = mismatch ? { ...context, rpcId: crypto.randomUUID() } : context;
+      setTimeout(() => {
+        if (!response.destroyed) response.end(JSON.stringify({ ok: true, result }));
+      }, delayMs);
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const resolver = createBrokerExecutionContextResolver({ brokerUrl: `http://127.0.0.1:${server.address().port}`,
+      tokenFile, projectSlug: metadata.projectSlug, taskId: metadata.taskId,
+      conversationId: metadata.conversationId, actorUserId: metadata.actorUserId,
+      timeoutMs: 1000, sourceTransitionTimeoutMs: 2500 });
+    const agent = { session: { id: 'session-one' } };
+    await resolver({ agent, decision: { messages: [{ source: { kind: 'user', rpcId: classified.rpcId }, content }] } });
+    delayMs = 1400;
+    const continuation = { agent, decision: { messages: [] } };
+    await assert.rejects(resolver(continuation), /EXECUTION_CONTEXT_TIMEOUT/u);
+    assert.equal((await resolver({ ...continuation, sourceTransition: { phase: 'integrated' } })).executionId, context.executionId);
+    await assert.rejects(resolver({ ...continuation, sourceTransition: { phase: 'unknown' } }), /EXECUTION_CONTEXT_TIMEOUT/u);
+    delayMs = 0; mismatch = true;
+    await assert.rejects(resolver({ ...continuation, sourceTransition: { phase: 'integrated' } }), /does not match the active DSH prompt/u);
+    mismatch = false;
+    const defaults = { brokerUrl: `http://127.0.0.1:${server.address().port}`, tokenFile,
+      projectSlug: metadata.projectSlug, taskId: metadata.taskId,
+      conversationId: metadata.conversationId, actorUserId: metadata.actorUserId };
+    assert.throws(() => createBrokerExecutionContextResolver({ ...defaults, sourceTransitionTimeoutMs: 60_001 }), /configuration is invalid/u);
+    const productionResolver = createBrokerExecutionContextResolver(defaults);
+    await productionResolver({ agent, decision: { messages: [{ source: { kind: 'user', rpcId: classified.rpcId }, content }] } });
+    delayMs = 31_000;
+    assert.equal((await productionResolver({ ...continuation, sourceTransition: { phase: 'checkpointed' } })).executionId, context.executionId);
+  } finally {
+    if (server) await new Promise(resolve => server.close(resolve));
+    await rm(tokenFile, { force: true });
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('current request renewal waits beyond five seconds without extending first lookup or accepting another RPC', { skip: process.platform !== 'linux' }, async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'forge-ordinary-renewal-'));
+  const tokenFile = `/run/forge-taskspace/renewal-test-${crypto.randomUUID()}`;
+  const content = [{ type: 'text', text: '查看当前状态。' }];
+  const classified = classifyPinnedDshPromptBody(promptBody({ content }), 'session.prompt');
+  const token = crypto.randomBytes(32).toString('hex');
+  let server;
+  try {
+    await mkdir(path.dirname(tokenFile), { recursive: true });
+    await writeFile(tokenFile, token, { flag: 'wx', mode: 0o600 });
+    const { idempotent: _idempotent, refreshed: _refreshed, ...context } = await prepareProtectedExecutionContext({
+      projectRoot: root, projectSlug: metadata.projectSlug, taskMetadata: metadata,
+      request: authenticated(classified), now: Date.now(), policyPath,
+    });
+    let delayMs = 6100, mismatch = false;
+    server = http.createServer(async (request, response) => {
+      const chunks = []; for await (const chunk of request) chunks.push(chunk);
+      const input = JSON.parse(Buffer.concat(chunks));
+      assert.equal(request.headers['x-forge-taskspace-token'], token);
+      assert.equal(input.rpcId, classified.rpcId);
+      assert.equal(input.textDigest, classified.textDigest);
+      assert.equal(Object.hasOwn(input, 'renewal'), false, 'the wait hint is local and never creates Broker authority');
+      const result = mismatch ? { ...context, rpcId: crypto.randomUUID() } : context;
+      const timer = setTimeout(() => response.end(JSON.stringify({ ok: true, result })), delayMs);
+      response.once('close', () => clearTimeout(timer));
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const options = { brokerUrl: `http://127.0.0.1:${server.address().port}`, tokenFile,
+      projectSlug: metadata.projectSlug, taskId: metadata.taskId,
+      conversationId: metadata.conversationId, actorUserId: metadata.actorUserId };
+    const resolver = createBrokerExecutionContextResolver(options);
+    const agent = { session: { id: 'session-one' } };
+    const initial = { agent, decision: { messages: [{ source: { kind: 'user', rpcId: classified.rpcId }, content }] } };
+    const renewal = { rpcId: classified.rpcId, dshSessionId: agent.session.id };
+    await assert.rejects(resolver({ ...initial, renewal }), /EXECUTION_CONTEXT_TIMEOUT/u);
+    delayMs = 0;
+    await resolver(initial);
+    delayMs = 6100;
+    const started = Date.now();
+    const renewed = await resolver({ agent, decision: { messages: [] }, renewal });
+    assert.ok(Date.now() - started >= 6000, 'the real HTTP renewal exceeds the default five-second lookup deadline');
+    assert.equal(renewed.executionId, context.executionId);
+    assert.equal(renewed.rpcId, classified.rpcId);
+    assert.equal(renewed.actionCeiling, context.actionCeiling);
+    delayMs = 0; mismatch = true;
+    await assert.rejects(resolver({ agent, decision: { messages: [] }, renewal }), /does not match the active DSH prompt/u);
+  } finally {
+    if (server) await new Promise(resolve => server.close(resolve));
+    await rm(tokenFile, { force: true });
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('controlled preparation accepts a continued command and post-release observation without treating a receipt digest as a ban', () => {
   const digestFact = '只读原件摘要' + 'a'.repeat(64) + '，未写数据库。';
   for (const request of ['请继续执行当前任务的受控 forge-release prepare。', '继续当前消防任务的发布后受控运行补验。']) {
@@ -3303,8 +3433,8 @@ const FIVE_MODULE_ORIGINAL_PROMPTS = [
   },
   {
     "name": "leadership",
-    "sha256": "0680a5cb5dec4c24c0a593d6fb51ff30a0690925c7adfc512c76ea75b2b88bb0",
-    "prompt": "请实现并提交、发布领导引领力现有PC页面的前端标准化修复。\r\n\r\n当前明确范围：forge-admin-ui/src/views/leadership及该模块直接使用的业务组件/API/前端测试；以当前真实菜单和代码核实范围。\r\n原领导引领力交付对话dd5f4e6d-561c-4cea-8c14-f839397f31b7 / task c-ce84f2ce2733cfec1ecd9bff（领导力-测试1.5）。本对话是Owner授权、与其明确关联的前端修复对话，原对话和归属保留。\r\n\r\n本次只读盘点页面候选（不是完成证明）：\r\n- 基础台账与配置：resp-list、check-item、commit-template、resp-template、task-engine\r\n- 承诺履责与档案：commitment-all、commitment-president、resp-book、sign-status、archive\r\n- 组织计划任务工作区：org-chart、personal-plan、target-task、task-exec、action-plan\r\n- 考核与评估：assess-plan、assess-approval、assess-result、device-assess、device-summary、duty-score\r\n- 费用预算与统计：fee-accrual、fee-budget、fee-stat\r\n\r\n已发现的代表差距（原对话核实实际行为后修）：\r\n- forge-admin-ui/src/views/leadership/resp-list.vue：手写查询、固定640px NModal及view模式disabled输入框；有单行删除，普通台账默认多选批删需补齐实际契约。\r\n- forge-admin-ui/src/views/leadership/components/ConfigAssetPage.vue：4个配置入口经业务私有NDataTable/NForm/NModal封装，readonly仍disabled表单；需复用公共查询/浮层/可读详情，保留真正模板设计步骤。\r\n- forge-admin-ui/src/views/leadership/personal-plan.vue：主从计划工作区手写表格及查询/按钮；统一公共布局与状态，保留业务工作区，不机械改普通CRUD。\r\n操作员当前浏览器已实看action-plan：普通最大化1920×945；列表有勾选但无批删按钮，查询/工具栏与行按钮不是原生统一模式；新增正确使用modal但footer靠左。只读详情已有0输入控件，保留这个正确点，修正只读内容残留必填星号和无内容操作列。新建/查看/取消未写业务数据。\r\n\r\nOwner已确认：用平台原生用户管理和已交付的公共前端标准，优化五模块全部已生成PC业务页面。当前这轮仅负责本文指定的一个模块，从最新main保留其他AI成果继续。你负责业务代码、业务测试和正常受控提交发布；操作员负责公共底座和直接平台阻塞，不会替你代写业务。\r\n\r\n先读取实际forge-admin-ui/DESIGN.md、原版src/views/system/user.vue相关模式以及forge-frontend-admin Skill的references/page-patterns.md，核实当前AiCrudPage/AiSearch/AiTable/AiForm/ai-modal/MasterDetailWorkspace/SystemTableCell的真实接口。沿实际组件和主题实现，不每页重新发明查询、表格、分页、弹窗及样式。原有业务规则、状态、数据、权限、后端接口、已有导入导出/签字/附件和子表能力保持。\r\n\r\n完整标准同时覆盖：页面/打开方式、布局与信息层级、字体主题密度、按钮样式与位置顺序、查询区、列表默认能力、表格语义、新增编辑、分组长表单、可读详情及审批、弹窗抽屉浮层、完整提交过程、加载/空/错/无权限等状态、返回上下文、数据格式与业务文案、权限及状态、宽窄窗口与焦点、关联选择/附件等既有扩展、标准代码与API组织。这些是默认前端能力，不等待产品逐控件补需求。\r\n\r\n普通可维护台账默认多选/全选/选中数量/批删及确认；仅有单删接口时采用已有公共支持的真实逐条调用，正确保留失败项、刷新成功项，不用“无batch端点”隐藏能力。只读归档/审计、审批和库存流水等真实语义限制按现有业务核定，记录具体依据，不能机械加删除。普通新增编辑默认原生modal；已有独立路由、字段多、草稿按钮都不足以保留独立编辑页。原专用主从工作区、地图、流程/模板设计器按真实交互保留。\r\n\r\n按钮主次/尺寸/图标/顺序沿公共实现，查询为搜索→重置→适用的展开，底部取消在左、次操作居中、保存/提交主操作在右；行常用操作保持稳定顺序，低频用更多。字段使用语义控件、字典和关联选择；编辑真实回填；校验、防重、busy、失败保留、重试、重开复位、取消不写、未保存关闭遵循现有公共规则。详情用完整分组可读值，不用灰色disabled输入框或原始JSON。保留设计器已拥有的显示配置/字段，不因改版覆盖人工配置；这次不扩建低代码系统。\r\n\r\n完成本模块全部已生成页面的差距修复。你可按共享业务组件及页面类型分组处理；已达标的实现保留并说明，无需为了凑改动重写。API调用和转换进入本模块现有API层，复用公共状态/反馈，业务专用扩展维持明确边界。发现直接公共缺口给出最小证据和所需接口，由操作员处理底座；其余可推进页面继续完成。\r\n\r\n验证限定本次修改及明确直接影响：相关前端lint/组件交互/业务边界与正常受控发布检查，保留有效旧证据；源码检查和浏览器实际行为分别报告。避免重跑无关后端、全仓扫描或从需求阶段重启整个八阶段。业务数据验收优先测试适配/专用测试记录，不删除已有生产记录、不代审批。最后通过正常checkpoint/integrate/release完成main和本次必要UI运行版本；按现役Runner真实要求处理发布检查与备份，保留所有失败记录。发布共享锁按正常机制串行，不能清理他人的锁/源码/镜像。遇到阻塞报告直接工具原件和最小解除条件；操作员已授权优先解阻。不得用文档、静态检查或“建议下一步”替代尚可推进的实际修复。\r\n\r\n回报实际修改页面/共享业务组件、保留的业务例外、定向结果、未验边界和最终source/运行版本；遵守同根因两轮无推进或累计30活跃分钟换路径。任务是完整一轮本模块标准化，不止修一页示例。无需再次请求Owner授权。\r\n"
+    "sha256": "ff18cf3463e492efc98069750e013d402d5237913a72bc9553bab2f8659857a0",
+    "prompt": "请实现并提交、发布领导引领力现有PC页面的前端标准化修复。\r\n\r\n当前明确范围：forge-admin-ui/src/views/leadership及该模块直接使用的业务组件/API/前端测试；以当前真实菜单和代码核实范围。\r\n原领导引领力交付对话dd5f4e6d-561c-4cea-8c14-f839397f31b7 / task c-c444ed5231de9b6877f45cab（领导力-测试1.5）。本对话是Owner授权、与其明确关联的前端修复对话，原对话和归属保留。\r\n\r\n本次只读盘点页面候选（不是完成证明）：\r\n- 基础台账与配置：resp-list、check-item、commit-template、resp-template、task-engine\r\n- 承诺履责与档案：commitment-all、commitment-president、resp-book、sign-status、archive\r\n- 组织计划任务工作区：org-chart、personal-plan、target-task、task-exec、action-plan\r\n- 考核与评估：assess-plan、assess-approval、assess-result、device-assess、device-summary、duty-score\r\n- 费用预算与统计：fee-accrual、fee-budget、fee-stat\r\n\r\n已发现的代表差距（原对话核实实际行为后修）：\r\n- forge-admin-ui/src/views/leadership/resp-list.vue：手写查询、固定640px NModal及view模式disabled输入框；有单行删除，普通台账默认多选批删需补齐实际契约。\r\n- forge-admin-ui/src/views/leadership/components/ConfigAssetPage.vue：4个配置入口经业务私有NDataTable/NForm/NModal封装，readonly仍disabled表单；需复用公共查询/浮层/可读详情，保留真正模板设计步骤。\r\n- forge-admin-ui/src/views/leadership/personal-plan.vue：主从计划工作区手写表格及查询/按钮；统一公共布局与状态，保留业务工作区，不机械改普通CRUD。\r\n操作员当前浏览器已实看action-plan：普通最大化1920×945；列表有勾选但无批删按钮，查询/工具栏与行按钮不是原生统一模式；新增正确使用modal但footer靠左。只读详情已有0输入控件，保留这个正确点，修正只读内容残留必填星号和无内容操作列。新建/查看/取消未写业务数据。\r\n\r\nOwner已确认：用平台原生用户管理和已交付的公共前端标准，优化五模块全部已生成PC业务页面。当前这轮仅负责本文指定的一个模块，从最新main保留其他AI成果继续。你负责业务代码、业务测试和正常受控提交发布；操作员负责公共底座和直接平台阻塞，不会替你代写业务。\r\n\r\n先读取实际forge-admin-ui/DESIGN.md、原版src/views/system/user.vue相关模式以及forge-frontend-admin Skill的references/page-patterns.md，核实当前AiCrudPage/AiSearch/AiTable/AiForm/ai-modal/MasterDetailWorkspace/SystemTableCell的真实接口。沿实际组件和主题实现，不每页重新发明查询、表格、分页、弹窗及样式。原有业务规则、状态、数据、权限、后端接口、已有导入导出/签字/附件和子表能力保持。\r\n\r\n完整标准同时覆盖：页面/打开方式、布局与信息层级、字体主题密度、按钮样式与位置顺序、查询区、列表默认能力、表格语义、新增编辑、分组长表单、可读详情及审批、弹窗抽屉浮层、完整提交过程、加载/空/错/无权限等状态、返回上下文、数据格式与业务文案、权限及状态、宽窄窗口与焦点、关联选择/附件等既有扩展、标准代码与API组织。这些是默认前端能力，不等待产品逐控件补需求。\r\n\r\n普通可维护台账默认多选/全选/选中数量/批删及确认；仅有单删接口时采用已有公共支持的真实逐条调用，正确保留失败项、刷新成功项，不用“无batch端点”隐藏能力。只读归档/审计、审批和库存流水等真实语义限制按现有业务核定，记录具体依据，不能机械加删除。普通新增编辑默认原生modal；已有独立路由、字段多、草稿按钮都不足以保留独立编辑页。原专用主从工作区、地图、流程/模板设计器按真实交互保留。\r\n\r\n按钮主次/尺寸/图标/顺序沿公共实现，查询为搜索→重置→适用的展开，底部取消在左、次操作居中、保存/提交主操作在右；行常用操作保持稳定顺序，低频用更多。字段使用语义控件、字典和关联选择；编辑真实回填；校验、防重、busy、失败保留、重试、重开复位、取消不写、未保存关闭遵循现有公共规则。详情用完整分组可读值，不用灰色disabled输入框或原始JSON。保留设计器已拥有的显示配置/字段，不因改版覆盖人工配置；这次不扩建低代码系统。\r\n\r\n完成本模块全部已生成页面的差距修复。你可按共享业务组件及页面类型分组处理；已达标的实现保留并说明，无需为了凑改动重写。API调用和转换进入本模块现有API层，复用公共状态/反馈，业务专用扩展维持明确边界。发现直接公共缺口给出最小证据和所需接口，由操作员处理底座；其余可推进页面继续完成。\r\n\r\n验证限定本次修改及明确直接影响：相关前端lint/组件交互/业务边界与正常受控发布检查，保留有效旧证据；源码检查和浏览器实际行为分别报告。避免重跑无关后端、全仓扫描或从需求阶段重启整个八阶段。业务数据验收优先测试适配/专用测试记录，不删除已有生产记录、不代审批。最后通过正常checkpoint/integrate/release完成main和本次必要UI运行版本；按现役Runner真实要求处理发布检查与备份，保留所有失败记录。发布共享锁按正常机制串行，不能清理他人的锁/源码/镜像。遇到阻塞报告直接工具原件和最小解除条件；操作员已授权优先解阻。不得用文档、静态检查或“建议下一步”替代尚可推进的实际修复。\r\n\r\n回报实际修改页面/共享业务组件、保留的业务例外、定向结果、未验边界和最终source/运行版本；遵守同根因两轮无推进或累计30活跃分钟换路径。任务是完整一轮本模块标准化，不止修一页示例。无需再次请求Owner授权。\r\n"
   }
 ];
 
@@ -3371,4 +3501,26 @@ test('source-review repair findings: independent authorization and explicit rest
     '当前只读源码审阅是否确认两项需要修复？',
     '| 本轮只读源码审阅 | 不得修改代码 |',
   ]) assert.equal(hasGlobalReadOnlyIntent(`请修复当前页面。\n${restriction}`), true, restriction);
+});
+
+
+test('candidate verification review: original backend feedback is not a global read-only restriction', async () => {
+  const prompt = await readFile(new URL('./fixtures/backend-candidate-permission-review-prompt.md', import.meta.url), 'utf8');
+  assert.equal(hasGlobalReadOnlyIntent(prompt), false);
+  for (const restriction of ['本轮只读分析。', '本轮只读。', '不得修改任何文件。']) {
+    assert.equal(hasGlobalReadOnlyIntent(`${prompt}\n${restriction}`), true, restriction);
+  }
+});
+
+test('candidate verification review: findings alone, questions and quoted commands grant no repair exception', () => {
+  const finding = '只读审查发现：ControllerTest 仅反射检查注解。';
+  const continuation = '继续当前示例候选，补齐权限验证后保存候选，不发布。';
+  for (const prefix of ['', `“${continuation}”\n`, `文档说明：${continuation}\n`, continuation.replace('。', '？') + '\n']) {
+    assert.equal(hasGlobalReadOnlyIntent(prefix + finding), true, prefix);
+  }
+  assert.equal(hasGlobalReadOnlyIntent(`${continuation}\n${finding}`), false);
+  assert.equal(hasGlobalReadOnlyIntent(`请修复当前测试。\n${finding}`), false);
+  for (const restriction of ['本轮只读审查发现：ControllerTest 仅反射检查注解。', '请只读审查发现的问题。', '只读审查发现：请修改测试。']) {
+    assert.equal(hasGlobalReadOnlyIntent(`${continuation}\n${restriction}`), true, restriction);
+  }
 });

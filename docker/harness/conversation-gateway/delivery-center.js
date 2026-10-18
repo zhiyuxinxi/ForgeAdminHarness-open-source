@@ -1,3 +1,4 @@
+import { mountProductionDelivery } from './production-delivery.js';
 import { deliveryTabs, subviews, enumNames, detailSchemas } from './delivery-center-views.js';
 const kindTabs = { menu: 'menus', requirement: 'requirements', function: 'overview', scene: 'scenes', entity: 'entities', table: 'database', page: 'pages', api: 'backend', permission: 'permissions', test: 'acceptance', rule: 'rules', task: 'tasks', dictionary: 'dictionaries', release: 'releases', artifact: 'artifacts', stage: 'stages', batch: 'batches' };
 const phaseNames = { requirements: '需求', 'domain-contract': '领域与 API 合同', database: '数据库', 'ui-design': 'UI 设计', backend: '后端实现', frontend: '前端实现', 'access-wiring': '权限接线', 'cross-layer-acceptance': '跨层验收' };
@@ -13,12 +14,12 @@ Object.assign(fieldNames,{businessPurpose:'业务用途',purpose:'用途',contex
 Object.assign(fieldNames,{observableResult:'可观察结果',boundaries:'业务边界',knownLimitations:'已知限制'});
 const $ = id => document.getElementById(id);
 const filterKeys = ['menuScope', 'menuBinding', 'origin', 'businessChange', 'adoption', 'nature', 'recordType', 'directoryScope', 'functionId', 'functionRevision', 'isCurrent'];
-const state = { ...readLocation(), projects: [], menus: [], overview: {}, menuQuery: '', expandedMenus: new Set(), searchExpandedMenus: new Set(), menuExpansionQuery: '', menuExpansionScope: '', menusReady: false, total: 0, loading: false, listRequest: null, projectRequest: null, detailRequest: null, searchTimer: null, composing: false, diagramSequence: 0, columnPreferences: new Map(), listItems: [], listScope: null, detailTrail: [], currentDetail: null, detailAnchors: new Map(), pickerRequest: null, exportRequest: null, viewHistory: new Map(), detailCache: new Map(), readingContext: null };
+const state = { ...readLocation(), session: null, projects: [], menus: [], overview: {}, menuQuery: '', expandedMenus: new Set(), searchExpandedMenus: new Set(), menuExpansionQuery: '', menuExpansionScope: '', menusReady: false, total: 0, loading: false, listRequest: null, projectRequest: null, detailRequest: null, searchTimer: null, composing: false, diagramSequence: 0, columnPreferences: new Map(), listItems: [], listScope: null, detailTrail: [], currentDetail: null, detailAnchors: new Map(), pickerRequest: null, exportRequest: null, viewHistory: new Map(), detailCache: new Map(), readingContext: null };
 
 function readLocation() {
   const query = new URLSearchParams(window.location.search);
   const filters = Object.fromEntries(filterKeys.map(key => [key, query.get(key) || (key === 'menuScope' ? 'descendants' : key === 'menuBinding' ? 'any' : '')]));
-  return normalizeFilters({ ...filters, project: query.get('project') || 'forge-base', tab: Object.hasOwn(deliveryTabs, query.get('tab')) ? query.get('tab') : 'menus', q: query.get('q') || '', menuId: query.get('menuId') || '', batchId: query.get('batchId') || '', releaseId: query.get('releaseId') || '', focusId: query.get('focusId') || '', focusKind: query.get('focusKind') || '', focusRevision: query.get('focusRevision') || '', localId: query.get('localId') || '', page: Math.max(1, Number.parseInt(query.get('page'), 10) || 1), pageSize: [20, 50, 100].includes(Number(query.get('pageSize'))) ? Number(query.get('pageSize')) : 20, menuPreset: query.get('menuPreset') || 'attention' });
+  return normalizeFilters({ ...filters, project: query.get('project') || '', tab: Object.hasOwn(deliveryTabs, query.get('tab')) ? query.get('tab') : 'menus', q: query.get('q') || '', menuId: query.get('menuId') || '', batchId: query.get('batchId') || '', releaseId: query.get('releaseId') || '', focusId: query.get('focusId') || '', focusKind: query.get('focusKind') || '', focusRevision: query.get('focusRevision') || '', localId: query.get('localId') || '', page: Math.max(1, Number.parseInt(query.get('page'), 10) || 1), pageSize: [20, 50, 100].includes(Number(query.get('pageSize'))) ? Number(query.get('pageSize')) : 20, menuPreset: query.get('menuPreset') || 'attention' });
 }
 function normalizeFilters(value) {
   value.isCurrent = value.tab === 'stages' ? (value.isCurrent === 'false' ? 'false' : 'true') : '';
@@ -31,7 +32,7 @@ function normalizeFilters(value) {
   return value;
 }
 function supportsFunctionFilter(tab){const definition=deliveryTabs[tab];return Boolean(definition&&!definition.view&&(definition.endpoint==='requirements'||definition.kind));}
-function isProjectReleaseView(tab=state.tab){return ['releases','business-versions','environments'].includes(tab);}
+function isProjectReleaseView(tab=state.tab){return ['releases','business-versions','artifacts','environments','production'].includes(tab);}
 function node(tag, value, className) {
   const element = document.createElement(tag);
   if (value !== undefined && value !== null) element.textContent = String(value);
@@ -108,20 +109,36 @@ function closeDetail({preserveTrail=false}={}) {
   $('delivery-detail-body').replaceChildren();
   state.currentDetail=null;if(!preserveTrail)state.detailTrail=[];
 }
+function currentProjectName() {
+  const project = state.projects.find(item => item.slug === state.project);
+  return project?.displayName || project?.name || state.project;
+}
 function renderControls() {
   const tab = deliveryTabs[state.tab]; const parent = tab.parent || state.tab;
   $('delivery-project').value = state.project; $('delivery-search').value = state.q;
+  const projectName = currentProjectName();
+  const projectQuery = new URLSearchParams({ project: state.project });
+  const projectHref = state.project ? `/forge-gateway/?${projectQuery}` : '/forge-gateway/';
+  $('delivery-brand').href = projectHref; $('delivery-back').href = projectHref;
+  $('delivery-brand').setAttribute('aria-label', projectName ? `返回${projectName}项目工作台` : '返回项目工作台');
+  $('delivery-project-subtitle').textContent = `${projectName ? `${projectName} · ` : ''}业务功能与交付过程`;
+  $('delivery-title').textContent = `${projectName ? `${projectName} · ` : ''}需求与交付中心`;
+  $('delivery-menu-panel').hidden = isProjectReleaseView();
+  $('delivery-context').hidden = isProjectReleaseView();
+  $('delivery-reader-panel').hidden = state.tab === 'production';
+  productionPanel?.setActive(state.tab === 'production');
   $('delivery-search-clear').hidden = !state.q; $('delivery-page-size').value = String(state.pageSize);
   $('delivery-list-title').textContent = tab.name; $('delivery-caption').textContent = tab.name;
   $('delivery-list-help').textContent = tab.help; $('delivery-search').placeholder = `搜索${tab.name}名称或说明`;
-  document.title = `${tab.name} · 示例客户需求与交付中心`;
+  document.title = `${tab.name} · ${projectName ? `${projectName} · ` : ''}需求与交付中心`;
   for (const button of document.querySelectorAll('[data-delivery-tab]')) button.setAttribute('aria-pressed', String(button.dataset.deliveryTab === parent));
   const subview = $('delivery-subviews'); subview.replaceChildren(); subview.hidden = !subviews[parent];
   for (const key of subviews[parent] || []) { const button = action(deliveryTabs[key].name, () => navigate({ tab: key, page: 1, q: '' })); button.setAttribute('aria-pressed', String(state.tab === key)); subview.append(button); }
   const selected = state.menus.find(item => item.id === state.menuId);
   $('delivery-context').textContent = state.menuId ? text(selected?.path || selected?.name || state.menuId) : '全部业务菜单';
   const notes = [];
-  if(isProjectReleaseView())notes.push('下方为项目发布记录，未按当前业务菜单筛选。菜单只保留作阅读导航；发布成功不等于该菜单功能已上线，具体范围须查看有依据的发布关联。');
+  if(state.tab==='artifacts')notes.push('按项目版本和发布记录查看制品。生产发布包需完成独立环境验证和人工验收后下载；下载不代表生产已上线。');
+  else if(isProjectReleaseView())notes.push('按当前项目查看版本与发布记录。发布范围以已有版本和制品关联为准，发布成功不代表已经在客户生产环境上线。');
   if (state.releaseId) notes.push('发布范围仅使用当时有依据的定义及修订；没有绑定的内容不以当前资料补齐。');
   else if (state.batchId) notes.push('迭代范围展示本次有据关联与变化，不代表该时点系统全部功能。');
   else notes.push('当前资料表示已收录的要求和观察，不等于当前生产环境具备全部内容。');
@@ -138,7 +155,7 @@ function renderControls() {
 function renderActiveFilters(selected) {
   const root=$('delivery-filters');root.replaceChildren();const entries=[];
   const add=(key,label,value,reset='')=>{if(value)entries.push({key,label,value,reset});};
-  add('menuId',isProjectReleaseView()?'导航菜单（不筛选发布）':'菜单',state.menuId?text(selected?.path||selected?.name||state.menuId):'');
+  if(state.tab!=='artifacts')add('menuId',isProjectReleaseView()?'导航菜单（不筛选发布）':'菜单',state.menuId?text(selected?.path||selected?.name||state.menuId):'');
   if(!isProjectReleaseView()&&state.menuId&&state.menuScope==='self')add('menuScope','层级','仅本节点','descendants');
   add('batchId','迭代',state.batchId);add('releaseId','发布',state.releaseId);add('q','搜索',state.q);
   add('functionId','关联功能',state.functionId?(state.readingContext?.item.assetId||state.readingContext?.item.id)===state.functionId?state.readingContext.item.name||state.functionId:state.functionId:'');
@@ -154,7 +171,7 @@ function renderActiveFilters(selected) {
     const clear=action('×',()=>{if(entry.key==='functionId')state.readingContext=null;navigate({[entry.key]:entry.reset,...(entry.key==='functionId'?{functionRevision:''}:{}),page:1});},'delivery-filter-chip-clear');clear.setAttribute('aria-label',`清除${entry.label}筛选`);chip.append(clear);root.append(chip);
   }
   if(state.tab==='menus'&&selected){const context=node('div',null,'delivery-reading-context');context.append(node('strong',text(selected.path||selected.name)),action('查看这个菜单的功能与变化',()=>showDetail('menus',selected)));root.append(context);}
-  appendReadingContext(root);
+  if(state.tab!=='artifacts')appendReadingContext(root);
 }
 function explicitReferences(item) {
   const refs=new Map();const seen=new Set();let visited=0;
@@ -236,7 +253,7 @@ function appendCheckpointMaterials(root, menuId = state.menuId, controlId = 'del
 function renderFilterControls() {
   const scope = $('delivery-scope-controls'); scope.replaceChildren();
   if(state.tab==='stages')selectControl(scope,'delivery-stage-record-scope','阶段记录',[['true','当前阶段'],['false','历史记录']],state.isCurrent,value=>navigate({isCurrent:value,page:1}));
-  selectControl(scope, 'delivery-range-mode', '查看范围', [['current','已收录需求与设计'],['batch','指定迭代'],['release','指定发布'],['environment','环境版本（已观察）']], state.releaseId ? 'release' : state.batchId ? 'batch' : 'current', value => {
+  selectControl(scope, 'delivery-range-mode', '查看范围', [['current',state.tab==='artifacts'?'全部发布包与制品':'已收录需求与设计'],['batch','指定迭代'],['release','指定发布'],['environment','环境版本（已观察）']], state.releaseId ? 'release' : state.batchId ? 'batch' : 'current', value => {
     if (value === 'current') { $('delivery-scope-picker').hidden = true; navigate({batchId:'',releaseId:'',page:1}); }
     else if (value === 'environment') { $('delivery-scope-picker').hidden = true; navigate({tab:'environments',page:1,q:''}); }
     else openScopePicker(value);
@@ -506,7 +523,12 @@ function assetCells(item) {
   return [summaryCell(shortText(get(item, 'condition', 'trigger', 'triggers'), 100, '适用条件未记录')), summaryCell(namesSummary(get(item, 'rule', 'rules')))];
 }
 function renderRows(items) {
-  state.listItems=items; const columns=visibleColumns();
+  if (state.tab === 'artifacts') items = items.map(item => ({ ...item, artifactVersionTime: item.artifactVersionTime || artifactVersionTime(item) })).sort((left, right) => {
+    const leftTime = Date.parse(left.artifactVersionTime?.at); const rightTime = Date.parse(right.artifactVersionTime?.at);
+    if (!Number.isFinite(leftTime)) return Number.isFinite(rightTime) ? 1 : 0;
+    return Number.isFinite(rightTime) ? rightTime - leftTime : -1;
+  });
+  state.listItems=items; artifactExportCells = []; const columns=visibleColumns();
   const header = node('tr'); for (const column of [...columns,{label:'操作'}]) { const th = node('th', column.label); th.scope = 'col'; if(column.identity)th.className='delivery-identity-column'; header.append(th); }
   $('delivery-table-head').replaceChildren(header); const body = $('delivery-table-body'); body.replaceChildren();
   for (const item of items) {
@@ -532,6 +554,10 @@ function renderRows(items) {
       row.append(td);
     }
     buttons.append(action('查看详情',()=>openRecord(item)));
+    if(state.tab==='artifacts' && item.type==='container-image') {
+      buttons.append(action('导出生产包',()=>openProductionExport(item)));
+      const summary = node('div', null, 'delivery-artifact-exports'); operations.append(summary); artifactExportCells.push({ id: item.id, element: summary }); renderArtifactExportSummary(item.id, summary);
+    }
     if(state.tab==='batches')buttons.append(action('查看资料',()=>openBatchMaterials(item.id)));
     row.append(operations);body.append(row);
   }
@@ -599,6 +625,7 @@ function formatField(value,column,item={}) {
   if(format==='parent')return value?state.menus.find(menu=>menu.id===value)?.name||value:'根目录';
   if(format==='resourceType')return resourceType(value);
   if(format==='date')return date(value);
+  if(format==='artifact-version-time')return value?.at ? `${date(value.at)}（${value.label}）` : value?.unavailable ? '来源时间未能读取' : '未记录';
   if(format==='environment')return environment(value);
   if(format==='phase')return phaseNames[value]||primitiveBrief(value);
   if(format==='stage-status')return value==='accepted'?'阶段已接受':value==null?'未记录':status(value);
@@ -721,13 +748,88 @@ async function loadSharedReferences(context,page){
     pagination.append(label,previous,next);context.content.replaceChildren(items.length?wrapper:node('p','该范围的共享组件引用尚未返回。','field-help'),pagination);
   }catch(error){if(!active()||error.name==='AbortError')return;context.loaded=false;context.content.replaceChildren(node('p',error.message,'form-message error'),action('重新读取共享引用',()=>loadSharedReferences(context,page)));}
 }
+let artifactExportRequest = null;
+let artifactExportState = { project: '', status: 'idle', rows: [] };
+let artifactExportCells = [];
+function renderArtifactExportSummary(id, element) {
+  element.replaceChildren();
+  if (artifactExportState.project !== state.project || ['idle', 'loading'].includes(artifactExportState.status)) { element.append(node('span', '正在读取生产导出记录…')); return; }
+  if (artifactExportState.status === 'failed') { element.append(node('span', '生产导出记录未能读取，可刷新重试。')); return; }
+  const rows = artifactExportState.rows.filter(({ job }) => job.sourceArtifact?.id === id).sort((a, b) => String(b.job.createdAt || '').localeCompare(String(a.job.createdAt || '')));
+  if (!rows.length) { element.append(node('span', '本行暂无关联导出记录。')); return; }
+  const full = rows.filter(({ job }) => job.mode === 'initial'); const latest = rows[0];
+  const describe = job => `${job.createdBy?.displayName || job.createdBy?.username || job.createdBy?.id || '未记录操作人'} · ${date(job.createdAt)}`;
+  element.append(node('strong', `已导出 ${rows.length} 次（全量 ${full.length} 次）`), node('span', `最近${latest.job.mode === 'initial' ? '全量' : latest.job.mode === 'upgrade' ? '增量' : ''}：${describe(latest.job)}`));
+  if (full.length && full[0] !== latest) element.append(node('span', `最近全量：${describe(full[0].job)}`));
+  element.append(action('查看导出记录', () => openArtifactExportRecord(latest.releaseId, latest.job.id), 'text-button'));
+}
+async function loadArtifactExports() {
+  if (state.tab !== 'artifacts' || !state.project || !artifactExportCells.length) return;
+  artifactExportRequest?.abort(); const controller = new AbortController(); artifactExportRequest = controller; const project = state.project;
+  const current = () => !controller.signal.aborted && artifactExportRequest === controller && state.project === project && state.tab === 'artifacts';
+  artifactExportState = { project, status: 'loading', rows: [] };
+  try {
+    const result = await api(`/forge-gateway/api/production/releases?${new URLSearchParams({ project })}`, { signal: controller.signal });
+    if (!current()) return;
+    artifactExportState = { project, status: 'ready', rows: (result.items || []).flatMap(release => (release.jobs || []).filter(job => job?.sourceArtifact?.id).map(job => ({ releaseId: release.id, job }))) };
+  } catch (error) { if (!current()) return; artifactExportState = { project, status: 'failed', rows: [] }; }
+  if (current()) for (const { id, element } of artifactExportCells) renderArtifactExportSummary(id, element);
+}
+async function openArtifactExportRecord(releaseId, jobId) {
+  const project = state.project; await navigate({ tab: 'production', q: '', page: 1 });
+  if (state.project === project && state.tab === 'production' && productionPanel) await productionPanel.openJob(releaseId, jobId);
+}
+let productionPanel = null;
+let productionMount = null;
+async function ensureProductionPanel() {
+  if (!productionMount) productionMount = mountProductionDelivery($('delivery-production-panel'), {
+    session: state.session, embedded: true,
+    onExportCreated: () => navigate({ tab: 'production', q: '', page: 1 }),
+    onArtifacts: () => navigate({ tab: 'artifacts', q: '', page: 1 }),
+  }).then(panel => { productionPanel = panel; return panel; }).catch(error => { productionMount = null; throw error; });
+  return productionMount;
+}
+async function openProductionExport(item) {
+  const project = state.project;
+  try { const panel = await ensureProductionPanel(); if (project !== state.project || state.tab !== 'artifacts') return; await panel.setProject(project); if (project !== state.project || state.tab !== 'artifacts') return; await panel.openExport(item); }
+  catch (error) { if (project === state.project) { $('delivery-list-error').hidden = false; $('delivery-error-message').textContent = error.message; } }
+}
+function artifactReleaseIds(item) {
+  return item.type === 'container-image' ? [...new Set([item.releaseId, ...(Array.isArray(item.releaseIds) ? item.releaseIds : [])].filter(id => typeof id === 'string' && id))] : [];
+}
+function artifactVersionTime(item, releases = new Map()) {
+  const valid = value => typeof value === 'string' && value.trim() && Number.isFinite(Date.parse(value));
+  const times = artifactReleaseIds(item).map(id => releases.get(id)).filter(Boolean).map(release => valid(release.releasedAt)
+    ? { at: release.releasedAt, label: '来源发布结束' } : valid(release.startedAt) ? { at: release.startedAt, label: '来源发布开始' } : null).filter(Boolean);
+  if (times.length) return times.sort((left, right) => Date.parse(right.at) - Date.parse(left.at))[0];
+  for (const [key, label] of [['updatedAt', '记录更新时间'], ['recordedAt', '收录时间'], ['createdAt', '记录创建时间']]) if (valid(item[key])) return { at: item[key], label };
+  return null;
+}
+async function loadArtifactVersionTimes(items, project, signal) {
+  // Read only exact releases referenced by this page; artifacts are paginated by ID on the server.
+  const ids = [...new Set(items.flatMap(artifactReleaseIds))];
+  const results = await Promise.allSettled(ids.map(id => api(`/forge-gateway/api/delivery/releases/${encodeURIComponent(id)}?project=${encodeURIComponent(project)}`, { signal })));
+  const releases = new Map(); const unavailable = new Set();
+  results.forEach((result, index) => {
+    if (result.status === 'fulfilled' && result.value.item?.id === ids[index]) releases.set(ids[index], result.value.item);
+    else unavailable.add(ids[index]);
+  });
+  return items.map(item => ({ ...item, artifactVersionTime: artifactVersionTime(item, releases) || (artifactReleaseIds(item).some(id => unavailable.has(id)) ? { unavailable: true } : null) }));
+}
 async function loadList() {
-  state.listRequest?.abort(); resetSharedReferences(); closeDetail(); const controller = new AbortController(); state.listRequest = controller;
+  state.listRequest?.abort(); artifactExportRequest?.abort(); artifactExportState = { project: state.project, status: 'loading', rows: [] }; resetSharedReferences(); closeDetail();
+  if (state.tab === 'production') {
+    state.loading = false; const project = state.project;
+    try { const panel = await ensureProductionPanel(); if (project !== state.project || state.tab !== 'production') return; await panel.setProject(project); if (project !== state.project || state.tab !== 'production') return; panel.setActive(true); }
+    catch (error) { if (project === state.project && state.tab === 'production') { $('delivery-production-panel').textContent = error.message; productionMount = null; productionPanel = null; } }
+    return;
+  }
+  const controller = new AbortController(); state.listRequest = controller;
   state.loading = Boolean(state.project); state.total = 0; state.listScope=null; $('delivery-export').disabled=true;
   $('delivery-list-error').hidden = true; $('delivery-table-wrap').hidden = true; $('delivery-empty').hidden = true;
   $('delivery-table-body').replaceChildren(); $('delivery-loading').hidden = !state.project;
   $('delivery-results').setAttribute('aria-busy', String(state.loading)); updatePagination();
-  if (!state.project) { $('delivery-empty').hidden = false; $('delivery-empty-title').textContent = '暂无可查看的项目'; $('delivery-empty-help').textContent = '示例客户项目记录收录后，可在这里查看。'; $('delivery-results').setAttribute('aria-busy', 'false'); return; }
+  if (!state.project) { $('delivery-empty').hidden = false; $('delivery-empty-title').textContent = '暂无可查看的项目'; $('delivery-empty-help').textContent = '可查看的项目记录收录后，可在这里查看。'; $('delivery-results').setAttribute('aria-busy', 'false'); return; }
   try {
     let value;
     if (state.tab === 'menus') {
@@ -736,13 +838,14 @@ async function loadList() {
     } else {
       const definition=deliveryTabs[state.tab];const endpoint = definition.view ? 'views' : definition.endpoint || (definition.kind ? 'assets' : state.tab);
       value = await api(`/forge-gateway/api/delivery/${endpoint}?${queryFor()}`, { signal: controller.signal });
+      if (state.tab === 'artifacts' && !controller.signal.aborted && state.listRequest === controller) value = { ...value, items: await loadArtifactVersionTimes(value.items || [], state.project, controller.signal) };
     }
     if (controller.signal.aborted || state.listRequest !== controller) return;
     state.listScope={...(value.scope||{}),scopeBinding:value.scopeBinding||value.scope?.scopeBinding};
     state.matrixColumns=state.tab==='permission-matrix'?value.columns||[]:[];
     state.total = Number(value.total) || 0; const maxPage = Math.max(1, Math.ceil(state.total / state.pageSize));
     if (state.page > maxPage) { state.page = maxPage; saveLocation(true); await loadList(); return; }
-    const items = value.items || []; renderRows(items); renderControls(); renderSharedReferences(value); $('delivery-table-wrap').hidden = !items.length; $('delivery-empty').hidden = Boolean(items.length);
+    const items = value.items || []; renderRows(items); if (state.tab === 'artifacts') void loadArtifactExports(); renderControls(); renderSharedReferences(value); $('delivery-table-wrap').hidden = !items.length; $('delivery-empty').hidden = Boolean(items.length);
     const filtered = state.q || state.menuId || state.batchId || state.releaseId;
     $('delivery-empty-title').textContent = state.releaseId && value.scopeBinding === 'unknown' ? '该版本的业务范围尚未关联' : filtered ? '没有匹配的记录' : `暂无${deliveryTabs[state.tab].name}记录`;
     $('delivery-empty-help').textContent = state.releaseId ? '此处仅展示发布时已绑定的数据；不使用当前记录替代历史版本。' : state.tab==='menus'&&state.menuPreset==='attention' ? '当前未收录可明确归入需求新增或业务改造的菜单。可切换“待确认”或“全部”阅读完整目录；不代表没有业务功能。' : state.tab==='requirements' ? '该范围尚无已整理的独立要求。原有文档章节仍可在“来源资料”阅读，不能按章节数量凑功能或要求数量。' : filtered ? '该范围尚无已明确关联的记录。可选择其他菜单或清除筛选；没有记录不表示功能没有实现。' : '真实产物收录后会显示在这里；目前不能据此判断实现、验收或上线状态。';
@@ -966,7 +1069,7 @@ function correctionText(item){
   const functionContext=[];
   if(state.functionId)functionContext.push(`功能筛选：${state.functionId}；${state.functionRevision?`明确引用修订 ${state.functionRevision}`:'按功能身份查询，关联修订未指定，不代表绑定当前功能修订'}`);
   if(state.readingContext?.item){const feature=state.readingContext.item;functionContext.push(`已查看功能定义：${feature.assetId||feature.id} @ ${feature.revision||'未指定'}（阅读定位，不替代关联修订）`);}
-  return [`项目：示例客户 / ${state.project}`,`当前菜单：${state.menuId||'项目范围'}`,`查看范围：${state.releaseId?`发布 ${state.releaseId}`:state.batchId?`迭代 ${state.batchId}`:'当前资料'}；${state.menuScope==='self'?'本节点':'包含下级'}`,...functionContext,`对象：${businessRecordName(item,item.kind)}`,`对象定位：${JSON.stringify(ref)}`,`来源定位：${locators.join('\n')||'尚未关联'}`,`当前解释：${text(get(item,'interpretation','businessMeaning','definition','statement','description'),'尚未记录')}`,'待纠正点：'].join('\n');
+  return [`项目：${currentProjectName()} / ${state.project}`,`当前菜单：${state.menuId||'项目范围'}`,`查看范围：${state.releaseId?`发布 ${state.releaseId}`:state.batchId?`迭代 ${state.batchId}`:'当前资料'}；${state.menuScope==='self'?'本节点':'包含下级'}`,...functionContext,`对象：${businessRecordName(item,item.kind)}`,`对象定位：${JSON.stringify(ref)}`,`来源定位：${locators.join('\n')||'尚未关联'}`,`当前解释：${text(get(item,'interpretation','businessMeaning','definition','statement','description'),'尚未记录')}`,'待纠正点：'].join('\n');
 }
 function appendCorrection(body,item){
   const section=node('section',null,'delivery-detail-section');section.append(node('h3','通过原有对话纠正'));
@@ -1016,6 +1119,7 @@ function revisionDiff(before, after) {
 function detailQuery(revision){
   const query=new URLSearchParams({project:state.project,detailMode:'single'});
   if(!state.currentDetail?.projectSource)for(const key of ['menuId','menuScope','menuBinding','batchId','releaseId'])if(state[key])query.set(key,state[key]);
+  if(state.tab==='artifacts')for(const key of ['menuId','menuScope','menuBinding'])query.delete(key);
   if(revision!==undefined&&revision!==null&&revision!=='')query.set('revision',String(revision));return query;
 }
 async function readRevision(item,revision,signal,acrossBatches=false){
@@ -1315,7 +1419,7 @@ async function exportMatrix(){
     if(response.status===401){window.location.assign('/forge-gateway/login');throw new Error('登录已失效。');}
     if(!response.ok){const value=await response.json().catch(()=>({}));throw new Error(value.message||`导出未完成（${response.status}），未下载部分结果。`);}
     if(!/text\/csv/i.test(response.headers.get('content-type')||''))throw new Error('服务器未返回CSV文件，未将其他响应当作成功导出。');
-    const blob=await response.blob();if(controller.signal.aborted||state.exportRequest!==controller)return;const href=URL.createObjectURL(blob);const link=node('a');link.href=href;link.download='示例客户需求矩阵.csv';link.click();setTimeout(()=>URL.revokeObjectURL(href),1000);
+    const blob=await response.blob();if(controller.signal.aborted||state.exportRequest!==controller)return;const href=URL.createObjectURL(blob);const link=node('a');link.href=href;link.download=`${currentProjectName().replace(/[\\/:*?"<>|]/g,'_')}需求矩阵.csv`;link.click();setTimeout(()=>URL.revokeObjectURL(href),1000);
     message.textContent='需求矩阵已生成下载。导出包含全部匹配结果及范围信息，不限当前页或可见列。';
    }catch(error){if(state.exportRequest===controller)message.textContent=error.name==='AbortError'?'导出已取消或超时，未声明完成。':error.message;}finally{clearTimeout(timeout);if(state.exportRequest===controller){state.exportRequest=null;button.disabled=state.loading;}}
 }
@@ -1332,7 +1436,7 @@ function navigate(changes, { replace = false } = {}) {
   Object.assign(next,{focusKind:'',focusId:'',focusRevision:'',localId:'',lastFocusKey:null});
   const menuChanged = next.menuId !== state.menuId;
   if(projectChanged||menuChanged||next.batchId!==state.batchId||next.releaseId!==state.releaseId||next.menuBinding!==state.menuBinding)next.readingContext=null;
-  Object.assign(state, next); if (menuChanged) expandSelectedMenuPath(); closeDetail(); renderControls(); renderMenus(); saveLocation(replace);
+  Object.assign(state, next); if (projectChanged) productionPanel?.setProject(state.project); if (menuChanged) expandSelectedMenuPath(); closeDetail(); renderControls(); renderMenus(); saveLocation(replace);
   return projectChanged || previousReleaseId !== state.releaseId ||previousBatchId!==state.batchId||previousDirectory!==state.directoryScope ? loadProject() : loadList();
 }
 function locationKey(tab=state.tab,functionId=state.functionId){return `${state.project}:${state.menuId}:${state.batchId}:${state.releaseId}:${functionId||''}:${state.functionRevision||''}:${tab}`;}
@@ -1359,22 +1463,26 @@ function bindEvents() {
   $('delivery-menu-search-clear').addEventListener('click', () => { state.menuQuery = ''; $('delivery-menu-search').value = ''; renderMenus(); $('delivery-menu-search').focus(); });
   $('delivery-expand-menus').addEventListener('click', () => { for (const item of state.menus) menuExpansions().add(item.id); renderMenus(); });
   $('delivery-collapse-menus').addEventListener('click', () => { menuExpansions().clear(); renderMenus(); });
-  $('delivery-list-retry').addEventListener('click', loadList); $('delivery-project-retry').addEventListener('click', loadProject); $('delivery-refresh').addEventListener('click', loadProject); $('delivery-start-retry').addEventListener('click', initialize);
+  $('delivery-list-retry').addEventListener('click', loadList); $('delivery-project-retry').addEventListener('click', loadProject); $('delivery-refresh').addEventListener('click', () => state.tab === 'production' && productionPanel ? productionPanel.refresh().catch(error => { $('delivery-production-panel').querySelector('#production-message').textContent = error.message; }) : loadProject()); $('delivery-start-retry').addEventListener('click', initialize);
   $('delivery-detail-close').addEventListener('click', dismissDetail); $('delivery-detail-back').addEventListener('click', dismissDetail);
   $('delivery-detail-previous').addEventListener('click',previousDetail);$('delivery-export').addEventListener('click',exportMatrix);
   $('delivery-detail').addEventListener('cancel',()=>{Object.assign(state,{focusKind:'',focusId:'',focusRevision:'',localId:'',lastFocusKey:null});saveLocation(true);});
   $('delivery-detail').addEventListener('close', () => { if (!$('delivery-detail').open) { state.detailRequest?.abort(); state.detailRequest = null; state.diagramSequence += 1; } });
-  window.addEventListener('popstate', () => { clearTimeout(state.searchTimer); Object.assign(state, readLocation()); renderControls(); saveLocation(true); loadProject(); });
+  window.addEventListener('popstate', () => { clearTimeout(state.searchTimer); Object.assign(state, readLocation()); productionPanel?.setProject(state.project); renderControls(); saveLocation(true); loadProject(); });
 }
 async function initialize() {
   $('delivery-start-error').hidden = true; $('delivery-start-retry').hidden = true;
   try {
-    const session = await api('/forge-gateway/api/session'); $('delivery-user').textContent = session.user.displayName || session.user.username;
-    const value = await api('/forge-gateway/api/delivery/projects'); state.projects = (value.items || []).filter(project => (project.slug || project.id || project.projectKey) === 'forge-base');
+    const session = await api('/forge-gateway/api/session'); state.session = session; $('delivery-user').textContent = session.user.displayName || session.user.username;
+    const value = await api('/forge-gateway/api/delivery/projects');
+    state.projects = (value.items || []).map(project => ({ ...project, slug: project.slug || project.id || project.projectKey })).filter(project => typeof project.slug === 'string' && project.slug);
     const select = $('delivery-project'); select.replaceChildren();
-    for (const project of state.projects) { const option = node('option', project.name || project.displayName || '示例客户'); option.value = 'forge-base'; select.append(option); }
+    for (const project of state.projects) { const option = node('option', project.displayName || project.name || project.slug); option.value = project.slug; select.append(option); }
     if (!state.projects.length) { const option = node('option', '暂无项目'); option.value = ''; select.append(option); }
-    state.project = state.projects.length ? 'forge-base' : ''; select.disabled = true; renderControls(); saveLocation(true); await loadProject();
+    if (!state.projects.some(project => project.slug === state.project)) {
+      Object.assign(state, { project: state.projects[0]?.slug || '', menuId: '', batchId: '', releaseId: '', q: '', page: 1, functionId: '', functionRevision: '', focusKind: '', focusId: '', focusRevision: '', localId: '', lastFocusKey: null });
+    }
+    select.disabled = state.projects.length < 2; renderControls(); saveLocation(true); await loadProject();
   } catch (error) { $('delivery-start-error').textContent = error.message; $('delivery-start-error').hidden = false; $('delivery-start-retry').hidden = false; }
 }
 

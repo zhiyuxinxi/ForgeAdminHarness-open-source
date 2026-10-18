@@ -26,6 +26,7 @@ const state = {
   releaseStatusController: null,
   releaseStatusTimer: null,
   releaseStatusGeneration: 0,
+  conversationDraft: null,
 };
 
 const roleLabels = { admin: '管理员', member: '成员', auditor: '审计员' };
@@ -276,6 +277,7 @@ async function showConversationOutputs(conversation) {
   document.querySelector('#conversation-browser').hidden = true;
   document.querySelector('#conversation-output-panel').hidden = false;
   document.querySelector('#output-title').textContent = `${conversation.title} · 对话文件`;
+  document.querySelector('#output-runtime-version').textContent = runtimeVersionLabel(conversation);
   document.querySelector('#output-owner-note').textContent = conversation.owner
     ? `所属用户：${conversation.owner.displayName}（${conversation.owner.username}）`
     : '仅显示当前账号拥有的对话归档。';
@@ -468,7 +470,9 @@ async function selectProject(slug, { updateHistory = true } = {}) {
   if (project.forgeUiUrl) forgeLink.href = project.forgeUiUrl;
   else forgeLink.removeAttribute('href');
   forgeLink.hidden = !project.forgeUiUrl;
-  document.querySelector('#project-delivery-link').hidden = project.slug !== 'forge-base';
+  const deliveryLink = document.querySelector('#project-delivery-link');
+  deliveryLink.href = `/forge-gateway/delivery-center?${new URLSearchParams({ project: project.slug })}`;
+  deliveryLink.hidden = false;
   document.querySelector('#project-access-note').textContent = project.managerReady
     ? '你在此项目中新建的每个对话都会获得独立代码副本和 Harness 状态；发布仍由该项目的共享门禁串行处理。'
     : '该项目的工作舱管理服务暂不可用；现有目录仍可查看，创建、恢复和停止操作暂时禁用。';
@@ -482,6 +486,7 @@ function showProjectDirectory({ updateHistory = true } = {}) {
   closeConversationOutputs();
   stopReleaseStatus();
   state.selectedProjectSlug = null;
+  document.querySelector('#project-delivery-link').hidden = true;
   state.conversations = [];
   state.nextOffset = null;
   document.querySelector('#project-section').hidden = false;
@@ -534,9 +539,9 @@ function renderProjects() {
       link.rel = 'noopener';
       actions.append(link);
     }
-    if (project.slug === 'forge-base') {
+    if (project.slug) {
       const deliveryLink = element('a', { className: 'secondary-button button-link', text: '需求与交付中心' });
-      deliveryLink.href = '/forge-gateway/delivery-center?project=forge-base';
+      deliveryLink.href = `/forge-gateway/delivery-center?${new URLSearchParams({ project: project.slug })}`;
       actions.append(deliveryLink);
     }
     target.append(element('article', {
@@ -798,6 +803,7 @@ function renderConversations() {
       statusBadge(isProvisioning(conversation) ? 'provisioning' : conversation.status),
       element('span', { text: `最近更新 ${dateLabel(conversation.updatedAt)}` }),
       element('span', { text: isLegacySession ? '迁移前历史对话' : `工作舱 ${conversation.taskId}` }),
+      element('span', { text: runtimeVersionLabel(conversation), title: conversation.runtimeVersion?.harnessImage }),
     ]);
     if (conversation.owner) metadata.append(element('span', { text: `所属用户 ${conversation.owner.displayName}（${conversation.owner.username}）` }));
     if (isProvisioning(conversation)) metadata.append(element('span', { text: '正在确认创建结果，请勿重复新建。' }));
@@ -981,41 +987,107 @@ async function loadAudit() {
   }
 }
 
-for (const closeButton of document.querySelectorAll('[data-close-dialog]')) {
-  closeButton.addEventListener('click', () => closeDialog(closeButton.dataset.closeDialog));
+function runtimeVersionLabel(conversation) {
+  const version = conversation.runtimeVersion;
+  if (!version) return 'Harness 原有版本（未登记）';
+  const prefix = ['provisioning', 'failed'].includes(conversation.status) ? '所选 Harness' : 'Harness';
+  return `${prefix} ${version.label} · ${version.sourceBranch} · ${version.sourceCommit.slice(0, 12)}`;
 }
 
-document.querySelector('#new-conversation-button').addEventListener('click', () => {
+async function showNewConversationDialog() {
   document.querySelector('#conversation-form').reset();
+  document.querySelector('#conversation-title').disabled = false;
+  const draft = { projectSlug: state.selectedProjectSlug, key: randomIdempotencyKey(), ready: false };
+  state.conversationDraft = draft;
+  const select = document.querySelector('#conversation-runtime-channel');
+  const submit = document.querySelector('#conversation-submit');
+  select.replaceChildren(element('option', { text: '正在加载版本…' }));
+  select.value = '';
+  select.disabled = true;
+  submit.disabled = true;
+  submit.textContent = '创建工作舱';
   setMessage(document.querySelector('#conversation-error'), '');
   openDialog('conversation-dialog');
   document.querySelector('#conversation-title').focus();
-});
+  try {
+    const catalog = await api(`/forge-gateway/api/runtime-versions?project=${encodeURIComponent(draft.projectSlug)}`);
+    if (state.conversationDraft !== draft || state.selectedProjectSlug !== draft.projectSlug) return;
+    if (catalog.legacy === true && catalog.defaultChannel === null && catalog.versions.length === 0) {
+      select.replaceChildren(element('option', { text: '使用当前项目版本' }));
+      select.disabled = true;
+      draft.legacy = true;
+      draft.ready = true;
+      submit.disabled = false;
+      return;
+    }
+    select.replaceChildren();
+    const placeholder = element('option', { text: '请选择 Harness 版本' });
+    placeholder.value = '';
+    placeholder.disabled = true;
+    select.append(placeholder);
+    for (const version of catalog.versions) {
+      const option = element('option', { text: `${version.label}${version.available ? '' : '（暂不可用）'}` });
+      option.value = version.channel;
+      option.disabled = !version.available;
+      select.append(option);
+    }
+    const available = catalog.versions.filter((version) => version.available);
+    select.value = available.some((version) => version.channel === catalog.defaultChannel) ? catalog.defaultChannel : '';
+    select.disabled = available.length === 0;
+    submit.disabled = available.length === 0;
+    draft.ready = available.length > 0;
+    draft.availableChannels = available.map((version) => version.channel);
+    if (!draft.ready) setMessage(document.querySelector('#conversation-error'), '当前没有可用的 Harness 版本，请稍后重新打开新建对话。');
+  } catch (error) {
+    if (state.conversationDraft !== draft) return;
+    select.replaceChildren(element('option', { text: '版本加载失败' }));
+    setMessage(document.querySelector('#conversation-error'), error.message);
+  }
+}
 
-document.querySelector('#conversation-form').addEventListener('submit', async (event) => {
+async function submitNewConversation(event) {
   event.preventDefault();
-  const title = document.querySelector('#conversation-title').value.trim();
+  const titleInput = document.querySelector('#conversation-title');
+  const select = document.querySelector('#conversation-runtime-channel');
   const errorBox = document.querySelector('#conversation-error');
+  const draft = state.conversationDraft;
+  if (!draft?.ready || draft.projectSlug !== state.selectedProjectSlug) {
+    setMessage(errorBox, '请等待 Harness 版本加载完成后再创建。'); return;
+  }
+  const title = titleInput.value.trim();
   if (!title) { setMessage(errorBox, '请输入对话名称。'); return; }
+  if (!draft.legacy && !draft.availableChannels.includes(select.value)) { setMessage(errorBox, '请选择可用的 Harness 版本。'); return; }
+  // Keep the request and version intact after a failed or interrupted create.
+  draft.request ??= { title, projectSlug: draft.projectSlug, ...(draft.legacy ? {} : { runtimeChannel: select.value }) };
   const submit = document.querySelector('#conversation-submit');
   submit.disabled = true;
+  titleInput.disabled = true;
+  select.disabled = true;
   submit.textContent = '正在创建独立工作舱…';
+  setMessage(errorBox, '');
   try {
     const value = await api('/forge-gateway/api/conversations', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'idempotency-key': randomIdempotencyKey() },
-      body: JSON.stringify({ title, projectSlug: state.selectedProjectSlug }),
+      headers: { 'content-type': 'application/json', 'idempotency-key': draft.key },
+      body: JSON.stringify(draft.request),
     });
     updateConversation(value.conversation);
     closeDialog('conversation-dialog');
     toast(isProvisioning(value.conversation) ? '工作舱仍在创建，列表会自动更新，请勿重复新建。' : '独立对话工作舱已创建。');
   } catch (error) {
-    setMessage(errorBox, error.message);
+    setMessage(errorBox, `${error.message} 重试会保留本次选择的 Harness 版本。`);
   } finally {
     submit.disabled = false;
     submit.textContent = '创建工作舱';
   }
-});
+}
+
+for (const closeButton of document.querySelectorAll('[data-close-dialog]')) {
+  closeButton.addEventListener('click', () => closeDialog(closeButton.dataset.closeDialog));
+}
+
+document.querySelector('#new-conversation-button').addEventListener('click', showNewConversationDialog);
+document.querySelector('#conversation-form').addEventListener('submit', submitNewConversation);
 
 document.querySelector('#rename-form').addEventListener('submit', async (event) => {
   event.preventDefault();

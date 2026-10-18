@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import { once } from 'node:events';
 import { createRequire } from 'node:module';
@@ -449,6 +449,57 @@ test('Flyway inventory enforces unique forward-only immutable versions', () => {
   );
 });
 
+test('Flyway ten-digit segments accept the applied date sequence without losing numeric precision', () => {
+  const applied = parseFlywayMigrationPath('db/V1.0.2026100903__message.sql');
+  assert.deepEqual(applied.versionParts, [1, 0, 2026100903]);
+  assert.equal(applied.versionKey, '1.0.2026100903');
+  const maximum = parseFlywayMigrationPath('db/V9999999999__maximum.sql');
+  assert.equal(maximum.versionParts[0], 9999999999);
+  assert.ok(Number.isSafeInteger(maximum.versionParts[0]));
+});
+
+test('Flyway ten-digit segments preserve eleven-digit rejection and the sixteen-part limit', () => {
+  const sixteen = Array(16).fill('2026100903').join('.');
+  assert.equal(parseFlywayMigrationPath(`db/V${sixteen}__allowed.sql`).versionParts.length, 16);
+  for (const version of ['20261009030', '1.0.20261009030', `${sixteen}.1`]) {
+    assert.throws(() => parseFlywayMigrationPath(`db/V${version}__rejected.sql`),
+      error => error.code === 'MIGRATION_NAME_INVALID');
+  }
+});
+
+test('Flyway ten-digit segments retain numeric forward ordering against eight-digit dates', () => {
+  const original = 'db/V1.0.20261017__original.sql';
+  const applied = 'db/V1.0.2026100903__message.sql';
+  const next = 'db/V1.0.2026100907__resubmit.sql';
+  assert.deepEqual(validateFlywayMigrationInventory([original, applied], [original]).newVersions,
+    ['1.0.2026100903']);
+  assert.deepEqual(validateFlywayMigrationInventory([applied, next], [applied]).newVersions,
+    ['1.0.2026100907']);
+  assert.throws(() => validateFlywayMigrationInventory([
+    applied, 'db/V1.0.20261018__older_numeric_version.sql',
+  ], [applied]), error => error.code === 'MIGRATION_VERSION_NOT_FORWARD');
+});
+
+test('Flyway ten-digit segments still reject normalized duplicate aliases', () => {
+  const applied = 'db/V1.0.2026100903__message.sql';
+  for (const alias of ['1_0_2026100903', '1-0-2026100903', '01.00.2026100903.0']) {
+    assert.throws(() => validateFlywayMigrationInventory([
+      applied, `db/V${alias}__duplicate.sql`,
+    ], [applied]), error => error.code === 'MIGRATION_VERSION_CONFLICT'
+      && error.details.version === '1.0.2026100903');
+  }
+});
+
+test('Flyway ten-digit released migrations remain immutable by path', () => {
+  const applied = 'db/V1.0.2026100903__message.sql';
+  assert.deepEqual(validateFlywayMigrationInventory([applied], [applied]).newVersions, []);
+  for (const current of [[], ['db/V1.0.2026100903__renamed.sql'], ['db/V1.0.20261018__message.sql']]) {
+    assert.throws(() => validateFlywayMigrationInventory(current, [applied]),
+      error => error.code === 'MIGRATION_HISTORY_IMMUTABLE'
+        && error.details.files.includes(applied));
+  }
+});
+
 test('migration policy rejects server administration and destructive schema changes', () => {
   for (const sql of [
     'CREATE DATABASE customer_shadow;',
@@ -614,6 +665,35 @@ test('test migration failures preserve a bounded redacted diagnostic and a stabl
     sanitizeDiagnosticText('{"MYSQL_PASSWORD":"credential","access_token":"opaque"}'),
     '{"MYSQL_PASSWORD":"[REDACTED]","access_token":"[REDACTED]"}',
   );
+});
+
+test('migration SQL cause crosses the HTTP failure boundary without credentials', async () => {
+  const runner = new ControlledReleaseRunner({ contractPath: '/fixture/contract.json',
+    projectRoot: '/fixture/project', delay: async () => undefined });
+  runner.command = async (_command, args) => {
+    if (args[0] === 'inspect') return { code: 0, output: '{"Running":false,"ExitCode":1}' };
+    if (args[0] === 'logs') return { code: 0, output:
+      "FlywayException: Migration failed\nSQL State: HY000\nError Code: 1267\nMessage: Illegal mix of collations (utf8mb4_0900_ai_ci,IMPLICIT) and (utf8mb4_unicode_ci,IMPLICIT) for operation '='\nMYSQL_PASSWORD=fixture-secret" };
+    throw new Error('Unexpected migration fixture command');
+  };
+  runner.execute = async () => runner.waitForTestMigration('fixture-migration');
+  const server = createReleaseRunnerServer({ runner });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/v1/actions`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
+    });
+    assert.equal(response.status, 422);
+    const body = await response.json();
+    assert.equal(body.ok, false);
+    assert.equal(body.error.code, 'MIGRATION_EXECUTION_FAILED');
+    assert.equal(body.error.stage, 'test-database-migration');
+    assert.match(body.error.diagnosticExcerpt, /Error Code: 1267[\s\S]*Illegal mix of collations/u);
+    assert.match(body.error.diagnosticExcerpt, /MYSQL_PASSWORD=\[REDACTED\]/u);
+    assert.doesNotMatch(JSON.stringify(body), /fixture-secret/u);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
 });
 
 test('failed Flyway history is classified before the generic validation pattern', async () => {
@@ -1251,6 +1331,7 @@ test('release orchestration builds before candidate-image test migration, pins i
     assert.equal(commands[0].command, 'docker');
     const build = commands.find(({ command, args }) => command === 'docker' && args?.includes('build'));
     assert.ok(build);
+    assert.equal(build.options.outputMode, 'tail');
     assert.equal(
       build.options.env.FORGE_ADMIN_IMAGE,
       'forge-demo-project/forge-admin:reviewed-1.2.3',
@@ -1775,7 +1856,6 @@ test('forge-release integrate fails closed without TaskSpace transport and rejec
 test('forge-release uses fixed TaskSpace transport when Harness filters token-shaped environment names', () => {
   assert.deepEqual(resolveTaskspaceTransport({
     FORGE_TASKSPACE_ID: 'task-a',
-    FORGE_TASKSPACE_BROKER_URL: 'http://untrusted.invalid:9999',
   }), {
     brokerUrlValue: 'http://taskspace-broker:3100',
     tokenFile: '/run/forge-taskspace/broker-token',
@@ -1784,6 +1864,38 @@ test('forge-release uses fixed TaskSpace transport when Harness filters token-sh
     () => resolveTaskspaceTransport({ FORGE_TASKSPACE_BROKER_URL: 'http://taskspace-broker:3100' }),
     /requires both FORGE_TASKSPACE_BROKER_URL and FORGE_TASKSPACE_TOKEN_FILE/,
   );
+});
+
+test('forge-release selects trusted runtime Broker aliases in a real TaskSpace environment', () => {
+  for (const hostname of ['taskspace-broker', 'taskspace-broker-stable', 'taskspace-broker-enhanced']) {
+    const brokerUrlValue = `http://${hostname}:3100`;
+    for (const tokenEnvironment of [{}, { FORGE_TASKSPACE_TOKEN_FILE: '/run/forge-taskspace/broker-token' }]) {
+      assert.deepEqual(resolveTaskspaceTransport({
+        FORGE_TASKSPACE_ID: 'task-one',
+        FORGE_TASKSPACE_BROKER_URL: brokerUrlValue,
+        ...tokenEnvironment,
+      }), { brokerUrlValue, tokenFile: '/run/forge-taskspace/broker-token' });
+    }
+  }
+});
+
+test('forge-release rejects untrusted TaskSpace Broker endpoints and token overrides', () => {
+  for (const brokerUrlValue of [
+    'http://untrusted.invalid:9999', 'http://taskspace-broker-stable.example:3100',
+    'http://taskspace-broker-enhanced-other:3100', 'http://127.0.0.1:3100',
+    'https://taskspace-broker-stable:3100', 'http://taskspace-broker-stable:3101',
+    'http://user:password@taskspace-broker-stable:3100',
+    'http://taskspace-broker-enhanced:3100/other',
+    'http://taskspace-broker-stable:3100?redirect=other', 'http://taskspace-broker-stable:3100#other',
+  ]) assert.throws(() => resolveTaskspaceTransport({
+    FORGE_TASKSPACE_ID: 'task-a', FORGE_TASKSPACE_BROKER_URL: brokerUrlValue,
+  }), /trusted TaskSpace Broker origin/u, brokerUrlValue);
+  for (const tokenFile of ['/tmp/token', '/run/forge-taskspace/../other-token']) {
+    assert.throws(() => resolveTaskspaceTransport({
+      FORGE_TASKSPACE_ID: 'task-a', FORGE_TASKSPACE_BROKER_URL: 'http://taskspace-broker-stable:3100',
+      FORGE_TASKSPACE_TOKEN_FILE: tokenFile,
+    }), /protected TaskSpace token path/u);
+  }
 });
 
 
@@ -1862,6 +1974,97 @@ async function candidatePreparationFixture(t, { literalGitBytes = false } = {}) 
     provenance: { source: 'taskspace', taskId: 'task-alpha', actorId: 'developer.one', conversationId: 'conversation:2026-08-27', candidateCommit: commit } };
   return { runner, request, workspace, ops, events, runGit, base, commit, env, imageId };
 }
+
+test('service input planning drives preparation, exact image release and a subsequent no-op', async t => {
+  const f = await candidatePreparationFixture(t, { literalGitBytes: true });
+  const contract = await f.runner.loadContract();
+  contract.release.inputModel = { schemaVersion: 1, services: Object.fromEntries(contract.release.allowedReleaseServices.map(service => [service, {
+    kind: 'tree', roots: [service === 'forge-admin' ? 'candidate.txt' : 'docker-forge-admin/nginx.conf'], inputs: [],
+    migrations: service === 'forge-admin' ? ['forge-server/db/migration'] : [],
+    imageVariable: service.toUpperCase().replaceAll('-', '_') + '_IMAGE', checks: [],
+  }])) };
+  const model = contract.release.inputModel;
+  const baseInputs = await f.runner.releaseInputSnapshot(f.base, model);
+  const oldImages = Object.fromEntries(contract.release.allowedReleaseServices.map(service => [service, { id: f.imageId }]));
+  await writeFile(f.runner.envFile, f.env + contract.release.allowedReleaseServices.map(service => `${model.services[service].imageVariable}=${f.imageId}\n`).join(''));
+  await writeFile(f.runner.auditFile, JSON.stringify({ type: 'controlled-release', status: 'success', jobId: 'old', commit: f.base,
+    services: contract.release.allowedReleaseServices, images: oldImages, inputPlan: { inputs: baseInputs } }) + '\n');
+  f.runner.audit = ControlledReleaseRunner.prototype.audit;
+  const request = { ...f.request, services: contract.release.allowedReleaseServices, provenance: { ...f.request.provenance, sourceBaseCommit: f.base } };
+  const prepared = await f.runner.prepareCandidate(request);
+  assert.deepEqual(prepared.services, ['forge-admin']);
+  assert.deepEqual(prepared.inputPlan.retainedServices, ['forge-app', 'forge-flow', 'forge-ui']);
+  await f.runGit('checkout', '--detach', f.commit);
+  const released = await f.runner.release({ ...request, action: 'release', preparedJobId: prepared.jobId });
+  assert.deepEqual(released.services, ['forge-admin']);
+  assert.equal(f.events.filter(event => event === 'build').length, 1);
+  const beforeNoop = [...f.events];
+  const again = await f.runner.prepareCandidate(request);
+  assert.equal(again.releaseRequired, false);
+  const noop = await f.runner.release({ ...request, action: 'release', preparedJobId: again.jobId });
+  assert.equal(noop.releaseApplied, false);
+  assert.deepEqual(noop.services, []);
+  assert.deepEqual(f.events, beforeNoop, 'unchanged inputs do not build, start a test DB, deploy or smoke');
+  const audits = (await readFile(f.runner.auditFile, 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.equal(audits.filter(record => record.type === 'controlled-release' && record.status === 'success').length, 2);
+});
+
+test('release planning consumes exact platform-approved Git bytes without inheriting approval for a modified candidate', async t => {
+  const f = await candidatePreparationFixture(t, { literalGitBytes: true });
+  const contract = await f.runner.loadContract();
+  const file = 'docker-forge-admin/Dockerfile.admin';
+  contract.release.inputModel = { schemaVersion: 1, services: { 'forge-admin': {
+    kind: 'tree', roots: ['candidate.txt'], inputs: [file], migrations: [], imageVariable: 'FORGE_ADMIN_IMAGE', checks: [],
+  } } };
+  const baseInputs = await f.runner.releaseInputSnapshot(f.base, contract.release.inputModel);
+  await writeFile(f.runner.envFile, `FORGE_ADMIN_IMAGE=${f.imageId}\n`);
+  await writeFile(f.runner.auditFile, JSON.stringify({ type: 'controlled-release', status: 'success', jobId: 'old', commit: f.base,
+    services: ['forge-admin'], images: { 'forge-admin': { id: f.imageId } }, inputPlan: { inputs: baseInputs } }) + '\n');
+  const approved = '# public exec Java shutdown correction\n';
+  await writeFile(path.join(f.workspace, file), approved);
+  await f.runGit('add', file); await f.runGit('commit', '-m', 'public foundation update');
+  const sourceBaseCommit = await f.runGit('rev-parse', 'HEAD');
+  await writeFile(path.join(f.workspace, 'candidate.txt'), 'own change\n');
+  await f.runGit('add', 'candidate.txt'); await f.runGit('commit', '-m', 'own candidate');
+  const candidate = await f.runGit('rev-parse', 'HEAD');
+  const request = { services: ['forge-admin'], provenance: { sourceBaseCommit } };
+  await assert.rejects(f.runner.planReleaseInputs(request, candidate, contract), { code: 'RELEASE_CANDIDATE_SCOPE_MISMATCH' });
+  contract.release.protectedFiles.find(item => item.relativePath === file).sha256 = crypto.createHash('sha256').update(approved).digest('hex');
+  assert.deepEqual((await f.runner.planReleaseInputs(request, candidate, contract)).selectedServices, ['forge-admin']);
+  await writeFile(path.join(f.workspace, file), approved + '# unapproved candidate delta\n');
+  await f.runGit('add', file); await f.runGit('commit', '-m', 'candidate changes approved file');
+  const changed = await f.runGit('rev-parse', 'HEAD');
+  await writeFile(path.join(f.workspace, file), approved);
+  await assert.rejects(f.runner.planReleaseInputs(request, changed, contract), { code: 'RELEASE_CANDIDATE_SCOPE_MISMATCH' },
+    'approval is checked against immutable candidate Git bytes, not current workspace bytes');
+});
+
+test('release snapshot reads Maven descriptors in one lossless Git batch', async t => {
+  const f = await candidatePreparationFixture(t, { literalGitBytes: true });
+  await mkdir(path.join(f.workspace, 'code', 'service'), { recursive: true });
+  await writeFile(path.join(f.workspace, 'code', 'pom.xml'), '<project><groupId>example</groupId><artifactId>parent</artifactId><version>1</version></project>\n');
+  await writeFile(path.join(f.workspace, 'code', 'service', 'pom.xml'), '<project><parent><groupId>example</groupId><artifactId>parent</artifactId><version>1</version></parent><artifactId>service</artifactId></project>\n');
+  await f.runGit('add', '.'); await f.runGit('commit', '-m', 'reactor');
+  const calls = [];
+  const command = f.runner.command;
+  f.runner.command = async (name, args, options) => {
+    calls.push(args);
+    if (name === 'git' && args.includes('--batch')) {
+      // execFile does not stream stdin; use a process for the same real Git API.
+      const child = spawn(name, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+      let output = ''; child.stdout.setEncoding('utf8'); child.stdout.on('data', chunk => { output += chunk; });
+      child.stdin.end(options.input);
+      await new Promise((resolve, reject) => { child.on('error', reject); child.on('close', code => code === 0 ? resolve() : reject(new Error('Git batch failed'))); });
+      return { code: 0, output };
+    }
+    return command(name, args, options);
+  };
+  const model = { services: { alpha: { kind: 'maven', mavenRoot: 'code', module: 'service', roots: [], inputs: [], migrations: [], checks: [] } } };
+  const inputs = await f.runner.releaseInputSnapshot(await f.runGit('rev-parse', 'HEAD'), model);
+  assert.deepEqual(inputs.alpha.files, ['code/pom.xml', 'code/service/pom.xml']);
+  assert.equal(calls.filter(args => args.includes('--batch')).length, 1);
+  assert.equal(calls.filter(args => args.includes('show')).length, 0);
+});
 
 test('candidate runtime preparation records isolated probes and retains failures without release', async (t) => {
   const f = await candidatePreparationFixture(t, { literalGitBytes: true });

@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import {
   validateVerificationContract,
+  validateContainerExecutionAdmissionReceipt,
   validateVerifyAction,
   verificationCommand,
   resolveFrontendTestFilters,
@@ -23,6 +24,7 @@ import {
   isTestProfile,
   inventoryWorkspace,
   VerificationRunner,
+  stageDirectGovernanceRuntime,
   verifyCachePack,
 } from '../docker/harness/verification-runner.mjs';
 import { readCacheCompatibilityImplementation } from '../docker/harness/verification-cache-tool.mjs';
@@ -66,6 +68,100 @@ const verificationCacheTool = fileURLToPath(new URL('../docker/harness/verificat
 const IMAGE = `forge-delivery/deepseek-harness@sha256:${'a'.repeat(64)}`;
 const NODE_BASE_IMAGE = `node:24-bookworm-slim@sha256:${'b'.repeat(64)}`;
 const MAVEN_BASE_IMAGE = `maven:3.9.16-eclipse-temurin-17@sha256:${'c'.repeat(64)}`;
+
+test('container direct staged governance and exact legacy catalog remain consumable', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'forge-container-policy-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const legacy = contract('forge-base', root);
+  assert.equal(validateVerificationContract(legacy, 'forge-base').profiles.length, VERIFY_PROFILE_NAMES.length - 1);
+  assert.throws(() => validateVerificationContract({ ...legacy, profiles: ['backend-module-compile'] }, 'forge-base'), /ordered profile catalog/u);
+  const staged = await stageDirectGovernanceRuntime(root);
+  const result = await execFileAsync(process.execPath, [path.join(staged, 'forge-governance'), 'catalog', '--format', 'json'],
+    { env: { ...process.env, FORGE_DEVELOPMENT_MODE: 'direct' }, encoding: 'utf8' });
+  const catalog = JSON.parse(result.stdout);
+  assert.equal(catalog.developmentMode, 'direct');
+  assert.equal(await readFile(path.join(staged, 'forge-governance.mjs'), 'utf8'),
+    await readFile(new URL('../docker/harness/forge-governance.mjs', import.meta.url), 'utf8'));
+  const lifecycle = dockerLifecycle();
+  const runner = new VerificationRunner({ projectSlug: 'forge-base', taskspacesRoot: root,
+    contract: legacy, command: async (_program, args) => lifecycle.command(args), developmentMode: 'direct' });
+  await runner.dockerStep({ taskId: 'task-direct', jobId: crypto.randomUUID(),
+    step: { cwd: '/workspace', argv: ['node', '/forge-direct-governance/forge-governance', 'catalog'] },
+    snapshotRoot: path.join(root, 'workspace'), cacheRoot: path.join(root, 'cache'),
+    workspaceGitRoot: path.join(root, 'workspace/.git'), directDevelopment: true, directGovernanceRoot: staged });
+  const create = lifecycle.calls.find(args => args[0] === 'create');
+  assert.ok(create.includes(`type=bind,src=${staged},dst=/forge-direct-governance,readonly`));
+  assert.ok(create.includes('FORGE_DEVELOPMENT_MODE=direct'));
+  assert.ok(create.includes('no-new-privileges:true'));
+});
+
+test('container direct requested compile keeps real process results without old obligations', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'forge-container-direct-'));
+  t.after(async () => { await makeTreeOwnerWritable(root); await rm(root, { recursive: true, force: true }); });
+  const taskId = 'task-direct', projectSlug = 'forge-base';
+  const workspace = await createTaskspace(root, taskId);
+  const currentContract = contract(projectSlug, root);
+  currentContract.profiles = [...VERIFY_PROFILE_NAMES];
+  const calls = [];
+  let syntaxResult;
+  const lifecycleOptions = { async onStart(container) {
+    if (!container.createArgs.includes('test-compile')) return;
+    const mount = container.createArgs.find(entry => entry.includes('dst=/workspace') && !entry.includes('/.git'));
+    const snapshot = /src=([^,]+),dst=\/workspace/u.exec(mount)[1];
+    // Real local syntax compilation exercises exit propagation. Docker/Maven
+    // transport is the existing fixture; this is not a business Maven receipt.
+    try {
+      const result = await execFileAsync(process.execPath, ['--check', path.join(snapshot, 'compile-fixture.mjs')]);
+      syntaxResult = processResult(result);
+    } catch (error) {
+      syntaxResult = processResult({ exitCode: error.code, stdout: error.stdout, stderr: error.stderr });
+    }
+    lifecycleOptions.startResult = syntaxResult;
+  } };
+  const lifecycle = dockerLifecycle(lifecycleOptions);
+  const command = async (program, args, options = {}) => {
+    if (program !== 'git') return lifecycle.command(args);
+    const result = await execFileAsync(program, args, { cwd: options.cwd,
+      env: { ...process.env, ...(options.env ?? {}) }, encoding: 'utf8' });
+    return processResult(result);
+  };
+  let signedDirect = true;
+  const runner = new VerificationRunner({ projectSlug, taskspacesRoot: path.join(root, 'taskspaces'),
+    contract: currentContract, command, developmentMode: 'direct',
+    acceptanceIssuerClient: async (route, body) => {
+      calls.push(route);
+      if (route !== '/v1/candidate-bindings') return { status: 'recorded' };
+      validateContainerExecutionAdmissionReceipt(body.admissionReceipt, { projectSlug, taskId, observedAt: new Date().toISOString() });
+      return { ...(signedDirect ? { developmentMode: 'direct' } : {}), acceptanceContract: {
+        ...(signedDirect ? { developmentMode: 'direct' } : {}),
+        contractId: body.contractId, projectSlug, taskId,
+        candidate: { source: { head: body.admissionReceipt.source.head,
+          fingerprint: body.admissionReceipt.source.workspaceFingerprint } },
+      } };
+    } });
+  await publishCachePack(currentContract.cacheRoot, await inventoryWorkspace(workspace, currentContract.limits), currentContract);
+  for (const [index, scenario] of [
+    { source: 'export const compiled = true;\n', status: 'passed', direct: true },
+    { source: 'export const = ;\n', status: 'failed', direct: true },
+    { source: 'export const controlled = true;\n', status: 'passed', direct: false },
+  ].entries()) {
+    signedDirect = scenario.direct;
+    await writeFile(path.join(workspace, 'compile-fixture.mjs'), scenario.source);
+    const admission = await readyAdmission(runner, taskId, ['backend-module-compile'], lifecycle);
+    const receipt = await runner.execute({ taskId, acceptanceContractId: 'c'.repeat(64),
+      candidateBinding: { trustedBrokerFixture: true }, action: 'run', profile: 'backend-module-compile',
+      selectors: { modules: ['forge-server/forge-business/forge-business-core'] },
+      admissionId: admission.admissionId, idempotencyKey: `container-direct-${index}` });
+    assert.equal(receipt.status, scenario.status);
+    assert.equal(receipt.execution.exitCode, syntaxResult.exitCode);
+    assert.equal(receipt.truth.verificationProven, scenario.status === 'passed');
+    assert.equal(receipt.truth.releaseProven, false);
+    const create = lifecycle.calls.find(args => args[0] === 'create');
+    assert.equal(create.includes('FORGE_DEVELOPMENT_MODE=direct'), scenario.direct);
+    assert.equal(calls.at(-1), scenario.direct ? '/v1/candidate-bindings' : '/v1/verification');
+  }
+  assert.equal(calls.filter(route => route === '/v1/verification').length, 1);
+});
 
 const LINT_FORMAT_ARGS = [
   '--rule', 'style/quotes: off',

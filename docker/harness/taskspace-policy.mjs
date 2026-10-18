@@ -128,7 +128,7 @@ export function validateTaskspaceMetadata(value, expectedProjectSlug) {
     'projectSlug',
     'taskId',
     'actorId',
-    ...(value.schemaVersion === 2 ? ['actorUserId'] : []),
+    ...(value.schemaVersion === 2 ? ['actorUserId', 'runtimeVersion'] : []),
     'conversationId',
     'branch',
     'baseCommit',
@@ -148,6 +148,18 @@ export function validateTaskspaceMetadata(value, expectedProjectSlug) {
   const taskId = requiredString(value.taskId, TASKSPACE_ID_PATTERN, 'taskId');
   const actorId = requiredString(value.actorId, ACTOR_ID_PATTERN, 'actorId');
   if (value.schemaVersion === 2) validateActorUserId(value.actorUserId);
+  if (value.runtimeVersion !== undefined) {
+    const runtime = value.runtimeVersion;
+    if (!runtime || typeof runtime !== 'object' || Array.isArray(runtime)) {
+      throw new Error('TaskSpace runtime version must be an object.');
+    }
+    requiredString(runtime.channel, /^(?:stable|enhanced)$/u, 'runtimeVersion.channel');
+    requiredString(runtime.versionId, DIGEST_PATTERN, 'runtimeVersion.versionId');
+    requiredString(runtime.sourceCommit, COMMIT_PATTERN, 'runtimeVersion.sourceCommit');
+    if (!(runtime.channel === 'stable' ? ['32.12', 'codex/env-3212-ai'] : ['main']).includes(runtime.sourceBranch)) {
+      throw new Error('TaskSpace runtime branch does not match its channel.');
+    }
+  }
   const conversationId = requiredString(
     value.conversationId,
     CONVERSATION_ID_PATTERN,
@@ -195,12 +207,32 @@ export function validateTaskspaceAction(value) {
   }
   const action = value.action;
   if (![
-    'contract', 'diagnose', 'preflight', 'status', 'submit', 'release', 'checkpoint', 'integrate', 'prepare',
+    'contract', 'diagnose', 'preflight', 'plan', 'status', 'logs', 'submit', 'release', 'checkpoint', 'integrate', 'prepare',
     'execution-context', 'prepare-task', 'writer-scope-lease', 'business-data-preview', 'business-data-apply',
     'protected-completion', 'managed-files',
     'verify-admit', 'verify-capability', 'verify-run', 'verify-status', 'verify-receipt', 'verify-review',
   ].includes(action)) {
     throw new Error('TaskSpace action is not allowed.');
+  }
+  if (action === 'logs') {
+    exactKeys(value, ['action', 'services', 'tail', 'sinceSeconds'], 'Runtime logs');
+    const tail = value.tail === undefined ? 200 : value.tail;
+    if (!Number.isSafeInteger(tail) || tail < 1 || tail > 1000) {
+      throw new Error('Runtime log tail must be an integer from 1 to 1000.');
+    }
+    if (value.services !== undefined && (!Array.isArray(value.services)
+      || value.services.length < 1 || value.services.length > 4
+      || new Set(value.services).size !== value.services.length
+      || value.services.some(service => !['forge-admin', 'forge-app', 'forge-flow', 'forge-ui'].includes(service)))) {
+      throw new Error('Runtime log services must name unique project business services.');
+    }
+    if (value.sinceSeconds !== undefined && (!Number.isSafeInteger(value.sinceSeconds)
+      || value.sinceSeconds < 1 || value.sinceSeconds > 86400)) {
+      throw new Error('Runtime log sinceSeconds must be an integer from 1 to 86400.');
+    }
+    return { action, tail,
+      ...(value.services === undefined ? {} : { services: [...value.services] }),
+      ...(value.sinceSeconds === undefined ? {} : { sinceSeconds: value.sinceSeconds }) };
   }
   if (action === 'managed-files') {
     if (value.operation === 'targets') {

@@ -18,9 +18,9 @@ spec.loader.exec_module(deployment)
 def manifest():
     linux_paths = {
         'projectEnv': '/srv/forge-delivery/projects/forge-base/ops/project.env',
-        'taskEnv': '/srv/forge-delivery/projects/forge-base/taskspaces/c-16ff043b430e407da9027a44/task.env',
+        'taskEnv': '/srv/forge-delivery/projects/forge-base/taskspaces/c-e7b9ab5b67f99bdd643b31b7/task.env',
         'gatewayFence': '/srv/forge-delivery/conversation-control-plane/maintenance/gateway-fence.json',
-        'harnessFence': '/srv/forge-delivery/projects/forge-base/taskspaces/c-16ff043b430e407da9027a44/maintenance/proxy-fence.json'}
+        'harnessFence': '/srv/forge-delivery/projects/forge-base/taskspaces/c-e7b9ab5b67f99bdd643b31b7/maintenance/proxy-fence.json'}
     roles = ('acceptance', 'manager', 'harness', 'gateway', 'broker')
     containers = {}
     for number, key in enumerate(roles, 1):
@@ -34,7 +34,7 @@ def manifest():
             'helper': {'path': '/opt/forge-delivery-platform/scripts/lib/container-image-cutover.sh', 'sha256': 'c' * 64},
             'files': {k: {'path': p, 'sha256': 'd' * 64, 'uid': 1000, 'gid': 983, 'mode': 384}
                       for k, p in linux_paths.items()},
-            'sessionIds': ['session-dfd1e4fc-a79b-4307-b154-9a8c402106d6']}
+            'sessionIds': ['session-f1184c70-6762-2e96-1a6f-90513bc971dd']}
 
 class DeploymentBoundaryTests(unittest.TestCase):
     def test_only_allowed_env_keys_change_and_original_bytes_survive(self):

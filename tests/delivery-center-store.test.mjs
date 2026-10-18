@@ -553,6 +553,46 @@ test('real MySQL: idempotent imports, shared source links, historic release snap
   });
 
 
+test('snapshot byte limit accepts 128 MiB and rejects one extra byte while retaining entity bounds', (context) => {
+  const boundary = fixture(); boundary.extra = ['snapshot-byte-limit-fixture'];
+  const byteLength = Buffer.byteLength.bind(Buffer);
+  const encoded = JSON.stringify(boundary);
+  const marker = JSON.stringify(boundary.extra[0]);
+  let extraBytes = 128 * 1024 * 1024 - byteLength(encoded);
+  // Exercise the public validator with measured-byte boundaries without allocating a large snapshot.
+  const measuredBytes = context.mock.method(Buffer, 'byteLength', (value, ...args) =>
+    byteLength(value, ...args) + (value === marker || value === encoded ? extraBytes : 0));
+  try {
+    for (const input of [boundary, { ...boundary, toJSON() { return boundary; } }]) {
+      assert.doesNotThrow(() => validateDeliverySnapshot(input));
+      extraBytes++;
+      assert.throws(() => validateDeliverySnapshot(input), { code: 'DELIVERY_INPUT_INVALID', message: 'Delivery snapshot is oversized.' });
+      extraBytes--;
+    }
+  } finally { measuredBytes.mock.restore(); }
+  const oversizedEntity = fixture(); oversizedEntity.menus[0].extra = 'x'.repeat(1024 * 1024);
+  assert.throws(() => validateDeliverySnapshot(oversizedEntity), { code: 'DELIVERY_INPUT_INVALID', message: 'menus entity is oversized.' });
+  const oversizedList = fixture(); oversizedList.menus = Array(10001).fill({});
+  assert.throws(() => validateDeliverySnapshot(oversizedList), { code: 'DELIVERY_INPUT_INVALID', message: 'menus must be a bounded array.' });
+});
+
+test('specification artifacts accept 2 MiB while ordinary artifacts and menus retain 1 MiB', () => {
+  const input = fixture();
+  const artifact = { id: 'artifact-one', kind: 'specification-asset', payload: {
+    assetId: 'fixture-code-source', kind: 'page', name: 'Platform fixture', revision: 'r1', details: { content: '' },
+    menuIds: [], batchIds: [], releaseIds: [], menuPaths: [], sources: [], relations: [], commits: [] } };
+  artifact.payload.details.content = 'x'.repeat(2 * 1024 * 1024 - Buffer.byteLength(JSON.stringify(artifact)));
+  input.artifacts = [artifact];
+  assert.equal(Buffer.byteLength(JSON.stringify(artifact)), 2 * 1024 * 1024);
+  assert.doesNotThrow(() => validateDeliverySnapshot(input));
+  artifact.payload.details.content += 'x';
+  assert.throws(() => validateDeliverySnapshot(input), { code: 'DELIVERY_INPUT_INVALID', message: 'artifacts entity is oversized.' });
+  const ordinary = fixture(); ordinary.artifacts[0].extra = 'x'.repeat(1024 * 1024);
+  assert.throws(() => validateDeliverySnapshot(ordinary), { code: 'DELIVERY_INPUT_INVALID', message: 'artifacts entity is oversized.' });
+  const menu = fixture(); menu.menus[0].kind = 'specification-asset'; menu.menus[0].extra = 'x'.repeat(1024 * 1024);
+  assert.throws(() => validateDeliverySnapshot(menu), { code: 'DELIVERY_INPUT_INVALID', message: 'menus entity is oversized.' });
+});
+
 test('snapshot import bounds heap while preserving canonical JSON bytes and unchanged imports', async (context) => {
   const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object'
     ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
@@ -575,17 +615,8 @@ test('snapshot import bounds heap while preserving canonical JSON bytes and unch
   assert.throws(() => validateDeliverySnapshot(cyclic), { code: 'DELIVERY_INPUT_INVALID' });
   const bigint = fixture(); bigint.extra = [1n];
   assert.throws(() => validateDeliverySnapshot(bigint), { code: 'DELIVERY_INPUT_INVALID' });
-  // Exact root/key/bracket/comma accounting at the existing 64 MiB limit, with bounded items.
-  const boundary = fixture(); boundary.extra = Array.from({ length: 63 }, () => 'x'.repeat(1024 * 1024));
-  const remaining = 64 * 1024 * 1024 - Buffer.byteLength(JSON.stringify(boundary)) - 3;
-  boundary.extra.push('x'.repeat(remaining));
-  assert.equal(Buffer.byteLength(JSON.stringify(boundary)), 64 * 1024 * 1024);
-  assert.doesNotThrow(() => validateDeliverySnapshot(boundary));
-  boundary.extra[boundary.extra.length - 1] += 'x';
-  assert.throws(() => validateDeliverySnapshot(boundary), { code: 'DELIVERY_INPUT_INVALID' });
-  boundary.extra = [];
   const packet = process.env.DELIVERY_MEMORY_PACKET;
-  if (!packet) { context.diagnostic('Fixed packet heap check requires DELIVERY_MEMORY_PACKET; JSON/hash/size assertions completed.'); return; }
+  if (!packet) { context.diagnostic('Fixed packet heap check requires DELIVERY_MEMORY_PACKET; JSON/hash assertions completed.'); return; }
   const { spawn } = await import('node:child_process');
   const script = `
     import assert from 'node:assert/strict';

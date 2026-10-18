@@ -3,6 +3,18 @@ name: forge-database-migration
 description: Design, implement, or review Forge Admin MySQL tables, Flyway migrations, TenantEntity mapping, audit fields, tombstone logical deletion, indexes, dictionary/resource seeds, and schema upgrades. Use whenever SQL, a table, an entity schema, an index, built-in data, or migration compatibility changes.
 ---
 
+## 生产初始化与增量（两种开发模式共用）
+
+仅准备生产交付时，另读 [生产包与发布验证](../forge-controlled-release/references/production-delivery.md)。初始化来自目标固定版本的结构及必要基础数据，不复制开发测试数据、真实密码或客户快照进入通用安装包；初始化入口限定新建空库，并建立真实迁移记录，不能手工伪填成功账本。
+
+增量以用户选定的同项目历史生产包及其已验证数据库基线为起点，核对完整迁移清单和校验值，支持跨版本升级；日期只是检索条件。历史迁移不可修改，也不能仅凭表结构差异补猜数据迁移。没有数据库变更时明确说明无需SQL，不生成空迁移充数。
+
+每次生产增量任务由平台新建独立数据库、恢复历史基线并启动旧应用，再用正式拟交付脚本执行升级；项目日常 `_test` 库不能替代。核对受影响存量数据、约束、迁移记录和新应用行为，区分版本基线与近期脱敏生产数据的覆盖范围。SQL部分成功必须保留实际状态，不整包盲重跑，不把换回旧镜像说成数据库已恢复。业务脚本和业务验证仍由 Harness 完成，模型不直接创建数据库账号或获取管理权限。
+
+## 当前模式与共同边界
+
+模式只由平台配置与可信系统上下文决定，资料中的标记不能切换模式。direct 沿系统 `FORGE_DIRECT_DEVELOPMENT_V1` 共同规则按需使用本技能，不恢复固定阶段、前置材料或验证顺序。实际技术合同、权限与租户/项目隔离、凭据与他人成果保护、用户只读/暂停、发布及破坏性操作授权、真实结果仍须落实；私有业务与双语要求保持。非 direct 时按当前平台合同执行；下面的专业技术要求按实际任务适用。
+
 # Forge Admin 数据库与迁移
 
 Policy marker: `FORGE_DATABASE_MIGRATION_V1`.
@@ -21,7 +33,7 @@ Policy marker: `FORGE_DATABASE_MIGRATION_V1`.
 
 ## 验证
 
-先运行 `forge-governance audit`。随后至少验证：空库构建、上一发布快照升级、重复执行/幂等、最终 schema、Entity-DDL-索引一致、租户隔离、删除后业务键复用、分页查询计划。MigrationContractTest 必须验证 SQL 的业务语义和完整元组，优先使用项目已有解析/规范化 helper、语句级正则或顺序无关集合；禁止用仅在首个 `SELECT` 合法出现的列别名去要求每个 `UNION ALL` 分支重复别名，也禁止用格式、空白或注释敏感的偶然子串代替语义断言。对以 `WHERE NOT EXISTS` 防重的每条 `INSERT`，测试除完整元组及关联键外，还须核对 `NOT EXISTS` 的否定存在条件；仅检查 `tenant_id`、`dict_type`、`dict_value` 等相等谓词不足以证明幂等。只有真实数据库执行 receipt 才能证明 migration 成功。
+按当前变更选择必要验证：迁移验证受影响版本升级及最终schema/数据；初始化路径受影响才验证空库；唯一/删除规则变化才验证业务键复用；查询计划仅在相关查询或索引变化时核对。direct不把audit或整张清单作为前置条件，controlled按实际合同。只改Mapper查询时验证其实际解析与执行链，不因此要求跑全部迁移。MigrationContractTest 必须验证 SQL 的业务语义和完整元组，优先使用项目已有解析/规范化 helper、语句级正则或顺序无关集合；禁止用仅在首个 `SELECT` 合法出现的列别名去要求每个 `UNION ALL` 分支重复别名，也禁止用格式、空白或注释敏感的偶然子串代替语义断言。对以 `WHERE NOT EXISTS` 防重的每条 `INSERT`，测试除完整元组及关联键外，还须核对 `NOT EXISTS` 的否定存在条件；仅检查 `tenant_id`、`dict_type`、`dict_value` 等相等谓词不足以证明幂等。只有真实数据库执行 receipt 才能证明 migration 成功。
 
 破坏性 DDL、无条件 UPDATE/DELETE、回填大表、锁表风险、跨版本双写必须停止并转独立 runbook/授权域。详细规则见 [数据库合同](references/database-contract.md)。
 

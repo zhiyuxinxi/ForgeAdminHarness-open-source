@@ -1,74 +1,47 @@
-# Forge Admin v1.1.2 测试与可观测性合同
+# 按实际变化选择验证
 
-## 固定来源
+本参考说明什么证据能判断当前变化，不创建固定测试清单、阶段、审批或全仓检查。模式由可信运行时决定；direct按需选择工具，controlled的准入与合同规则见[受控入口](../CONTROLLED.md)。本文件不把受控流程重新加到direct任务上。
 
-基线 commit：`6eb2881e6f6af85a5348acf3da63cef53a873b0e`。
+## 当前事实与行为预期
 
-- `forge-server/pom.xml:67-70,100-122,198-205,243-249`：compiler/test 默认跳过、`enable-tests` profile、其显式 `testExcludes` 和 surefire 绑定；启用 profile 仍需核对目标测试实际被选中。
-- `forge-admin-ui/package.json:6-12`：build、test、lint:fix 脚本。
-- `forge-admin-ui/vitest.config.js`：jsdom、测试 include 和目前只聚焦 flow-designer 的 coverage include；不是全站 coverage 证明。
-- `forge-admin-ui/src/utils/debug-console.js:6-43`：生产可加载 `vconsole@latest` 的风险。
-- `forge-admin-ui/src/utils/http/interceptors.js:535-567`：traceId/nonce 弱随机债务。
-- `forge-server/forge-admin-server/pom.xml:152` 及多个 server module：Actuator 依赖存在；它本身不证明 readiness、metrics、tracing 或 alert 已落地。
-- `forge-server/forge-admin-server/src/main/resources/logback.xml` 与 `forge-server/forge-framework/forge-starter-parent/forge-starter-log/src/main/java/com/mdframe/forge/starter/log/aspect/OperationLogAspect.java:148-237`：已有 traceId/operation log 局部能力，不等于 ingress-to-async 全链路。
+- 读取本次实际使用的源码owner、调用方、依赖锁/POM、组件/API签名和配置消费者。历史文档的版本、路径、风险描述仅作线索，不能冒充当前事实；已经核实且未变化的内容无需重读。
+- 预期结果来自用户要求、稳定合同和明确数据实例，不能复制实现算法生成期望值。指出本次改变什么，以及什么输入/失败会暴露错误；无需新增独立设计文档或另一AI审批。
+- 保留本次受影响的业务不变量：授权对象/租户、状态前置条件、金额/数量/ID/日期/空值语义、事务原子性和外部副作用。未知业务规则需要澄清，普通技术选择直接按项目实现。
 
-## Java 测试依赖闭包
+## 变更与最小有效证据
 
-- 测试文件的 owner 是包含其 `src/test/java` 的最近 Maven module；只有该 module 的 `<dependencies>` 或它通过 `<parent><relativePath>` 显式声明的本地父链依赖，才计入静态 test-framework 闭包。
-- `dependencyManagement`、plugin dependency、另一个 sibling module 的测试依赖和仓库里“某处已有 JUnit”都不能证明当前测试会编译。
-- `QUALITY-TEST-004` 对 JUnit、AssertJ、Mockito、TestNG import 与可见依赖做确定性失败关闭；最终仍须由 `backend-test-class`/`backend-module-test` receipt 证明 compile、selector 和非零 test count。
-- 如当前 Task Contract 不拥有 `pom.xml`，不得为绕过 admission 扩大路径或临时加依赖；只能选择已经依赖生产 owner且 test classpath 完整的下游测试模块，否则报告结构化 blocker。
+仅选择实际涉及的行和场景，不要求每项全跑。成功测试已编译对应模块时不另补相同编译；发布候选的正式构建可复用，不在发布前重复构建同一制品。
 
-## 验证矩阵
-
-| 变更 | 最小自动化 | 仍需运行环境证据 |
+| 变化 | 直接需要判断的行为 | 有效证据与不能替代它的结果 |
 | --- | --- | --- |
-| Java 纯逻辑 | targeted JUnit + module compile | 无，除非依赖配置/并发 |
-| Controller/permission | Mock/contract + security negative | real auth/resource config direct API |
-| Mapper/tenant | repository integration with real MySQL | cross-tenant rows and query plan |
-| Flyway | empty + previous snapshot upgrade + repeat guard | final schema/data/checksum |
-| Vue component/API | eslint + project typecheck + Vitest + build | browser roles/viewports/network failures |
-| Flowable | BPMN parse/engine integration + callbacks | full approval/retry/version path |
-| log/metric/health | contract test for names/redaction/cardinality | scrape/query, alert fire/recover, runbook |
+| 纯逻辑、计算、状态 | 正常、边界、非法状态或零行写入 | 具名测试观察公共行为，期望来自合同；源码字符串断言和不相关测试数不能证明行为 |
+| 依赖、import、组件或公共接口 | 真实符号、版本、模块方向、直接消费者 | 当前classpath或真实前端解析/构建；mock虚构模块、缓存中碰巧存在类不证明当前依赖正确 |
+| API、DTO/VO、前后端适配 | 参数、校验、ID/金额/日期/空值、rows/total、错误包络 | 真实请求/响应或使用当前序列化与适配器的合同测试；接口HTTP200本身不证明业务成功 |
+| 认证、权限、租户/对象范围 | 合法请求及相关越权/跨租户/对象负例 | 通过实际入口和受影响拦截器，断言拒绝时无读写副作用；直接调用Controller或只隐藏按钮不足 |
+| Mapper查询、分页、动态SQL | 实际参数生成的SQL、解析/改写兼容、结果与过滤语义 | 真实MyBatis BoundSql，经当前依赖版本及相关租户/数据权限/分页插件；覆盖实际动态分支。涉及数据库行为再做相应数据库集成。XML格式、Java编译和绕开插件直接执行SQL不能替代 |
+| 多写、并发、幂等 | 中途失败无半成品、重复请求与竞争、状态/version/受影响行数 | 通过真实事务代理/数据源或相关原子操作观察结果；mock Mapper只能证明编排。相同幂等键异内容按合同失败 |
+| 异步、缓存、调度、外部调用 | 提交时机、可信上下文、乱序/重复、超时结果未知、失效与恢复 | 相关适配器或可控故障验证；超时不能推断远端未执行，不能无依据重发副作用。未承诺持久任务不强造任务引擎 |
+| 前端表单、列表、交互 | loading/empty/error、回填切换、取消、防重提交、失败保留与恢复 | 使用实际组件/适配器的针对性测试；涉及真实布局或浏览器特有行为才补浏览器验证。lint、截图或固定成功mock不能证明异步状态正确 |
+| 迁移、schema或存量兼容 | 本次变更后的表/列/数据、旧版本升级、相关唯一/删除语义 | 在授权隔离数据库执行受影响迁移并核结果；空库仅在初始化/新建路径受影响时补验。脚本生成与H2通过不等于目标MySQL迁移完成 |
+| 配置、运行装配、发布 | 实际读取值、启用路径、直接消费者版本 | 目标运行端的装配/启动及变化入口结果；本地文件、环境变量存在或镜像构建成功不证明被消费 |
+| 性能、文件、连接与其他资源 | 本次路径上限、批量/查询次数、超时、成功失败释放 | 相关规模样本或确定性次数/生命周期证据；小样本通过不证明无界查询或队列可用，不默认全站压测 |
+| 日志、错误、健康信号 | 可定位且脱敏的失败、响应与日志关联、准确健康语义 | 相关失败请求和日志/指标实际结果；不要求无关告警平台或全链追踪建设 |
 
-## 命令模板
+没有数据库、浏览器或外部服务时，继续独立可验证部分并明确缺口。缺失证据若直接决定本次功能是否可用，需通过现有平台能力补齐或报告具体阻塞，不能把跳过改成通过。H2、mock、解析测试各自有价值，只报告实际证明的层。
 
-实际 module/test selector 必须来自 diff：
+## 测试必须真实执行
 
-`RUNNER_INTERNAL_REFERENCE_ONLY_V1`：后端编译/测试与前端 lint/typecheck/test/build 的具体 executable、参数、cwd、依赖 cache 和超时属于版本化 Runner 实现，不是模型可执行模板。模型不得从表中反向拼装构建工具 shell，也不得把未执行的内部映射写成 receipt。Migration、API、browser、Flowable 与观测查询需要各自工具和受控环境。
+- Java测试owner是包含其src/test/java的最近Maven模块；检查该模块及显式本地parent链的真实test依赖。dependencyManagement、plugin依赖或其他模块已有JUnit不等于当前classpath具有它。
+- selector与变更匹配，测试报告核对执行数、失败和跳过。项目enable-tests/testExcludes/fast-package以当前POM和真实命令为准，构建产物不等于已执行测试。
+- 不mock掉待验证的解析器、权限链、事务或前端导入；测试替身只替代当前证明之外的边界。测试失败定位实际原因，修复实现或有需求依据的错误用例，保留原失败；不能降低断言、删测、重复sleep/retry制造绿色。
+- 确实无适用测试时报告0项及已有证据；有未验证的行为风险时补最小有效用例，不把0项写成该行为通过，也不为计数创建空测试。
 
-在受管 TaskSpace 内，可信运行时先为 Task Execution Contract 的完整 profile 闭包取得 execution admission；模型不调用 `admit`，只在收到 ready admission 后执行 `forge-verify run --profile <contract-required-profile> --admission-id <current-admission-id> --idempotency-key <current-task-idempotency-key>`；需要 selector 时只使用下表允许的类型化 selector。
+## 工具、复用与阻塞
 
-| 目标 | `forge-verify` profile | Selector |
-| --- | --- | --- |
-| 静态完整变更审计 | `governance` | 无 |
-| Java module 编译 | `backend-module-compile` | `--module forge-server/<module>` |
-| Java module 测试 | `backend-module-test` | `--module forge-server/<module>` |
-| 指定 Java 测试 | `backend-test-class` | `--module ... --test Class[#method]` |
-| Admin ESLint | `frontend-admin-lint` | 可选；每个真实改动文件重复 `--file forge-admin-ui/<source-path>` |
-| Admin Vitest 最终完整测试 | `frontend-admin-test` | 无 |
-| Admin Vitest 聚焦诊断 | `frontend-admin-test` | 可选 `--test-file forge-admin-ui/<real-test-path>`；不能替代最终完整测试 |
-| Admin typecheck / build | `frontend-admin-typecheck` / `frontend-admin-build` | 无 |
-| H5 build | `frontend-h5-build` | 无 |
-| 全后端回归 | `full-regression` | 无 |
+direct模式可在隔离worker使用实际存在的编译/测试命令；需要Host工具时，按forge-verify实际profiles/capability选择相关profile，取得admit返回的ID后run，观察同一job终态。controlled只按其可信合同和注入准入执行。模型不伪造身份、回执、工作目录权限或依赖来源。
 
-执行验证需要可信运行时为当前合同 profile 闭包签发的 `ready` 短租约；模型不自行选择 command/cwd/env/image/URL，也不用逐 profile `capability` 替代准入。普通任务只有在运行时明确允许 `draftBeforeVerification`、当前写入身份及 owned paths 有效时，才可先保存授权草稿；cache miss/invalid/unavailable 阻塞验证，不自行撤销既有草稿权限。正式阶段或运行时未授予该能力时仍遵守原写入准入。租约、依赖/cache、Runner revision、TaskSpace identity 或安全边界不符时，不能宣称验证有效或借草稿能力合入/发布。Runner receipt 固定保留 `semanticCorrectnessProven=false`、`databaseIntegrationProven=false`、`releaseProven=false`，这些范围仍按验证矩阵补证。
+每个TaskSpace同一时间只运行一个Host验证。环境/依赖缺失保留具体错误，沿现有平台恢复入口解决，继续不依赖该环境的工作；不循环猜缓存路径、不为同一失败重启所有步骤。
 
-`frontend-admin-typecheck` 的 Runner 内部命令固定为 frozen install 后的项目脚本 `pnpm run typecheck`。项目未声明该脚本或脚本退出非零时必须产生失败 receipt；禁止模型直接执行包管理器、临时选择其他 typechecker，或以 lint/build 回执替代。
+按实际来源记录源码/输入范围、工具与selector、退出状态、执行及跳过数量和必要结果。只复验源码、依赖或相关配置变化影响的部分；同内容checkpoint仅改变HEAD时复用原证据。真实合并改变受测内容时补对应检查，不能伪造绑定。复用不了的可选诊断不强迫重跑；用户明确要求和真实错误仍须处理。
 
-### 依赖解析失败
-
-运行时 admission 返回 `cache_miss`/`cache_invalid` 时保留具体平台 blocker，交由平台 operator 按现有准备流程恢复；模型不循环请求相同准入，也不修改缓存配置。若已有有效草稿权限，可以继续该范围内独立工作，但不得冒称通过。Runner 返回编译或测试非零结果时，先定位实际失败，再修复并按受影响 module/test selector 验证；必要修复不受“只准重跑一次”的机械限制，相同输入且没有新证据的重复运行则应停止。依赖/环境尚未恢复时不要重跑业务测试碰运气；禁止新增镜像源、下载二进制/依赖、修改用户级 Maven/pnpm 配置或无界搜索其他 cache。保留每次原始失败、退出状态和仍未取得的最终证据。
-
-## Receipt schema
-
-至少记录：`sourceSha`、`diffSha256`、`cwd`、`argv[]`、`startedAt`、`finishedAt`、`exitCode`、`testCount/passed/failed/skipped`、`artifactSha256`、脱敏输出摘要和 runner identity。只记录存在性、mtime、自报 PASS 或复制旧报告均不足。
-
-Receipt 只覆盖生成它时的候选。其后任一源码、测试、依赖锁或相关配置写入都使该范围 receipt 失效；最终声明必须绑定最后一次写入后的 candidate 和新执行结果。`candidate-only`/test-shadow/cache-miss receipt 明确属于诊断，不得作为最终行为矩阵的 cache-ready 或 post-mutation verification。
-
-## 观测验收
-
-- 同一 request 在 API、Service、async/flow/external span 可相关；错误响应带 safe requestId。
-- 日志脱敏测试含失败路径；指标标签 cardinality 有上限测试。
-- readiness 在 DB/Redis/必要依赖不可用时按批准策略拒绝流量，liveness 不随普通依赖短暂失败抖动。
-- 告警可在测试环境触发并恢复，通知指向 owner/runbook；没有实际查询/触发证据时只声称设计完成。
+功能验证、编译、迁移、部署和真实用户路径分别报告。queued/running为进行中，超时或断连为未知，skipped为未执行；只有实际对应证据才能声明通过或发布。

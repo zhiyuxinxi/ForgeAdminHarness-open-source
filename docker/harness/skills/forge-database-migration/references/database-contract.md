@@ -34,6 +34,8 @@ ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 
 ## Migration 门禁
 
+- SQL 文件使用 UTF-8。通过 MySQL CLI 导入或读取中文/多语言种子时显式传入 `--default-character-set=utf8mb4`；建库/建表的 `DEFAULT CHARSET` 不能代替客户端连接字符集。公共初始化复用 `forge-server/scripts/db/init-db.sh`；只修客户端调用不需要修改已执行迁移或重导现有库。验证应区分命令参数检查与真实数据库文本往返，不能仅凭退出码或表数认定中文正确。
+
 - 命名 `Vx.y.z__lower_snake.sql`，版本唯一且高于已存在版本。
 - 禁止修改/删除已提交版本，禁止普通任务 DROP/TRUNCATE/RENAME。
 - DDL/DML 显式目标；种子用 NOT EXISTS、INSERT IGNORE 或审查后的 ON DUPLICATE KEY。

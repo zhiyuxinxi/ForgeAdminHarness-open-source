@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { sameReleaseCandidate } from './release-inputs.mjs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -116,7 +117,7 @@ function retainedRuntimeJob(diagnosis, reprobe, task, context) {
     conversationId: context.conversationId, candidateCommit: reprobe.candidateCommit };
   if (diagnosis?.active !== false || diagnosis.activeJobId !== null || job?.status !== 'prepared'
     || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(job.jobId ?? '')
-    || job.commit !== reprobe.candidateCommit || !same(job.provenance ?? {}, provenance)
+    || job.commit !== reprobe.candidateCommit || !sameReleaseCandidate(job.provenance ?? {}, provenance)
     || JSON.stringify(job.services) !== JSON.stringify(['forge-admin', 'forge-ui'])
     || recovery?.status !== 'healthy' || recovery.lastAttempt?.jobId !== job.jobId
     || recovery.lastAttempt.commit !== job.commit || recovery.lastAttempt.status !== 'success') {
@@ -133,7 +134,7 @@ function retainedPublishedRuntimeJob(diagnosis, task, context) {
   if (diagnosis?.active !== false || diagnosis.activeJobId !== null || job?.status !== 'success'
     || job.stage !== 'complete' || job.commit !== context.sourceCommit
     || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(job.preparedJobId ?? '')
-    || !same(job.provenance ?? {}, provenance) || !Array.isArray(job.services)
+    || !sameReleaseCandidate(job.provenance ?? {}, provenance) || !Array.isArray(job.services)
     || !['forge-admin', 'forge-ui'].every(service => job.services.includes(service))
     || recovery?.status !== 'healthy' || recovery.lastAttempt?.jobId !== job.preparedJobId
     || recovery.lastAttempt.commit !== job.commit || recovery.lastAttempt.status !== 'success'

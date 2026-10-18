@@ -448,11 +448,11 @@ test('historical stage report variants preserve original receipts limits and exa
       {
         "label": "后端",
         "digest": "c5c47025eee44b9848c801be7a7082643ee071cd0ac87987f662da7012985161",
-        "taskId": "c-534aaa6bfe0d70816f504e8e",
+        "taskId": "c-0e254375986948ea7b361297",
         "batchId": "batch-228f2b518c1b93f9285e5dc511d1f58d",
         "pointer": "/redTests",
         "stageId": "stage-b998309e9108cf59637b3947da7602eb",
-        "sessionId": "session-34445892-7afd-47dd-92f9-e73cce10aaea"
+        "sessionId": "session-1faee0dc-2df0-5cb6-bf56-0a557e135bbe"
       }
     ],
     "details": {
@@ -525,11 +525,11 @@ test('historical stage report variants preserve original receipts limits and exa
       {
         "label": "权限接线",
         "digest": "56fafcd76cc2fe459a87a095cac4d1914fca17e5fe2c6182928e469c6553a545",
-        "taskId": "c-534aaa6bfe0d70816f504e8e",
+        "taskId": "c-0e254375986948ea7b361297",
         "batchId": "batch-228f2b518c1b93f9285e5dc511d1f58d",
         "pointer": "/permissionCoherence",
         "stageId": "stage-18d2b122cbefdfa72cbb756a113d2939",
-        "sessionId": "session-34445892-7afd-47dd-92f9-e73cce10aaea"
+        "sessionId": "session-1faee0dc-2df0-5cb6-bf56-0a557e135bbe"
       }
     ],
     "details": {
@@ -612,7 +612,7 @@ test('historical stage report variants preserve original receipts limits and exa
 
 test('historical roleVisibilityContract role arrays keep exact business rows without promoting seed policies or authorization', () => {
   // Exact shape and declared values from permission-original-source-20261009.json; no business fixture is authored here.
-  const parent = {"id":"asset-7b9103fe144a2a5bf89d864fcb18279c","kind":"permission","name":"权限接线 · roleVisibilityContract","revision":"612333cf015564631e5089725cf230b12d5c0fbd7d3820c79aadde707abee229","recordType":"permission-contract","sourceTopic":"roleVisibilityContract","status":"recorded","sourcePhaseStatus":"historical","isCurrent":false,"sources":[{"label":"权限接线","digest":"56fafcd76cc2fe459a87a095cac4d1914fca17e5fe2c6182928e469c6553a545","taskId":"c-534aaa6bfe0d70816f504e8e","batchId":"batch-228f2b518c1b93f9285e5dc511d1f58d","pointer":"/roleVisibilityContract","stageId":"stage-18d2b122cbefdfa72cbb756a113d2939","sessionId":"session-34445892-7afd-47dd-92f9-e73cce10aaea"}]};
+  const parent = {"id":"asset-7b9103fe144a2a5bf89d864fcb18279c","kind":"permission","name":"权限接线 · roleVisibilityContract","revision":"612333cf015564631e5089725cf230b12d5c0fbd7d3820c79aadde707abee229","recordType":"permission-contract","sourceTopic":"roleVisibilityContract","status":"recorded","sourcePhaseStatus":"historical","isCurrent":false,"sources":[{"label":"权限接线","digest":"56fafcd76cc2fe459a87a095cac4d1914fca17e5fe2c6182928e469c6553a545","taskId":"c-0e254375986948ea7b361297","batchId":"batch-228f2b518c1b93f9285e5dc511d1f58d","pointer":"/roleVisibilityContract","stageId":"stage-18d2b122cbefdfa72cbb756a113d2939","sessionId":"session-1faee0dc-2df0-5cb6-bf56-0a557e135bbe"}]};
   parent.details = {
     roles: [
       {"roleKey":"FIRE_MANAGEMENT","dataScope":"AUTHORIZED_ORG_ZONE_DEVICE","displayNameZh":"消防管理岗位","visibleCapabilities":["全部设施、检测维保记录、检查项、报告和备件权限","business:fireEquipment:attachment","business:fireAlarm:list","business:fireMap:list"]},

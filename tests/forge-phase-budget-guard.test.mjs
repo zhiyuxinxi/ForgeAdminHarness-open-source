@@ -3165,7 +3165,15 @@ test('successful tool result is followed by automatic Host renewal and a current
   assert.equal(calls, 3, 'a subsequent step without another write reuses the same lease');
 });
 
-async function checkpointGuardFixture(t, { integrated = false, edited = false, resolveBarrier } = {}) {
+async function checkpointGuardFixture(t, { integrated = false, edited = false, resolveBarrier, direct = false } = {}) {
+  if (direct) {
+    const mode = process.env.FORGE_DEVELOPMENT_MODE, socket = process.env.FORGE_TOOL_WORKER_SOCKET;
+    process.env.FORGE_DEVELOPMENT_MODE = 'direct'; process.env.FORGE_TOOL_WORKER_SOCKET = '/run/forge-tool-worker/worker.sock';
+    t.after(() => {
+      mode === undefined ? delete process.env.FORGE_DEVELOPMENT_MODE : process.env.FORGE_DEVELOPMENT_MODE = mode;
+      socket === undefined ? delete process.env.FORGE_TOOL_WORKER_SOCKET : process.env.FORGE_TOOL_WORKER_SOCKET = socket;
+    });
+  }
   const root = await mkdtemp(path.join(os.tmpdir(), 'forge-guard-checkpoint-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const prompt = '修改调查页面并验证发布。';
@@ -3178,8 +3186,10 @@ async function checkpointGuardFixture(t, { integrated = false, edited = false, r
     payload: { sessionId: 'session-one', mode: 'queue', content } })), 'session.prompt');
   const request = { ...classified, requestId: 'request-checkpoint', actorUserId,
     actorUsername: 'alice', conversationId: metadata.conversationId };
-  const taskAuthority = { actionCeiling: 'release', ownedPaths: ['forge-admin-ui/src'], taskProfiles: ['frontend-admin'] };
-  const contract = compileForgeTaskExecutionContract({ prompt, ...taskAuthority });
+  const taskAuthority = { actionCeiling: 'release', ownedPaths: direct ? ['.'] : ['forge-admin-ui/src'],
+    taskProfiles: direct ? ['project-files'] : ['frontend-admin'] };
+  const contract = compileForgeTaskExecutionContract({ prompt, ...taskAuthority }, direct ? { developmentMode: 'direct' } : {});
+  if (direct) taskAuthority.contract = contract;
   const binding = { projectSlug: metadata.projectSlug, taskId: metadata.taskId, actorUserId, actorUsername: 'alice',
     conversationId: metadata.conversationId, dshSessionId: classified.dshSessionId, route: classified.route,
     rpcId: classified.rpcId, promptDigest: classified.textDigest, sourceCommit: base, workspaceFingerprint: 'c'.repeat(64),
@@ -3205,9 +3215,9 @@ async function checkpointGuardFixture(t, { integrated = false, edited = false, r
   const handlers = new Map();
   const controller = installRuntimePhaseBudgetGuard({ on(name, handler) { handlers.set(name, handler); },
     tools: { guard() { return () => {}; } } }, (input) => ({ role: 'user', ...input }), {
-    resolveExecutionContext: async () => {
+    resolveExecutionContext: async (input) => {
       calls += 1;
-      await resolveBarrier?.(calls);
+      await resolveBarrier?.(calls, input);
       if (resolvedContext instanceof Error) throw resolvedContext;
       return structuredClone(resolvedContext);
     },
@@ -3251,6 +3261,39 @@ async function checkpointGuardFixture(t, { integrated = false, edited = false, r
     calls: () => calls, admissions: () => admissions, completions: () => completions,
     setContext(value) { resolvedContext = value; } };
 }
+
+test('direct tool execution renews authority that expires after the model step', async (t) => {
+  const value = await checkpointGuardFixture(t, { direct: true, resolveBarrier: async (calls, input) => {
+    if (calls > 1) {
+      assert.equal(input.sourceTransition, null);
+      assert.deepEqual(input.renewal, { rpcId: 'rpc-checkpoint-guard', dshSessionId: 'session-one' });
+    }
+  } });
+  for (const [name, args] of [['read', { path: 'forge-admin-ui/src/example.vue' }],
+    ['job_output', { job_id: 'bash-9' }], ['job_list', {}],
+    ['bash', { command: 'forge-release status' }], ['bash', { command: 'forge-verify admit --profile frontend-admin-test' }],
+    ['skill', { name: 'forge-testing-observability' }]]) {
+    const current = value.controller.states.get(value.agent);
+    current.executionContextExpiresAt = new Date(Date.now() - 1).toISOString();
+    const before = value.calls();
+    const result = await value.handlers.get('tools/pre-execute')(exec(name, args, value.agent), async () => ({ kind: 'allow' }));
+    assert.equal(value.calls(), before + 1, name);
+    assert.equal(result.kind, 'allow', result.reason);
+    assert.equal(value.controller.states.get(value.agent).executionRpcId, value.context.rpcId);
+  }
+});
+
+test('direct tool renewal failure keeps expired authority denied', async (t) => {
+  const value = await checkpointGuardFixture(t, { direct: true });
+  const current = value.controller.states.get(value.agent);
+  current.executionContextExpiresAt = new Date(Date.now() - 1).toISOString();
+  value.setContext(new Error('trusted renewal unavailable'));
+  let executed = false;
+  const result = await value.handlers.get('tools/pre-execute')(exec('bash', { command: 'forge-release status' }, value.agent),
+    async () => { executed = true; return { kind: 'allow' }; });
+  assert.equal(result.kind, 'deny'); assert.match(result.reason, /unexpired/);
+  assert.equal(executed, false);
+});
 
 test('scoped checkpoint refreshes protected source authority while reporting unrelated dirty candidates honestly', async (t) => {
   const value = await checkpointGuardFixture(t);
@@ -3538,6 +3581,49 @@ test('edited start integration refreshes the same RPC from its Host-bound candid
   assert.equal(next.executionRpcId, value.context.rpcId);
   assert.equal(next.executionSourceCommit, value.nextContext.sourceCommit);
   assert.equal(next.verificationAdmission.receipt.source.workspaceFingerprint, value.nextContext.workspaceFingerprint);
+});
+
+test('direct edited integration advances authority without a Host binding and retains source identity checks', async (t) => {
+  const value = await checkpointGuardFixture(t, { integrated: true, edited: true, direct: true });
+  const before = value.controller.states.get(value.agent);
+  assert.equal(before.verificationAdmission, undefined);
+  assert.notEqual(before.executionWorkspaceFingerprint, value.result.result.sourceTransition.from.fingerprint);
+  value.result.result.savedSourceCommit = 'a'.repeat(40);
+  assert.equal((await value.handlers.get('tools/pre-execute')(value.checkpoint, async () => ({ kind: 'allow' }))).kind, 'allow');
+  value.setContext(value.nextContext);
+  for (const mutate of [
+    r => { r.result.sourceTransition.from.head = 'f'.repeat(40); },
+    r => { r.result.sourceTransition.from.fingerprint = 'a'.repeat(64); },
+    r => { r.result.sourceTransition.sourceAuthority.executionId = '123e4567-e89b-42d3-a456-426614174999'; },
+    r => { r.result.sourceTransition.sourceAuthority.generation += 1; },
+    r => { r.result.sourceTransition.sourceAuthority.actionCeiling = 'git-checkpoint'; },
+    r => { r.result.sourceTransition.task.actorUserId = '123e4567-e89b-42d3-a456-426614174999'; },
+    r => { r.result.workspaceClean = false; },
+  ]) {
+    const changed = structuredClone(value.result);
+    mutate(changed);
+    changed.result.sourceTransition.digest = sourceTransitionCanonicalDigest(changed.result.sourceTransition);
+    await value.handlers.get('tools/result')(value.checkpoint, ok(JSON.stringify(changed)));
+    assert.equal(value.calls(), 1);
+  }
+  await value.handlers.get('tools/result')(value.checkpoint, ok(JSON.stringify(value.result)));
+  assert.equal(value.calls(), 2);
+  const next = value.controller.states.get(value.agent);
+  assert.equal(next.executionContextGeneration, value.context.generation + 1);
+  assert.equal(next.executionRpcId, value.context.rpcId);
+  assert.equal(next.executionSourceCommit, value.nextContext.sourceCommit);
+  assert.equal(next.executionWorkspaceFingerprint, value.nextContext.workspaceFingerprint);
+  assert.equal(next.verificationAdmission, undefined, 'renewal must not create optional Host verification');
+  assert.equal(toolDenialReason(next, exec('bash', { command: 'forge-release release --services forge-admin' }, value.agent)), undefined);
+});
+
+test('edited integration without Host binding stays denied outside direct mode', async (t) => {
+  const value = await checkpointGuardFixture(t, { integrated: true, edited: true });
+  value.controller.states.get(value.agent).verificationAdmission = undefined;
+  value.setContext(value.nextContext);
+  await value.handlers.get('tools/result')(value.checkpoint, ok(JSON.stringify(value.result)));
+  assert.equal(value.calls(), 1);
+  assert.equal(value.controller.states.get(value.agent).executionSourceCommit, base);
 });
 
 test('integrate refresh requires the exact successful clean source transition and authority', async (t) => {

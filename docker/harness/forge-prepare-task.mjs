@@ -213,7 +213,7 @@ export function createBrokerPrepareTaskClient({
   if (typeof brokerUrl !== 'string' || typeof tokenFile !== 'string') return undefined;
   const endpoint = new URL(brokerUrl);
   if (endpoint.protocol !== 'http:'
-    || !['taskspace-broker', '127.0.0.1', 'localhost'].includes(endpoint.hostname)
+    || !['taskspace-broker', 'taskspace-broker-stable', 'taskspace-broker-enhanced', '127.0.0.1', 'localhost'].includes(endpoint.hostname)
     || endpoint.username || endpoint.password || (endpoint.pathname !== '/' && endpoint.pathname !== '')
     || !tokenFile.startsWith('/run/forge-taskspace/')
     || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 30_000) {
@@ -266,6 +266,9 @@ export function createBrokerPrepareTaskClient({
 }
 
 export function registerPrepareTaskTool(ctx, defineTool, execute, options = {}) {
+  // Direct mode receives its authority from the real user request. Exposing
+  // the retired proposal tool sends the model back into duplicate preparation.
+  if (process.env.FORGE_DEVELOPMENT_MODE === 'direct') return;
   if (!ctx?.tools || typeof ctx.tools.register !== 'function' || typeof defineTool !== 'function'
     || typeof execute !== 'function') {
     fail('PREPARE_TASK_TOOL_INVALID', 'prepare_task tool dependencies are unavailable.');

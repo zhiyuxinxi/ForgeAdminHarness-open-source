@@ -90,8 +90,28 @@ export function managedFileTargetList(config, actorUserId) {
 
 // Called only while AS remembers the authenticated Manager request. The tool
 // never supplies this intent or a prompt; references cannot become grants.
-export function managedFileIntentForPrompt(prompt, config, actorUserId) {
+export function managedFileIntentForPrompt(prompt, config, actorUserId, decision) {
   if (typeof prompt !== 'string') return [];
+  if (decision !== undefined) {
+    const intent = decision.managedFiles;
+    if (!intent || (intent.operation !== 'read' && (decision.kind !== 'execute'
+      || decision.prohibitedActions.includes('workspace-write')))) return [];
+    return config.targets.flatMap(target => {
+      if (!target.readActorIds.includes(actorUserId)
+        || (intent.operation !== 'read' && !target.writeActorIds.includes(actorUserId))) return [];
+      return intent.targetPaths.flatMap(value => {
+        if (!prompt.includes(value) || (value !== target.serverDirectory
+          && !value.startsWith(`${target.serverDirectory}/`))) return [];
+        let relativePath = '';
+        if (value !== target.serverDirectory) {
+          try { relativePath = managedFileRelativePath(value.slice(target.serverDirectory.length + 1)); }
+          catch { return []; }
+        }
+        return [{ targetId: target.targetId, relativePath,
+          operations: [...new Set(['read', intent.operation])], configDigest: seal(config) }];
+      });
+    });
+  }
   const plain = prompt.replace(/```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)/gu, value => ' '.repeat(value.length))
     .replace(/`([^`\r\n]*)`/gu, (all, content) => content.startsWith('/') && !/\s/u.test(content) ? ` ${content} ` : ' '.repeat(all.length))
     .replace(/“[^”]*”|‘[^’]*’|「[^」]*」|『[^』]*』|"[^"]*"|'[^']*'/gu, value => ' '.repeat(value.length))

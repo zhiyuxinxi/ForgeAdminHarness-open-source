@@ -1,5 +1,28 @@
 ARG HARNESS_BASE_IMAGE=forge-delivery/deepseek-harness:0.1.1-rc.2
+ARG HARNESS_NODE_BASE_IMAGE=node:24-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e
+FROM ${HARNESS_NODE_BASE_IMAGE} AS node-toolchain
+
+# Agent tools have their own lockfile; never expand the DSH runtime closure.
+FROM node-toolchain AS agent-tools
+USER 0:0
+RUN install -d -m 0755 -o 1000 -g 1000 /opt/forge-agent-tools /tmp/forge-agent-tools-build
+COPY --chown=1000:1000 --chmod=0644 docker/harness/agent-tools/package.json docker/harness/agent-tools/package-lock.json /opt/forge-agent-tools/
+USER 1000:1000
+RUN cd /opt/forge-agent-tools \
+    && HOME=/tmp/forge-agent-tools-build npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+# ast-grep's pinned installer only links its matching optional native package.
+# Network is disabled here so a missing platform binary cannot fetch a fallback.
+RUN --network=none cd /opt/forge-agent-tools \
+    && node node_modules/@ast-grep/cli/postinstall.js
+RUN PLAYWRIGHT_BROWSERS_PATH=/opt/forge-agent-tools/browsers \
+    node /opt/forge-agent-tools/node_modules/playwright/cli.js install --no-shell chromium
+
 FROM ${HARNESS_BASE_IMAGE}
+
+COPY --chmod=0644 docker/harness/forge-conversation-intent.mjs docker/harness/forge-conversation-intent-model.mjs /usr/local/lib/
+COPY --chmod=0644 docker/harness/forge-direct-development.mjs /usr/local/lib/forge-direct-development.mjs
+COPY --chmod=0644 docker/harness/forge-direct-worker-sandbox.mjs /usr/local/lib/forge-direct-worker-sandbox.mjs
+COPY --chmod=0644 docker/harness/forge-direct-development-prompt.mjs /usr/local/lib/forge-direct-development-prompt.mjs
 
 ARG HARNESS_BASE_IMAGE
 ARG HARNESS_BASE_IMAGE_ID
@@ -15,6 +38,7 @@ ARG HARNESS_RUNTIME_PROFILE=vpn-trusted-host
 
 LABEL org.opencontainers.image.revision="${HARNESS_IMAGE_REVISION}"
 LABEL io.forge.tool-worker="v1"
+LABEL io.forge.tool-worker.private-proc="v1"
 LABEL org.opencontainers.image.description="Pinned DeepSeek Harness core with external Skills, isolated uploads and a project-scoped controlled release runner"
 LABEL org.opencontainers.image.version="${DSH_VERSION}"
 LABEL com.forge-delivery.harness-skill-bundle="${HARNESS_SKILL_BUNDLE_VERSION}"
@@ -27,6 +51,7 @@ ENV HARNESS_HISTORY_PAGE_MESSAGES=5 \
     HARNESS_PRIVILEGED_API_MODE=trusted-host \
     DSH_BUNDLED_SKILL_DIR=/opt/forge-skill-bundles/current/skills \
     NODE_PATH=/opt/forge-harness-runtime/node_modules \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/forge-agent-tools/browsers \
     FORGE_HARNESS_SKILL_BUNDLE_VERSION=${HARNESS_SKILL_BUNDLE_VERSION} \
     HARNESS_DOCUMENT_INPUT_ROOT=/project-inputs \
     HARNESS_DOCUMENT_MAX_OUTPUT_BYTES=1048576 \
@@ -46,7 +71,25 @@ ENV HARNESS_HISTORY_PAGE_MESSAGES=5 \
     HARNESS_PROTOTYPE_MAX_UNCOMPRESSED_BYTES=268435456
 
 USER 0:0
+
+# Older reviewed bases may predate the isolated direct worker. Reuse the
+# installed package when present; the Harness still keeps its Docker policies.
+RUN if ! command -v bwrap >/dev/null 2>&1; then \
+      apt-get -o Acquire::Retries=3 update \
+      && apt-get -o Acquire::Retries=3 install --yes --no-install-recommends bubblewrap \
+      && rm -rf /var/lib/apt/lists/*; \
+    fi
 COPY --chmod=0644 docker/harness/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources
+
+COPY --from=agent-tools --chown=0:0 /opt/forge-agent-tools/ /opt/forge-agent-tools/
+RUN node /opt/forge-agent-tools/node_modules/playwright/cli.js install-deps chromium \
+    && dpkg-query -W -f='${binary:Package}\t${Version}\t${Architecture}\n' \
+      | LC_ALL=C sort > /usr/local/share/forge-os-package-inventory.tsv \
+    && rm -rf /var/lib/apt/lists/*
+COPY --chmod=0755 docker/harness/playwright-cli docker/harness/bru docker/harness/ast-grep /usr/local/bin/
+COPY --chmod=0644 docker/harness/forge-playwright.config.json /usr/local/share/forge-playwright.config.json
+COPY --chmod=0644 docker/harness/forge-browser.mjs docker/harness/forge-browser-worker.mjs /usr/local/lib/
+RUN playwright-cli --version && bru --version && ast-grep --version
 COPY --chmod=0644 \
   docker/harness/validate-runtime-tree-metadata.sh \
   docker/harness/validate-runtime-dependencies.mjs \
@@ -80,6 +123,10 @@ RUN --network=none if [ "${INSTALL_DOCUMENT_DEPENDENCIES}" = "true" ]; then \
     fi
 
 USER 0:0
+# A reviewed incremental parent may contain native platform patches after its
+# historical receipt. Bind reuse to a fresh installed-content receipt from the
+# exact pinned parent; build sandboxes cannot attest the target host's LSM.
+ARG HARNESS_RUNTIME_PARENT_DIGEST
 RUN if [ "${INSTALL_DOCUMENT_DEPENDENCIES}" = "true" ]; then \
       chown -hR 0:0 /opt/forge-harness-runtime \
       && chmod -R go-w /opt/forge-harness-runtime \
@@ -90,10 +137,10 @@ RUN if [ "${INSTALL_DOCUMENT_DEPENDENCIES}" = "true" ]; then \
     else \
       test -f /usr/local/share/forge-image-build/runtime-dependency-receipt.json \
       && node /usr/local/lib/validate-runtime-dependencies.mjs \
-        --root /opt/forge-harness-runtime --smoke --json >/tmp/forge-runtime-parent-receipt.json \
-      && node -e 'const fs=require("node:fs");const parent=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));const current=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));if(parent.schemaVersion!==3||current.schemaVersion!==3||parent.digest!==current.digest)process.exit(1)' \
+        --root /opt/forge-harness-runtime --json >/tmp/forge-runtime-parent-receipt.json \
+      && node -e 'const fs=require("node:fs"),assert=require("node:assert/strict");const parent=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));const current=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));const expected=process.argv[3];assert.equal(parent.schemaVersion,3);assert.equal(current.schemaVersion,3);if(expected){assert.match(expected,/^sha256:[0-9a-f]{64}$/);assert.equal(current.digest,expected);}else{for(const key of ["capabilities","digest"]){delete parent[key];delete current[key];}assert.deepEqual(current,parent);}' \
         /usr/local/share/forge-image-build/runtime-dependency-receipt.json \
-        /tmp/forge-runtime-parent-receipt.json \
+        /tmp/forge-runtime-parent-receipt.json "${HARNESS_RUNTIME_PARENT_DIGEST}" \
       && rm -f /tmp/forge-runtime-parent-receipt.json \
       && node /usr/local/lib/forge-agent-preset-policy.mjs upgrade \
         --root /opt/forge-harness-runtime/node_modules/@deepseek-ai/dsh/config/agent-presets \
@@ -113,12 +160,18 @@ COPY --chmod=0644 docker/harness/forge-job-completion-wakeup-patch.mjs /usr/loca
 RUN node /usr/local/lib/forge-job-completion-wakeup-patch.mjs /opt/forge-harness-runtime/node_modules
 COPY --chmod=0644 docker/harness/forge-compaction-budget-patch.mjs /usr/local/lib/forge-compaction-budget-patch.mjs
 RUN node /usr/local/lib/forge-compaction-budget-patch.mjs /opt/forge-harness-runtime/node_modules
+COPY --chmod=0644 docker/harness/forge-deepseek-progress-timeout-patch.mjs /usr/local/lib/forge-deepseek-progress-timeout-patch.mjs
+RUN node /usr/local/lib/forge-deepseek-progress-timeout-patch.mjs /opt/forge-harness-runtime/node_modules
 COPY --chmod=0644 docker/harness/forge-prompt-admission-patch.mjs /usr/local/lib/forge-prompt-admission-patch.mjs
 RUN node /usr/local/lib/forge-prompt-admission-patch.mjs /opt/forge-harness-runtime/node_modules
 COPY --chmod=0644 docker/harness/forge-model-selection-patch.mjs /usr/local/lib/forge-model-selection-patch.mjs
 RUN node /usr/local/lib/forge-model-selection-patch.mjs /opt/forge-harness-runtime/node_modules
 COPY --chmod=0644 docker/harness/forge-codex-sse-patch.mjs /usr/local/lib/forge-codex-sse-patch.mjs
 RUN node /usr/local/lib/forge-codex-sse-patch.mjs /opt/forge-harness-runtime/node_modules
+COPY --chmod=0644 docker/harness/forge-codex-overload-patch.mjs /usr/local/lib/forge-codex-overload-patch.mjs
+RUN node /usr/local/lib/forge-codex-overload-patch.mjs /opt/forge-harness-runtime/node_modules
+COPY --chmod=0644 docker/harness/forge-direct-glob-patch.mjs /usr/local/lib/forge-direct-glob-patch.mjs
+RUN node /usr/local/lib/forge-direct-glob-patch.mjs /opt/forge-harness-runtime/node_modules
 RUN printf '%s\n' \
       '#!/bin/sh' \
       'exec node --expose-internals /opt/forge-harness-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js "$@"' \
@@ -149,12 +202,15 @@ COPY --chmod=0755 \
   docker/harness/forge-governance \
   /usr/local/bin/
 COPY --chmod=0755 docker/harness/start-harness.sh /usr/local/bin/start-harness
+COPY --chmod=0644 docker/harness/forge-sync-model-catalog.mjs /usr/local/lib/forge-sync-model-catalog.mjs
+COPY --chmod=0644 templates/project/harness-settings.yaml /usr/local/share/forge-harness-settings.yaml
 COPY --chmod=0755 scripts/recover-forge-dead-writer.mjs /usr/local/bin/recover-forge-dead-writer.mjs
 COPY --chmod=0644 \
   docker/harness/forge-question-history.mjs \
   docker/harness/forge-reference-provenance.mjs \
   docker/harness/forge-question-history-patch.mjs \
   docker/harness/forge-question-history-client.js \
+  docker/harness/forge-response-status-patch.mjs \
   docker/harness/forge-governance-prompt-guard.mjs \
   docker/harness/forge-completion-claim-guard.mjs \
   docker/harness/forge-host-verification-receipt.mjs \
@@ -232,6 +288,9 @@ COPY --chmod=0644 \
   docker/harness/validate-skill-bundle.mjs \
   docker/harness/validate-image-build-inputs.mjs \
   docker/harness/release-policy.mjs \
+  docker/harness/release-inputs.mjs \
+  docker/harness/forge-public-capabilities.mjs \
+  docker/harness/verification-inputs.mjs \
   docker/harness/release-runner.mjs \
   docker/harness/forge-candidate-auth-client.mjs \
   docker/harness/runtime-download-evidence.mjs \
@@ -255,7 +314,10 @@ COPY --chmod=0644 \
   docker/harness/project-directory.mjs \
   docker/harness/project-materials.mjs \
   docker/harness/conversation-manager.mjs \
+  docker/harness/harness-runtime-versions.mjs \
+  docker/harness/runtime-manager-routing.mjs \
   docker/harness/conversation-gateway.mjs \
+  docker/harness/production-delivery-client.mjs \
   docker/harness/delivery-center-config.mjs \
   docker/harness/delivery-center-http.mjs \
   docker/harness/delivery-center-service.mjs \
@@ -303,6 +365,7 @@ RUN --network=none \
     node /usr/local/lib/forge-tool-worker-native-patch.mjs /opt/forge-harness-runtime/node_modules \
     && install -m 0755 /usr/local/lib/maven-verification-exec.sh /usr/local/bin/maven-verification-exec \
     && node /usr/local/lib/forge-question-history-patch.mjs /opt/forge-harness-runtime/node_modules \
+    && node /usr/local/lib/forge-response-status-patch.mjs /opt/forge-harness-runtime/node_modules \
     && chmod 0755 /usr/local/lib/test-db-operator.sh \
     && find /usr/local/share/conversation-gateway -type d -exec chmod 0755 '{}' + \
     && chmod 0755 /usr/local/share/conversation-gateway \
@@ -486,7 +549,7 @@ RUN --network=none \
     && test -s /usr/local/share/forge-image-build/agent-preset-prompt-contract.json \
     && test -s /usr/local/share/forge-image-build/capability-inventory.json \
     && printf '%s\n' 'PASS image smoke: agent preset prompt contract' \
-    && node /usr/local/lib/validate-runtime-dependencies.mjs --root /opt/forge-harness-runtime --smoke --json > /usr/local/share/forge-image-build/runtime-dependency-receipt.json \
+    && node /usr/local/lib/validate-runtime-dependencies.mjs --root /opt/forge-harness-runtime --json > /usr/local/share/forge-image-build/runtime-dependency-receipt.json \
     && node /usr/local/lib/document-extractor.mjs --check-dependencies \
     && node -e 'const root="/opt/forge-harness-runtime/node_modules";const expected=JSON.parse(process.argv[1]);for(const [name,version] of Object.entries(expected)){if(require(`${root}/${name}/package.json`).version!==version)process.exit(1)}' "{\"@deepseek-ai/dsh\":\"${DSH_VERSION}\",\"pdfjs-dist\":\"${PDFJS_DIST_VERSION}\",\"mammoth\":\"${MAMMOTH_VERSION}\",\"read-excel-file\":\"${READ_EXCEL_FILE_VERSION}\",\"yauzl\":\"${YAUZL_VERSION}\"}" \
     && node --input-type=module -e 'await import("/usr/local/lib/prototype-archive.mjs");await import("/usr/local/lib/prototype-directory-index.mjs")' \

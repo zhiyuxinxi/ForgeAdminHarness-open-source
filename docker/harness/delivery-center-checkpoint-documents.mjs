@@ -139,9 +139,6 @@ async function capture({ stateRoot, repositoryRoot, sourceTransition, commit, tr
 
 /** Called only after Broker has verified and committed its exact authorized paths. */
 export async function captureDeliveryCheckpointDocuments(options) {
-  if (options.sourceTransition?.task?.projectSlug !== 'forge-base') {
-    return { status: 'not-applicable', reason: 'project-not-enabled', sourceCommit: options.commit, documentBlocks: 0 };
-  }
   try { return await capture({ ...options, now: options.now ?? (() => new Date().toISOString()) }); }
   catch (error) {
     const code = /^(?:CHECKPOINT_DOCUMENT_|COMMITTED_DOCUMENT_)[A-Z_]+$/u.test(error.code ?? '')

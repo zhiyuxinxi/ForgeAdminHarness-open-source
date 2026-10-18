@@ -27,6 +27,7 @@ upgrade_script_sha256="$(sha256sum "${SCRIPT_DIR}/upgrade-forge-delivery-toolkit
 upgrade_versions_sha256="$(sha256sum "${REPO_ROOT}/config/versions.env" | awk '{print $1}')"
 require_docker_access
 acquire_harness_image_upgrade_lock
+repair_harness_deepseek_secret_access
 
 registry_file="${DELIVERY_ROOT}/registry/projects.tsv"
 control_env="${DELIVERY_ROOT}/conversation-control-plane/control-plane.env"

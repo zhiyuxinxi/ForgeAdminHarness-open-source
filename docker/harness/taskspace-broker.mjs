@@ -36,6 +36,7 @@ import {
 } from './taskspace-policy.mjs';
 import {
   MAX_EXECUTION_STATE_BYTES,
+  assertAdmittedProductionRelease,
   readCurrentProtectedExecutionContextForTask,
   readProtectedExecutionContext,
   validateProtectedExecutionContext,
@@ -50,7 +51,7 @@ import { inventoryWorkspace } from './verification-runner.mjs';
 import { validateVerificationContract } from './verify-policy.mjs';
 import { validateHostVerificationContract } from './host-verify-policy.mjs';
 import { loadManagedFileTargets, managedFileTargetList, executeManagedFileOperation } from './forge-managed-files.mjs';
-import { backendTestSelectorsForOwnedPaths, isForgeTaskOwnedPath } from './forge-task-execution-contract.mjs';
+import { backendTestSelectorsForOwnedPaths, isForgeTaskOwnedPath, isForgeDirectDevelopmentContract } from './forge-task-execution-contract.mjs';
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_COMMAND_OUTPUT = 2 * 1024 * 1024;
@@ -219,6 +220,7 @@ async function readCandidateValidationBindingForTask({ projectRoot, taskMetadata
     generation: context.generation,
     contractId: context.contractId,
     requiredProfiles: Object.freeze(candidateValidationProfiles),
+    directDevelopment: isForgeDirectDevelopmentContract(context.contract),
     ...(context.authorityClass === 'production-task-writer' ? {
       candidateBinding: Object.freeze({
         projectSlug: context.projectSlug,
@@ -660,6 +662,13 @@ async function defaultProtectedResolverClient(socketPath, route, requestBody, ca
 
 export class TaskspaceBroker {
   constructor(options) {
+    this.developmentMode = options.developmentMode ?? process.env.FORGE_DEVELOPMENT_MODE;
+    this.runtimeChannel = options.runtimeChannel ?? process.env.FORGE_RUNTIME_CHANNEL ?? null;
+    if (this.runtimeChannel !== null && !['stable', 'enhanced'].includes(this.runtimeChannel)) {
+      throw new Error('TaskSpace Broker runtime channel is invalid.');
+    }
+    this.runtimeVersionId = this.runtimeChannel === null ? null
+      : (options.runtimeVersionId ?? process.env.FORGE_RUNTIME_VERSION_ID) || null;
     this.projectRoot = path.resolve(options.projectRoot);
     this.projectSlug = options.projectSlug;
     this.workspaceRoot = path.resolve(options.workspaceRoot ?? path.join(this.projectRoot, 'workspace'));
@@ -701,6 +710,10 @@ export class TaskspaceBroker {
       '/v1/managed-file', body, 'conversation-task',
     ));
     this.managedFileTargets = options.managedFileTargets ?? (() => loadManagedFileTargets(this.projectSlug));
+    this.businessDataIntentClient = options.businessDataIntentClient ?? ((body) => defaultProtectedResolverClient(
+      options.conversationTaskSocket ?? process.env.PROTECTED_ACCEPTANCE_SCOPE_SOCKET ?? '/run/forge-acceptance-scope/scope.sock',
+      '/v1/business-data-intent', body, 'conversation-task',
+    ));
     this.verificationMode = options.verificationMode
       ?? process.env.TASKSPACE_VERIFICATION_MODE
       ?? 'container-toolchain';
@@ -737,6 +750,10 @@ export class TaskspaceBroker {
     this.gitRemoteBranch = options.gitRemoteBranch ?? process.env.TASKSPACE_GIT_REMOTE_BRANCH ?? '';
     this.gitSshCommand = options.gitSshCommand ?? process.env.TASKSPACE_GIT_SSH_COMMAND ?? '';
     this.stateRoot = path.join(this.taskspacesRoot, '.broker');
+    this.statusSocket = options.statusSocket ?? process.env.TASKSPACE_BROKER_STATUS_SOCKET
+      ?? path.join(this.stateRoot, this.runtimeChannel === null
+        ? 'project-status.sock' : `project-status-${this.runtimeChannel}.sock`);
+    if (!path.isAbsolute(this.statusSocket)) throw new Error('TaskSpace Broker status socket must be absolute.');
     this.releaseStateFile = path.join(this.stateRoot, 'release-state.json');
     this.auditFile = path.join(this.stateRoot, 'audit.jsonl');
     this.maintenanceFile = path.join(this.stateRoot, 'maintenance.json');
@@ -962,7 +979,13 @@ export class TaskspaceBroker {
       if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
       try {
         const task = await this.readTask(entry.name);
-        if (tokenHashMatches(actualHash, task.metadata.accessTokenHash)) return task;
+        // A valid token never permits crossing into another platform version.
+        // The legacy endpoint only owns tasks created before version selection.
+        const taskChannel = task.metadata.runtimeVersion === undefined
+          ? null : task.metadata.runtimeVersion?.channel;
+        if (taskChannel === this.runtimeChannel
+          && (this.runtimeVersionId === null || task.metadata.runtimeVersion?.versionId === this.runtimeVersionId)
+          && tokenHashMatches(actualHash, task.metadata.accessTokenHash)) return task;
       } catch {
         // An invalid task directory is not accepted as an authentication source.
       }
@@ -1325,6 +1348,8 @@ export class TaskspaceBroker {
           await atomicJson(this.releaseLockOwnerFile, {
             schemaVersion: 1,
             instanceId: this.instanceId,
+            ...(this.runtimeChannel === null ? {} : { runtimeChannel: this.runtimeChannel }),
+            ...(this.runtimeVersionId === null ? {} : { runtimeVersionId: this.runtimeVersionId }),
             operationId,
             action,
             taskId: task.metadata.taskId,
@@ -1350,6 +1375,13 @@ export class TaskspaceBroker {
         lockAge = Date.now() - lockStat.mtimeMs;
       }
       if (!Number.isFinite(lockAge) || lockAge < this.staleLockAfterMs) {
+        throw this.releaseInProgressError(task, owner);
+      }
+      // Each runtime has its own Runner. Its idle response says nothing about
+      // another runtime's job. Preserve that shared lock for its owning chain.
+      const ownerChannel = owner?.runtimeChannel === undefined ? null : owner.runtimeChannel;
+      const ownerVersionId = owner?.runtimeVersionId ?? null;
+      if (!owner || ownerChannel !== this.runtimeChannel || ownerVersionId !== this.runtimeVersionId) {
         throw this.releaseInProgressError(task, owner);
       }
       const diagnosis = await this.releaseClient({ action: 'diagnose' }).catch(() => ({ active: true }));
@@ -1402,15 +1434,20 @@ export class TaskspaceBroker {
     return inventoryWorkspace(task.workspace, contract.limits);
   }
 
-  async assertCheckpointPaths(task, paths, ownedPaths) {
+  isDirectDevelopment(context) {
+    return this.developmentMode === 'direct' && isForgeDirectDevelopmentContract(context?.contract);
+  }
+
+  async assertCheckpointPaths(task, paths, ownedPaths, context) {
     const workspaceReal = await realpath(task.workspace);
     for (const relative of paths) {
       if ((CHECKPOINT_SECRET_PATH.test(relative)
           && (!isForgeCredentialHandlingSourcePath(relative) || /private[-_.]?key/iu.test(relative)))
-        || !ownedPaths.some((owned) => isForgeTaskOwnedPath(relative, owned))) {
+        || (this.isDirectDevelopment(context) && relative === 'PROJECT_CONTEXT.md')
+        || (!this.isDirectDevelopment(context) && !ownedPaths.some((owned) => isForgeTaskOwnedPath(relative, owned)))) {
         throw taskspaceError(
           'TASKSPACE_CHECKPOINT_PATH_DENIED',
-          'Checkpoint paths must be non-secret source paths inside the protected ownedPaths boundary.',
+          'Checkpoint paths must be ordinary non-secret source paths inside the authorized TaskSpace; platform context remains protected.',
         );
       }
       let current = task.workspace;
@@ -1799,10 +1836,10 @@ export class TaskspaceBroker {
       if (parents.length !== 2 || parents[1] !== pending.from?.head || savedPaths.length < 1 || savedPaths.length > 64) {
         throw taskspaceError('TASKSPACE_INTEGRATION_RECOVERY_MISMATCH', 'Saved source commit ancestry or bounded source paths are invalid.');
       }
-      await this.assertCheckpointPaths(task, savedPaths, context.ownedPaths);
+      await this.assertCheckpointPaths(task, savedPaths, context.ownedPaths, context);
     }
     // Reject a still-unowned conflict before creating the preserved replay copy.
-    await this.assertCheckpointPaths(task, request.paths, context.ownedPaths);
+    await this.assertCheckpointPaths(task, request.paths, context.ownedPaths, context);
     const objectInventory = (await this.checkpointGit(task.workspace, 'count-objects', '-v')).output;
     const objectSizes = Object.fromEntries(objectInventory.trim().split('\n').map((line) => {
       const separator = line.indexOf(': ');
@@ -1870,7 +1907,7 @@ export class TaskspaceBroker {
     if (replayMismatches.length > 0) {
       throw taskspaceError('TASKSPACE_INTEGRATION_RECOVERY_REPLAY_MISMATCH', `The live open merge does not exactly match the isolated immutable replay (${replayMismatches.join(', ')}).`);
     }
-    await this.assertCheckpointPaths(task, conflictPaths, context.ownedPaths);
+    await this.assertCheckpointPaths(task, conflictPaths, context.ownedPaths, context);
     const currentFiles = new Map(beforeInventory.files.map((item) => [item.relative, item]));
     const referenceFiles = new Map(referenceInventory.files.map((item) => [item.relative, item]));
     if (completeDirty.some((relative) => {
@@ -2000,13 +2037,13 @@ export class TaskspaceBroker {
     if (!samePaths(dirty, request.paths)) {
       throw taskspaceError('TASKSPACE_INTEGRATION_DIRTY_MISMATCH', `Complete Git dirty paths do not exactly match integrate paths (${JSON.stringify(dirty)}).`);
     }
-    await this.assertCheckpointPaths(task, request.paths, context.ownedPaths);
+    await this.assertCheckpointPaths(task, request.paths, context.ownedPaths, context);
     const before = await this.inventoryTaskspace(task);
     if (before.head !== request.expectedHead
       || before.workspaceFingerprint !== request.expectedWorkspaceFingerprint) {
       throw taskspaceError('TASKSPACE_INTEGRATION_FINGERPRINT_CHANGED', 'Integrate source fingerprint is stale.', { retryable: true });
     }
-    if (request.expectedWorkspaceFingerprint !== context.workspaceFingerprint) {
+    if (request.expectedWorkspaceFingerprint !== context.workspaceFingerprint && !this.isDirectDevelopment(context)) {
       const projection = await this.protectedCandidateBindingClient({ taskId: task.metadata.taskId });
       this.validateContinuationCandidateBinding(projection, task, context, request, before);
     }
@@ -2066,7 +2103,7 @@ export class TaskspaceBroker {
             task.workspace, 'ls-files', '--stage', '-z', '--', ...automaticStagedPaths,
           )).output;
           try {
-            await this.assertCheckpointPaths(task, conflictPaths, context.ownedPaths);
+            await this.assertCheckpointPaths(task, conflictPaths, context.ownedPaths, context);
           } catch (pathError) {
             return this.throwSourceSavedIntegrationError(task, operation, saved, pathError);
           }
@@ -2225,7 +2262,7 @@ export class TaskspaceBroker {
       || before.workspaceFingerprint !== request.expectedWorkspaceFingerprint) {
       throw taskspaceError('TASKSPACE_INTEGRATION_FINGERPRINT_CHANGED', 'Integration continuation fingerprint is stale.', { retryable: true });
     }
-    if (request.expectedWorkspaceFingerprint !== context.workspaceFingerprint) {
+    if (request.expectedWorkspaceFingerprint !== context.workspaceFingerprint && !this.isDirectDevelopment(context)) {
       const projection = await this.protectedCandidateBindingClient({ taskId: task.metadata.taskId });
       this.validateContinuationCandidateBinding(projection, task, context, request, before);
     }
@@ -2245,7 +2282,7 @@ export class TaskspaceBroker {
     if (!samePaths(pending.conflictPaths, request.paths)) {
       throw taskspaceError('TASKSPACE_INTEGRATION_CONFLICT_MISMATCH', 'Integrate continuation paths must exactly match the pending conflict paths.');
     }
-    await this.assertCheckpointPaths(task, pending.conflictPaths, context.ownedPaths);
+    await this.assertCheckpointPaths(task, pending.conflictPaths, context.ownedPaths, context);
     const conflictSet = new Set(pending.conflictPaths);
     const unresolvedBeforeAdd = parseNulPaths((await this.checkpointGit(
       task.workspace, 'diff', '--name-only', '--diff-filter=U', '-z', '--',
@@ -2516,13 +2553,13 @@ export class TaskspaceBroker {
         );
       }
       const remainingDirtyPaths = dirty.filter((relative) => !request.paths.includes(relative));
-      await this.assertCheckpointPaths(task, request.paths, context.ownedPaths);
+      await this.assertCheckpointPaths(task, request.paths, context.ownedPaths, context);
       const before = await this.inventoryTaskspace(task);
       if (before.head !== request.expectedHead
         || before.workspaceFingerprint !== request.expectedWorkspaceFingerprint) {
         throw taskspaceError('TASKSPACE_CHECKPOINT_FINGERPRINT_CHANGED', 'Checkpoint source fingerprint is stale.', { retryable: true });
       }
-      if (request.expectedWorkspaceFingerprint !== context.workspaceFingerprint) {
+      if (request.expectedWorkspaceFingerprint !== context.workspaceFingerprint && !this.isDirectDevelopment(context)) {
         const projection = await this.protectedCandidateBindingClient({ taskId: task.metadata.taskId });
         this.validateContinuationCandidateBinding(projection, task, context, request, before);
       }
@@ -2900,46 +2937,54 @@ export class TaskspaceBroker {
       if (inventory.workspaceFingerprint !== context.workspaceFingerprint) {
         throw taskspaceError('TASKSPACE_RELEASE_AUTHORITY_STALE', 'Protected release authority is not bound to the current source fingerprint.');
       }
+      const directDevelopment = this.isDirectDevelopment(context);
       let projection;
-      try {
-        projection = await this.protectedCompletionClient({ taskId: task.metadata.taskId });
-      } catch {
-        throw acceptanceNotReady('Protected acceptance projection is missing or unavailable.');
-      }
-      if (normalizedSha256(projection?.gateDigest) !== null) {
-        acceptance = { gateDigest: projection.gateDigest };
-      }
-      if (this.verificationMode === 'host-toolchain' && !protectedCompletionProjectionReady(projection)) {
-        const { gateDigest, ...payload } = projection ?? {};
-        const ledger = projection?.ledgerSummary;
-        const reviewPending = projection?.gateType === 'forge-protected-completion-gate/v1'
-          && normalizedSha256(gateDigest) === sha256Text(canonicalJson(payload))
-          && ledger?.taskContractId === context.contractId
-          && normalizedSha256(projection.sourceFingerprint) === inventory.workspaceFingerprint
-          && normalizedSha256(ledger.sourceFingerprint) === inventory.workspaceFingerprint
-          && ledger.open?.length === 1 && ledger.open[0] === 'contract:api-error-and-auth-contract';
-        if (reviewPending) {
-          const hostContract = validateHostVerificationContract(JSON.parse(await readFile(this.verificationContractPath, 'utf8')), this.projectSlug);
-          if (hostContract.independentReview === 'api-error-and-auth-contract') {
-            await this.callVerification({ action: 'semantic-review', taskId: task.metadata.taskId, acceptanceContractId: context.contractId });
-            const after = await this.inventoryTaskspace(task);
-            const authority = await readProductionExecutionContextForTask({ projectRoot: this.projectRoot, taskMetadata: task.metadata, action: 'release' });
-            if (after.head !== inventory.head || after.workspaceFingerprint !== inventory.workspaceFingerprint
-              || authority.contractId !== context.contractId || authority.sourceCommit !== candidate.head
-              || authority.workspaceFingerprint !== inventory.workspaceFingerprint) {
-              throw taskspaceError('TASKSPACE_RELEASE_AUTHORITY_STALE', '审查期间候选或发布授权发生变化；已保存审查结果，未晋升或发布。');
+      if (!directDevelopment) {
+        try {
+          projection = await this.protectedCompletionClient({ taskId: task.metadata.taskId });
+        } catch {
+          throw acceptanceNotReady('Protected acceptance projection is missing or unavailable.');
+        }
+        if (normalizedSha256(projection?.gateDigest) !== null) {
+          acceptance = { gateDigest: projection.gateDigest };
+        }
+        if (this.verificationMode === 'host-toolchain' && !protectedCompletionProjectionReady(projection)) {
+          const { gateDigest, ...payload } = projection ?? {};
+          const ledger = projection?.ledgerSummary;
+          const reviewPending = projection?.gateType === 'forge-protected-completion-gate/v1'
+            && normalizedSha256(gateDigest) === sha256Text(canonicalJson(payload))
+            && ledger?.taskContractId === context.contractId
+            && normalizedSha256(projection.sourceFingerprint) === inventory.workspaceFingerprint
+            && normalizedSha256(ledger.sourceFingerprint) === inventory.workspaceFingerprint
+            && ledger.open?.length === 1 && ledger.open[0] === 'contract:api-error-and-auth-contract';
+          if (reviewPending) {
+            const hostContract = validateHostVerificationContract(JSON.parse(await readFile(this.verificationContractPath, 'utf8')), this.projectSlug);
+            if (hostContract.independentReview === 'api-error-and-auth-contract') {
+              await this.callVerification({ action: 'semantic-review', taskId: task.metadata.taskId, acceptanceContractId: context.contractId });
+              const after = await this.inventoryTaskspace(task);
+              const authority = await readProductionExecutionContextForTask({ projectRoot: this.projectRoot, taskMetadata: task.metadata, action: 'release' });
+              if (after.head !== inventory.head || after.workspaceFingerprint !== inventory.workspaceFingerprint
+                || authority.contractId !== context.contractId || authority.sourceCommit !== candidate.head
+                || authority.workspaceFingerprint !== inventory.workspaceFingerprint) {
+                throw taskspaceError('TASKSPACE_RELEASE_AUTHORITY_STALE', '审查期间候选或发布授权发生变化；已保存审查结果，未晋升或发布。');
+              }
+              projection = await this.protectedCompletionClient({ taskId: task.metadata.taskId });
             }
-            projection = await this.protectedCompletionClient({ taskId: task.metadata.taskId });
           }
         }
+        acceptance = validateReleaseProjection(projection, context, inventory);
+      } else {
+        // Direct development retains release authority and exact source identity,
+        // without treating optional development checks as a publication contract.
+        acceptance = { developmentMode: 'direct' };
       }
-      acceptance = validateReleaseProjection(projection, context, inventory);
       const runnerRequest = {
         services: request.services, approvalRef: request.approvalRef,
         ...(request.version === undefined ? {} : { version: request.version }),
         provenance: {
           source: 'taskspace', taskId: task.metadata.taskId, actorId: task.metadata.actorId,
           conversationId: task.metadata.conversationId, candidateCommit: candidate.head,
+          sourceBaseCommit: task.metadata.baseCommit,
         },
       };
       await atomicJson(this.releaseStateFile, {
@@ -2965,9 +3010,17 @@ export class TaskspaceBroker {
         throw taskspaceError('TASKSPACE_RELEASE_SOURCE_CHANGED',
           'Candidate source changed during startup validation; no shared branch was advanced.', { retryable: true });
       }
-      const currentProjection = await this.protectedCompletionClient({ taskId: task.metadata.taskId });
-      acceptance = validateReleaseProjection(currentProjection, context, afterPreparation);
-      const deliveryCenterSnapshot = await freezeDeliveryReleaseSnapshot({ projectSlug: this.projectSlug,
+      if (directDevelopment) {
+        const currentTask = await this.readTask(task.metadata.taskId);
+        await assertAdmittedProductionRelease({
+          projectRoot: this.projectRoot, taskMetadata: currentTask.metadata, context,
+        });
+      }
+      const currentProjection = directDevelopment ? null
+        : await this.protectedCompletionClient({ taskId: task.metadata.taskId });
+      if (!directDevelopment) acceptance = validateReleaseProjection(currentProjection, context, afterPreparation);
+      const deliveryCenterSnapshot = directDevelopment ? { status: 'not-required', developmentMode: 'direct' }
+        : await freezeDeliveryReleaseSnapshot({ projectSlug: this.projectSlug,
         projectRoot: this.projectRoot, taskId: task.metadata.taskId, commit: candidate.head,
         sourceFingerprint: afterPreparation.workspaceFingerprint, contractId: context.contractId, protectedGate: currentProjection,
         workspace: task.workspace, inspectSource: () => this.inventoryTaskspace(task) });
@@ -3007,11 +3060,13 @@ export class TaskspaceBroker {
         completedAt,
         runnerJobId: result.jobId,
         acceptanceGateDigest: acceptance.gateDigest,
+        services: result.services,
+        ...(result.releaseApplied === false ? { releaseApplied: false, outcome: 'unchanged' } : {}),
       };
       await this.writeTask(task.metadataPath, {
         ...task.metadata,
         lastCandidate: { commit: candidate.head, submittedAt: completedAt },
-        lastRelease,
+        ...(result.releaseApplied === false ? {} : { lastRelease }),
       });
       await atomicJson(this.releaseStateFile, {
         schemaVersion: 1,
@@ -3030,8 +3085,10 @@ export class TaskspaceBroker {
         acceptanceGateDigest: acceptance.gateDigest,
         projectSlug: this.projectSlug,
         deliveryCenterSnapshot,
+        ...(result.releaseApplied === false ? { releaseApplied: false, outcome: 'unchanged' } : {}),
       });
-      return { ...result, taskspace: { ...candidate, operationId } };
+      return { ...result, ...(directDevelopment ? { developmentMode: 'direct', developmentVerification: 'not-required' } : {}),
+        taskspace: { ...candidate, operationId } };
     } catch (error) {
       const completedAt = new Date().toISOString();
       const exposed = publicError(error);
@@ -3066,13 +3123,21 @@ export class TaskspaceBroker {
   async executeForTask(task, rawRequest) {
     const request = validateTaskspaceAction(rawRequest);
     const maintenance = await this.maintenanceState();
-    if (maintenance.active && !['contract', 'diagnose', 'execution-context', 'protected-completion'].includes(request.action)
+    if (maintenance.active && !['contract', 'diagnose', 'logs', 'execution-context', 'protected-completion'].includes(request.action)
       && !(request.action === 'writer-scope-lease' && ['settle', 'cancel-acquire'].includes(request.operation))) {
       throw taskspaceError(
         'TASKSPACE_PLATFORM_MAINTENANCE',
         'The project capability Broker is in a reviewed platform maintenance window.',
         { retryable: true, recommendedAction: 'Keep working in the TaskSpace and retry the release or verification capability after platform maintenance completes.' },
       );
+    }
+    if (request.action === 'logs') {
+      if (task.metadata.projectSlug !== this.projectSlug || task.metadata.status !== 'active') {
+        throw taskspaceError('TASKSPACE_NOT_ACTIVE', 'Runtime logs require an active Harness in this project.');
+      }
+      // Authentication binds the project; runtime diagnostics do not require
+      // release ownership, a protected write context, or a clean candidate.
+      return this.releaseClient({ ...request, action: 'runtime-logs' });
     }
     if (request.action === 'contract') {
       const runnerContract = await this.releaseClient({ action: 'contract' });
@@ -3084,6 +3149,17 @@ export class TaskspaceBroker {
       };
     }
     if (request.action === 'diagnose') return this.diagnose();
+    if (request.action === 'plan') {
+      const candidate = await this.inspectCandidate(task);
+      if (!candidate.workspaceClean || !candidate.includesCanonical) return { status: 'source-not-ready', taskspace: candidate,
+        reason: 'Save or integrate the intended candidate before calculating its immutable release inputs.' };
+      await this.git(this.workspaceRoot, 'fetch', '--no-tags', task.workspace,
+        candidate.head + ':refs/forge-taskspaces/' + task.metadata.taskId);
+      return this.releaseClient({ action: 'plan', provenance: {
+        source: 'taskspace', taskId: task.metadata.taskId, actorId: task.metadata.actorId,
+        conversationId: task.metadata.conversationId, candidateCommit: candidate.head, sourceBaseCommit: task.metadata.baseCommit,
+      } });
+    }
     if (request.action === 'status' && request.operationId !== undefined) {
       return { release: await this.releaseObservation(task, request.operationId) };
     }
@@ -3156,6 +3232,8 @@ export class TaskspaceBroker {
     }
     if (request.action === 'business-data-apply') {
       return executeForgeBusinessDataConsumption({ request,
+        ...(process.env.FORGE_SEMANTIC_INTENT_ENABLED === 'true'
+          ? { authorizeIntent: this.businessDataIntentClient } : {}),
         readContext: async () => {
           const before = await readCandidateValidationStateSnapshot(this.projectRoot, task.metadata.taskId);
           const context = await readCurrentProtectedExecutionContextForTask({ projectRoot: this.projectRoot, taskMetadata: task.metadata });
@@ -3211,7 +3289,9 @@ export class TaskspaceBroker {
           taskMetadata: task.metadata,
         })
         : null;
-      if (candidateValidationBinding !== null && request.profile !== 'governance' && request.profile !== SOURCE_QUALITY_PROFILE
+      if (candidateValidationBinding !== null
+        && !(this.developmentMode === 'direct' && candidateValidationBinding.directDevelopment)
+        && request.profile !== 'governance' && request.profile !== SOURCE_QUALITY_PROFILE
         && !candidateValidationBinding.requiredProfiles.includes(request.profile)
         && !(['backend-module-compile', 'backend-test-class'].includes(request.profile)
           && candidateValidationBinding.requiredProfiles.includes('backend-module-test'))) {
@@ -3234,7 +3314,9 @@ export class TaskspaceBroker {
         ...(request.selectors === undefined ? {} : { selectors: request.selectors }),
         ...(request.idempotencyKey === undefined ? {} : { idempotencyKey: request.idempotencyKey }),
         ...(request.admissionId === undefined ? {} : { admissionId: request.admissionId }),
-        ...(request.executionMode === undefined ? {} : { executionMode: request.executionMode }),
+        ...(request.executionMode === undefined || (this.developmentMode === 'direct'
+          && candidateValidationBinding?.directDevelopment && this.verificationMode === 'container-toolchain')
+          ? {} : { executionMode: request.executionMode }),
         ...(request.jobId === undefined ? {} : { jobId: request.jobId }),
         ...(request.waitSeconds === undefined ? {} : { waitSeconds: request.waitSeconds }),
         ...(request.receiptId === undefined ? {} : { receiptId: request.receiptId }),
@@ -3380,7 +3462,7 @@ async function main() {
     server.listen(listenPort, listenHost, resolve);
   });
   try {
-    const statusPath = path.join(broker.stateRoot, 'project-status.sock');
+    const statusPath = broker.statusSocket;
     await mkdir(broker.stateRoot, { recursive: true, mode: 0o700 });
     const previous = await lstat(statusPath).catch((error) => { if (error.code === 'ENOENT') return null; throw error; });
     if (previous && !previous.isSocket()) throw new Error('Project status path is not a socket.');

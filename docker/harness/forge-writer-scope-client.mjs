@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
+import { directDevelopmentEnabled, directDevelopmentContextCurrent, directDevelopmentPath } from './forge-direct-development.mjs';
 
 const MUTATIONS = new Set(['write', 'edit', 'remove_file', 'copy_file']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -125,7 +126,7 @@ export function createBrokerWriterScopeLeaseClient({
 } = {}) {
   if (typeof brokerUrl !== 'string' || typeof tokenFile !== 'string') return undefined;
   const endpoint = new URL(brokerUrl);
-  if (endpoint.protocol !== 'http:' || !['taskspace-broker', '127.0.0.1', 'localhost'].includes(endpoint.hostname)
+  if (endpoint.protocol !== 'http:' || !['taskspace-broker', 'taskspace-broker-stable', 'taskspace-broker-enhanced', '127.0.0.1', 'localhost'].includes(endpoint.hostname)
     || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || endpoint.pathname !== '/'
     || !tokenFile.startsWith('/run/forge-taskspace/') || path.posix.normalize(tokenFile) !== tokenFile
     || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 30_000
@@ -222,6 +223,7 @@ export function createBrokerWriterScopeLeaseClient({
 }
 
 export function installForgeWriterScopeLease(ctx, { resolveContext, client } = {}) {
+  const directWriters = new Map();
   return ctx.on('tools/execute', async (exec, next) => {
     if (!MUTATIONS.has(exec?.name)) return next();
     if (typeof client !== 'function' || typeof resolveContext !== 'function') {
@@ -229,6 +231,28 @@ export function installForgeWriterScopeLease(ctx, { resolveContext, client } = {
     }
     const filePath = mutationPath(exec);
     const context = await resolveContext(exec);
+    if (directDevelopmentEnabled(context?.contract)) {
+      // The clone is owned by this TaskSpace. Native pre-execute authority and
+      // observed file versions remain, without project-wide semantic leases.
+      if (!directDevelopmentContextCurrent(context) || context.dshSessionId !== exec.agent?.session?.id
+        || !directDevelopmentPath(filePath)) fail('WRITER_SCOPE_CONTEXT_INVALID', 'Direct writes require current TaskSpace authority and a non-protected workspace path.');
+      const owner = `${context.projectSlug ?? ''}/${context.taskId ?? context.dshSessionId}`;
+      const previous = directWriters.get(owner) ?? Promise.resolve();
+      let release;
+      const settled = new Promise(resolve => { release = resolve; });
+      directWriters.set(owner, settled);
+      try {
+        await previous;
+        exec.signal?.throwIfAborted();
+        const current = await resolveContext(exec);
+        if (!directDevelopmentContextCurrent(current) || current.dshSessionId !== context.dshSessionId
+          || current.executionId !== context.executionId) fail('WRITER_SCOPE_CONTEXT_INVALID', 'TaskSpace authority changed while waiting for its writer.');
+        return await next();
+      } finally {
+        release();
+        if (directWriters.get(owner) === settled) directWriters.delete(owner);
+      }
+    }
     const { binding, scope } = requestBinding(context, exec, filePath);
     // Retain one immutable identity across the await/body/settlement lifetime.
     const pinnedContext = Object.freeze({ ...Object.fromEntries(IDENTITY.map(key => [key, binding[key]])),

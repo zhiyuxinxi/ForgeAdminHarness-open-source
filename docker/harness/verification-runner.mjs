@@ -52,6 +52,27 @@ const DEFAULT_ADMISSION_MIN_USABLE_MS = 5 * 1000;
 const DEFAULT_MAX_ADMISSIONS = 1024;
 const DEFAULT_MAX_ADMISSION_CAPABILITIES = 256;
 const ACCEPTANCE_CONTRACT_ID_PATTERN = /^[0-9a-f]{64}$/u;
+
+// Only these trusted platform files are staged outside the business snapshot.
+// Legacy toolchain images retain their dependencies and immutable cache packs.
+export async function stageDirectGovernanceRuntime(jobRoot) {
+  const library = path.dirname(fileURLToPath(import.meta.url));
+  const directory = path.join(jobRoot, 'direct-governance');
+  await mkdir(directory, { mode: 0o700 });
+  const files = ['forge-backend-source-quality.mjs', 'forge-governance.mjs',
+    'forge-reference-provenance.mjs', 'forge-semantic-resource-lease.mjs',
+    'forge-task-execution-contract.mjs', 'forge-ui-contract.json', 'forge-ui-contract.mjs',
+    'maven-verification-policy.mjs', 'verify-policy.mjs'];
+  for (const name of files) await copyFile(path.join(library, name), path.join(directory, name));
+  for (const [name, fallback] of [['forge-governance', '../bin/forge-governance'],
+    ['forge-governance-policy.json', '../share/forge-governance-policy.json']]) {
+    let bytes;
+    try { bytes = await readFile(path.join(library, name)); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; bytes = await readFile(path.resolve(library, fallback)); }
+    await writeFile(path.join(directory, name), bytes, { mode: 0o600 });
+  }
+  return directory;
+}
 // Only reviewed rejection codes cross the issuer boundary. Schema failures may
 // additionally expose a bounded field-label reason, never raw private state.
 const ISSUER_REJECTIONS = new Map([
@@ -802,6 +823,7 @@ export class VerificationRunner {
     this.maxAdmissions = options.maxAdmissions ?? DEFAULT_MAX_ADMISSIONS;
     this.maxAdmissionCapabilities = options.maxAdmissionCapabilities ?? DEFAULT_MAX_ADMISSION_CAPABILITIES;
     this.acceptanceIssuerClient = options.acceptanceIssuerClient ?? null;
+    this.developmentMode = options.developmentMode ?? process.env.FORGE_DEVELOPMENT_MODE;
     this.now = options.now ?? (() => Date.now());
     this.verifyCachePack = options.verifyCachePack ?? verifyCachePack;
     this.copyCachePack = options.copyCachePack ?? copyCachePack;
@@ -826,12 +848,36 @@ export class VerificationRunner {
   }
 
   async submitProtectedAcceptance(taskId, contractId, receipt, options = {}) {
+    if (this.developmentMode === 'direct' && options.directDevelopment === true) return null;
     if (this.acceptanceIssuerClient === null) return null;
     if (typeof contractId !== 'string' || !ACCEPTANCE_CONTRACT_ID_PATTERN.test(contractId)) {
       throw verifyError('VERIFY_ACCEPTANCE_CONTRACT_REQUIRED', 'Protected verification requires the current acceptance contract binding.');
     }
     const route = receipt.request?.profile === 'governance' ? '/v1/governance' : '/v1/verification';
     return this.acceptanceIssuerClient(route, { taskId, contractId, runnerReceipt: receipt }, options);
+  }
+
+  async bindProtectedCandidate(taskId, admitted, source, options) {
+    if (options.candidateBinding === undefined) return false;
+    if (this.acceptanceIssuerClient === null) {
+      throw verifyError('VERIFY_ACCEPTANCE_CONTRACT_REQUIRED', 'Candidate binding requires the protected acceptance issuer.');
+    }
+    const admissionReceipt = this.admissionReceipt(taskId, admitted.admission.profiles, source.inventory, {
+      outcome: 'ready', admission: admitted.admission, cache: admitted.cache,
+      executor: admitted.admission.receipt?.executor,
+    });
+    const binding = await this.acceptanceIssuerClient('/v1/candidate-bindings', {
+      taskId, contractId: options.acceptanceContractId,
+      candidateBinding: options.candidateBinding, admissionReceipt,
+    }, options);
+    const contract = binding?.acceptanceContract;
+    if (contract?.contractId !== options.acceptanceContractId || contract?.projectSlug !== this.projectSlug
+      || contract?.taskId !== taskId || contract?.candidate?.source?.head !== source.inventory.head
+      || contract?.candidate?.source?.fingerprint !== source.inventory.workspaceFingerprint) {
+      throw verifyError('VERIFY_ACCEPTANCE_BINDING_INVALID', 'Protected acceptance did not bind the admitted candidate.');
+    }
+    return this.developmentMode === 'direct' && binding.developmentMode === 'direct'
+      && contract.developmentMode === 'direct';
   }
 
   pruneAdmissionState(now = this.now()) {
@@ -1036,9 +1082,11 @@ export class VerificationRunner {
           retryable: true,
         });
       }
-      return this.admissionReceipt(taskId, profiles, source.inventory, {
+      const receipt = this.admissionReceipt(taskId, profiles, source.inventory, {
         outcome: 'ready', cache, executor: capability.executor, admission,
       });
+      admission.receipt = structuredClone(receipt);
+      return receipt;
     } catch (error) {
       return this.admissionReceipt(taskId, profiles, source.inventory, {
         outcome: 'executor_unavailable',
@@ -1483,7 +1531,8 @@ export class VerificationRunner {
 
   async dockerStep({
     taskId, jobId, step, snapshotRoot, cacheRoot, workspaceGitRoot,
-    jobRoot: explicitJobRoot, readOnlyWorkspace = false, readOnlyCache = false, signal,
+    jobRoot: explicitJobRoot, readOnlyWorkspace = false, readOnlyCache = false, signal, directDevelopment = false,
+    directGovernanceRoot,
   }) {
     throwIfAborted(signal);
     const containerName = `forge-verify-${this.projectSlug}-${taskId}-${jobId.slice(0, 8)}`.slice(0, 120);
@@ -1503,12 +1552,14 @@ export class VerificationRunner {
       '--mount', `type=bind,src=${snapshotRoot},dst=/workspace${readOnlyWorkspace ? ',readonly' : ''}`,
       '--mount', `type=bind,src=${workspaceGitRoot},dst=/workspace/.git,readonly`,
       '--mount', `type=bind,src=${cacheRoot},dst=/verify-cache${readOnlyCache ? ',readonly' : ''}`,
+      ...(directGovernanceRoot ? ['--mount', `type=bind,src=${directGovernanceRoot},dst=/forge-direct-governance,readonly`] : []),
       '--env', MAVEN_VERIFICATION_ENV_ARG,
       '--env', 'NPM_CONFIG_CACHE=/verify-cache/npm',
       '--env', 'PNPM_HOME=/verify-cache/pnpm/home',
       '--env', 'HOME=/tmp/verify-home',
       '--env', 'GIT_OPTIONAL_LOCKS=0',
       '--env', 'CI=true',
+      ...(directDevelopment ? ['--env', 'FORGE_DEVELOPMENT_MODE=direct'] : []),
       '--workdir', step.cwd,
       ...(step.argv[0] === 'mvn' ? ['--entrypoint', MAVEN_VERIFICATION_EXEC_PATH] : []),
       this.contract.toolchainImage,
@@ -1608,6 +1659,7 @@ export class VerificationRunner {
         source.inventory,
         options,
       );
+      options = { ...options, directDevelopment: await this.bindProtectedCandidate(taskId, admitted, source, options) };
       const digest = verificationIdempotencyDigest({
         projectSlug: this.projectSlug,
         taskId,
@@ -1616,6 +1668,7 @@ export class VerificationRunner {
         selectors: validated.selectors,
         idempotencyKey: validated.idempotencyKey,
         admissionId: validated.admissionId,
+        ...(options.directDevelopment ? { developmentMode: 'direct' } : {}),
       });
       const idempotencyFile = path.join(this.stateRoot, 'idempotency', `${digest}.json`);
       try {
@@ -1641,12 +1694,19 @@ export class VerificationRunner {
       await purgeSnapshotTestResults(snapshotRoot);
       throwIfAborted(options.signal);
       const command = verificationCommand(validated.profile, validated.selectors, source.inventory.head, lintFiles, source.reviewBase, testFilters, typecheckFiles);
+      const directGovernanceRoot = options.directDevelopment && command.steps.some(step => step.argv[0] === 'forge-governance')
+        ? await stageDirectGovernanceRuntime(jobRoot) : undefined;
       const stepResults = [];
-      for (const step of command.steps) {
+      for (const plannedStep of command.steps) {
+        const step = directGovernanceRoot && plannedStep.argv[0] === 'forge-governance'
+          ? { ...plannedStep, argv: ['node', '/forge-direct-governance/forge-governance', ...plannedStep.argv.slice(1)] }
+          : plannedStep;
         const result = await this.dockerStep({
           taskId, jobId, step, snapshotRoot, cacheRoot: executionCacheRoot,
           workspaceGitRoot: path.join(source.workspace, '.git'),
           signal: options.signal,
+          directDevelopment: options.directDevelopment,
+          directGovernanceRoot,
         });
         stepResults.push({ step, ...result });
         throwIfAborted(options.signal);
@@ -1801,10 +1861,10 @@ export class VerificationRunner {
   async execute(raw, options = {}) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw verifyError('VERIFY_REQUEST_INVALID', 'Verification request must be an object.');
     throwIfAborted(options.signal);
-    const { taskId, acceptanceContractId, ...request } = raw;
+    const { taskId, acceptanceContractId, candidateBinding, ...request } = raw;
     if (request.action === 'admit') return this.admit(taskId, request.profiles, options);
     if (request.action === 'capability') return this.capability(taskId, request.profile, options);
-    if (request.action === 'run') return this.run(taskId, request, { ...options, acceptanceContractId });
+    if (request.action === 'run') return this.run(taskId, request, { ...options, acceptanceContractId, candidateBinding });
     const validated = validateVerifyAction(request);
     if (validated.action === 'status') return this.status(taskId, validated.jobId);
     if (validated.action === 'receipt') return this.receipt(taskId, validated.receiptId);

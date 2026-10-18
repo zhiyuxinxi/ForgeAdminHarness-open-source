@@ -18,6 +18,8 @@
 .delivery-sidebar { min-width: 0; border-right: 1px solid var(--line); padding: 20px 18px 20px 0; }
 .delivery-sidebar-summary { color: var(--ink); font-weight: 700; cursor: pointer; min-height: 40px; padding: 6px 0; }
 .delivery-workspace-layout:has(> .delivery-sidebar:not([open])) { grid-template-columns: 108px minmax(0, 1fr); }
+.delivery-workspace-layout:has(> .delivery-sidebar[hidden]) { grid-template-columns: minmax(0, 1fr); }
+.delivery-workspace-layout:has(> .delivery-sidebar[hidden]) > .delivery-content { padding-left: 0; }
 .delivery-sidebar:not([open]) { padding-right: 10px; }
 .delivery-sidebar h3 { font-size: 16px; margin: 0; }
 .delivery-content { min-width: 0; padding: 16px 0 0 18px; }
@@ -164,3 +166,7 @@
 @media (max-width: 720px) { .delivery-layout { grid-template-columns: 1fr; } .delivery-main { width: calc(100% - 24px); } .delivery-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .delivery-project-heading { max-width: 360px; } .delivery-list-heading { flex-wrap: wrap; gap: 12px; } .delivery-detail-record { grid-template-columns: 1fr; gap: 4px; } .delivery-detail-record dd + dt { margin-top: 8px; } .identity-cluster { flex-wrap: wrap; } }
 @media (prefers-reduced-motion: reduce) { .delivery-main *, #delivery-detail * { transition-duration: .01ms !important; } }
 @media (max-width: 720px) { .delivery-navigation { position: static; max-height: none; } .delivery-detail-nav { gap: 4px; } }
+
+.delivery-reader-panel[hidden],#delivery-reader-panel[hidden]{display:none}.delivery-production-panel{min-width:0}.delivery-production-panel .production-main{margin-top:14px;max-width:none}.delivery-production-panel .production-main>.workspace-section{padding:0;border:0;box-shadow:none}.delivery-production-panel .production-toolbar{justify-content:flex-start}
+
+.delivery-artifact-exports{display:grid;gap:5px;min-width:190px;max-width:290px;margin-top:10px;font-size:12px;color:var(--ink-soft);line-height:1.6;overflow-wrap:anywhere}.delivery-artifact-exports strong{color:var(--ink);font-weight:600}.delivery-artifact-exports .text-button{justify-self:start}

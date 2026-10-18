@@ -34,6 +34,8 @@ async function releaseFixture(context, needsJq = true) {
     return null;
   }
   const root = await mkdtemp(path.join(os.tmpdir(), 'forge-application-runtime-'));
+  await mkdir(path.join(root, 'templates', 'project'), { recursive: true });
+  await writeFile(path.join(root, 'templates', 'project', 'release-inputs.json'), await readFile(path.resolve('templates/project/release-inputs.json')));
   context.after(() => rm(root, { recursive: true, force: true }));
   const library = (await readFile(path.resolve('scripts/lib/release-contract.sh'), 'utf8')).replaceAll('\r\n', '\n');
   const invoke = (script, ...args) => spawnSync(bash.executable, ['-s', '--', root, ...args], {
@@ -44,6 +46,7 @@ async function releaseFixture(context, needsJq = true) {
       'if command -v wslpath >/dev/null; then fixture_root="$(wslpath -u "$fixture_root")";',
       'elif command -v cygpath >/dev/null; then fixture_root="$(cygpath -u "$fixture_root")"; fi',
       'cd -- "$fixture_root"',
+      'REPO_ROOT="$PWD"',
       library,
       script,
     ].join('\n'),

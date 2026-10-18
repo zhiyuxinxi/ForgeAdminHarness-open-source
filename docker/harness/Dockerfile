@@ -22,10 +22,31 @@ RUN --network=none cd /opt/forge-harness-runtime \
     && HOME=/tmp/forge-runtime-build npm cache clean --force \
     && rm -rf /tmp/forge-runtime-build /tmp/forge-runtime-install-scripts.json
 
+
+# Agent tools have their own lockfile; never expand the DSH runtime closure.
+FROM node-toolchain AS agent-tools
+USER 0:0
+RUN install -d -m 0755 -o 1000 -g 1000 /opt/forge-agent-tools /tmp/forge-agent-tools-build
+COPY --chown=1000:1000 --chmod=0644 docker/harness/agent-tools/package.json docker/harness/agent-tools/package-lock.json /opt/forge-agent-tools/
+USER 1000:1000
+RUN cd /opt/forge-agent-tools \
+    && HOME=/tmp/forge-agent-tools-build npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+# ast-grep's pinned installer only links its matching optional native package.
+# Network is disabled here so a missing platform binary cannot fetch a fallback.
+RUN --network=none cd /opt/forge-agent-tools \
+    && node node_modules/@ast-grep/cli/postinstall.js
+RUN PLAYWRIGHT_BROWSERS_PATH=/opt/forge-agent-tools/browsers \
+    node /opt/forge-agent-tools/node_modules/playwright/cli.js install --no-shell chromium
+
 # The Maven image is an assembly input only. The published Harness core is
 # flattened from the scrubbed filesystem below, so it does not inherit the
 # JDK/Maven layers or their runtime metadata.
 FROM ${HARNESS_MAVEN_BASE_IMAGE} AS runtime-root
+
+COPY --chmod=0644 docker/harness/forge-conversation-intent.mjs docker/harness/forge-conversation-intent-model.mjs /usr/local/lib/
+COPY --chmod=0644 docker/harness/forge-direct-development.mjs /usr/local/lib/forge-direct-development.mjs
+COPY --chmod=0644 docker/harness/forge-direct-worker-sandbox.mjs /usr/local/lib/forge-direct-worker-sandbox.mjs
+COPY --chmod=0644 docker/harness/forge-direct-development-prompt.mjs /usr/local/lib/forge-direct-development-prompt.mjs
 
 ARG HARNESS_NODE_BASE_IMAGE
 ARG HARNESS_MAVEN_BASE_IMAGE
@@ -49,6 +70,7 @@ RUN update_attempt=1 \
     && install_attempt=1 \
     && until apt-get -o Acquire::Retries=3 -o Acquire::https::Timeout=30 install --yes --no-install-recommends \
         ca-certificates \
+        bubblewrap \
         curl \
         git \
         iproute2 \
@@ -69,6 +91,17 @@ RUN update_attempt=1 \
     && dpkg-query -W -f='${binary:Package}\t${Version}\t${Architecture}\n' \
       | LC_ALL=C sort > /usr/local/share/forge-os-package-inventory.tsv
 
+
+COPY --from=agent-tools --chown=0:0 /opt/forge-agent-tools/ /opt/forge-agent-tools/
+RUN node /opt/forge-agent-tools/node_modules/playwright/cli.js install-deps chromium \
+    && dpkg-query -W -f='${binary:Package}\t${Version}\t${Architecture}\n' \
+      | LC_ALL=C sort > /usr/local/share/forge-os-package-inventory.tsv \
+    && rm -rf /var/lib/apt/lists/*
+COPY --chmod=0755 docker/harness/playwright-cli docker/harness/bru docker/harness/ast-grep /usr/local/bin/
+COPY --chmod=0644 docker/harness/forge-playwright.config.json /usr/local/share/forge-playwright.config.json
+COPY --chmod=0644 docker/harness/forge-browser.mjs docker/harness/forge-browser-worker.mjs /usr/local/lib/
+RUN playwright-cli --version && bru --version && ast-grep --version
+
 # Release identity must not invalidate the pinned operating-system dependency
 # layer. Keeping these ARGs below apt makes a candidate-only version bump reuse
 # the already verified snapshot packages while all versioned assets below still
@@ -84,16 +117,24 @@ COPY --chmod=0644 docker/harness/forge-session-reappearance-patch.mjs /usr/local
 RUN node /usr/local/lib/forge-session-reappearance-patch.mjs /opt/forge-harness-runtime/node_modules
 COPY --chmod=0644 docker/harness/forge-question-history.mjs docker/harness/forge-question-history-patch.mjs docker/harness/forge-question-history-client.js /usr/local/lib/
 RUN node /usr/local/lib/forge-question-history-patch.mjs /opt/forge-harness-runtime/node_modules
+COPY --chmod=0644 docker/harness/forge-response-status-patch.mjs /usr/local/lib/forge-response-status-patch.mjs
+RUN node /usr/local/lib/forge-response-status-patch.mjs /opt/forge-harness-runtime/node_modules
 COPY --chmod=0644 docker/harness/forge-prompt-admission-patch.mjs /usr/local/lib/forge-prompt-admission-patch.mjs
 RUN node /usr/local/lib/forge-prompt-admission-patch.mjs /opt/forge-harness-runtime/node_modules
 COPY --chmod=0644 docker/harness/forge-model-selection-patch.mjs /usr/local/lib/forge-model-selection-patch.mjs
 RUN node /usr/local/lib/forge-model-selection-patch.mjs /opt/forge-harness-runtime/node_modules
 COPY --chmod=0644 docker/harness/forge-codex-sse-patch.mjs /usr/local/lib/forge-codex-sse-patch.mjs
 RUN node /usr/local/lib/forge-codex-sse-patch.mjs /opt/forge-harness-runtime/node_modules
+COPY --chmod=0644 docker/harness/forge-codex-overload-patch.mjs /usr/local/lib/forge-codex-overload-patch.mjs
+RUN node /usr/local/lib/forge-codex-overload-patch.mjs /opt/forge-harness-runtime/node_modules
+COPY --chmod=0644 docker/harness/forge-direct-glob-patch.mjs /usr/local/lib/forge-direct-glob-patch.mjs
+RUN node /usr/local/lib/forge-direct-glob-patch.mjs /opt/forge-harness-runtime/node_modules
 COPY --chmod=0644 docker/harness/forge-job-completion-wakeup-patch.mjs /usr/local/lib/forge-job-completion-wakeup-patch.mjs
 RUN node /usr/local/lib/forge-job-completion-wakeup-patch.mjs /opt/forge-harness-runtime/node_modules
 COPY --chmod=0644 docker/harness/forge-compaction-budget-patch.mjs /usr/local/lib/forge-compaction-budget-patch.mjs
 RUN node /usr/local/lib/forge-compaction-budget-patch.mjs /opt/forge-harness-runtime/node_modules
+COPY --chmod=0644 docker/harness/forge-deepseek-progress-timeout-patch.mjs /usr/local/lib/forge-deepseek-progress-timeout-patch.mjs
+RUN node /usr/local/lib/forge-deepseek-progress-timeout-patch.mjs /opt/forge-harness-runtime/node_modules
 COPY --chmod=0644 docker/harness/validate-runtime-dependencies.mjs /usr/local/lib/validate-runtime-dependencies.mjs
 COPY --chmod=0755 docker/harness/validate-runtime-tree-metadata.sh /usr/local/lib/validate-runtime-tree-metadata.sh
 COPY --chmod=0644 docker/harness/forge-agent-preset-policy.mjs /usr/local/lib/forge-agent-preset-policy.mjs
@@ -119,6 +160,8 @@ RUN install -d -m 0750 -o 1000 -g 1000 \
       /home/node/.npm
 
 COPY --chmod=0755 docker/harness/start-harness.sh /usr/local/bin/start-harness
+COPY --chmod=0644 docker/harness/forge-sync-model-catalog.mjs /usr/local/lib/forge-sync-model-catalog.mjs
+COPY --chmod=0644 templates/project/harness-settings.yaml /usr/local/share/forge-harness-settings.yaml
 COPY --chmod=0755 scripts/recover-forge-dead-writer.mjs /usr/local/bin/recover-forge-dead-writer.mjs
 COPY --chmod=0644 docker/harness/forge-governance-runtime.patch.yml /usr/local/share/forge-governance-runtime.patch.yml
 COPY --chmod=0644 docker/harness/forge-governance-prompt-guard.mjs /usr/local/lib/forge-governance-prompt-guard.mjs
@@ -212,6 +255,9 @@ COPY --chmod=0644 docker/harness/validate-skill-bundle.mjs /usr/local/lib/valida
 COPY --chmod=0644 docker/harness/forge-capability-inventory.mjs /usr/local/lib/forge-capability-inventory.mjs
 COPY --chmod=0644 docker/harness/validate-image-build-inputs.mjs /usr/local/lib/validate-image-build-inputs.mjs
 COPY --chmod=0644 docker/harness/release-policy.mjs /usr/local/lib/release-policy.mjs
+COPY --chmod=0644 docker/harness/release-inputs.mjs /usr/local/lib/release-inputs.mjs
+COPY --chmod=0644 docker/harness/forge-public-capabilities.mjs /usr/local/lib/forge-public-capabilities.mjs
+COPY --chmod=0644 docker/harness/verification-inputs.mjs /usr/local/lib/verification-inputs.mjs
 COPY --chmod=0644 docker/harness/release-runner.mjs /usr/local/lib/release-runner.mjs
 COPY --chmod=0644 docker/harness/forge-candidate-auth-client.mjs /usr/local/lib/forge-candidate-auth-client.mjs
 COPY --chmod=0644 docker/harness/runtime-download-evidence.mjs /usr/local/lib/runtime-download-evidence.mjs
@@ -234,7 +280,9 @@ COPY --chmod=0644 docker/harness/conversation-policy.mjs /usr/local/lib/conversa
 COPY --chmod=0644 docker/harness/project-directory.mjs /usr/local/lib/project-directory.mjs
 COPY --chmod=0644 docker/harness/project-materials.mjs /usr/local/lib/project-materials.mjs
 COPY --chmod=0644 docker/harness/conversation-manager.mjs /usr/local/lib/conversation-manager.mjs
+COPY --chmod=0644 docker/harness/harness-runtime-versions.mjs docker/harness/runtime-manager-routing.mjs /usr/local/lib/
 COPY --chmod=0644 docker/harness/conversation-gateway.mjs /usr/local/lib/conversation-gateway.mjs
+COPY --chmod=0644 docker/harness/production-delivery-client.mjs /usr/local/lib/production-delivery-client.mjs
 COPY --chmod=0644 docker/harness/delivery-center-config.mjs docker/harness/delivery-center-http.mjs docker/harness/delivery-center-service.mjs docker/harness/delivery-center-store.mjs docker/harness/delivery-center-assets.mjs docker/harness/delivery-center-asset-projection.mjs docker/harness/delivery-center-semantics.mjs docker/harness/delivery-center-document-source.mjs docker/harness/delivery-center-checkpoint-documents.mjs docker/harness/delivery-center-checkpoint-source.mjs docker/harness/delivery-center-views.mjs docker/harness/delivery-center-diagrams.mjs docker/harness/delivery-center-projection.mjs docker/harness/delivery-center-import.mjs docker/harness/delivery-center-release-snapshot.mjs docker/harness/delivery-center-schema.sql /usr/local/lib/
 COPY --chmod=0644 docker/harness/conversation-gateway/ /usr/local/share/conversation-gateway/
 COPY --chmod=0755 docker/harness/test-db-operator.sh /usr/local/lib/test-db-operator.sh
@@ -489,6 +537,7 @@ LABEL org.opencontainers.image.source="https://github.com/deepseek-ai/deepseek-h
 LABEL org.opencontainers.image.version="${DSH_VERSION}"
 LABEL org.opencontainers.image.revision="${HARNESS_IMAGE_REVISION}"
 LABEL io.forge.tool-worker="v1"
+LABEL io.forge.tool-worker.private-proc="v1"
 LABEL com.forge-delivery.harness-skill-bundle="${HARNESS_SKILL_BUNDLE_VERSION}"
 LABEL com.forge-delivery.harness-runtime-profile="${HARNESS_RUNTIME_PROFILE}"
 LABEL com.forge-delivery.harness-node-base-manifest="${HARNESS_NODE_BASE_IMAGE}"
@@ -496,6 +545,7 @@ LABEL com.forge-delivery.harness-maven-base-manifest="${HARNESS_MAVEN_BASE_IMAGE
 
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     NODE_PATH=/opt/forge-harness-runtime/node_modules \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/forge-agent-tools/browsers \
     LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8 \

@@ -32,17 +32,18 @@ function fixture(t, search = '?project=forge-base&tab=requirements') {
   }));
   const tabs = [...markup.matchAll(/data-delivery-tab="([^"]+)"/g)].map(([, name]) => { const element = new Element('button'); element.dataset.deliveryTab = name; return element; });
   const document = { getElementById: id => nodes.get(id) || [...nodes.values()].flatMap(walk).find(element=>element.id===id), querySelectorAll: selector => selector === '[data-delivery-tab]' ? tabs : [], createElement: tag => new Element(tag), activeElement: null };
-  const requests = []; const navigations = []; const timers = new Map(); let timerId = 0;
+  const requests = []; const navigations = []; const productionCalls = []; let productionOptions; const timers = new Map(); let timerId = 0;
   const window = new EventTarget(); window.location = { search, pathname: '/forge-gateway/delivery-center', assign: path => navigations.push(path) };
   window.history = { pushState(_a, _b, url) { window.location.search = url.slice(url.indexOf('?')); }, replaceState(_a, _b, url) { window.location.search = url.slice(url.indexOf('?')); } };
   const context = vm.createContext({ document, window, URL, URLSearchParams, AbortController, Intl, Date, console, encodeURIComponent,
     setTimeout: (callback, ms) => { const id = ++timerId; timers.set(id, { callback, ms }); return id; }, clearTimeout: id => timers.delete(id),
+    mountProductionDelivery: async (_root, options) => { productionOptions = options; return { setProject: async project => productionCalls.push(['project', project]), setActive: active => productionCalls.push(['active', active]), openExport: async item => productionCalls.push(['export', item]), openJob: async (release, job) => productionCalls.push(['job', release, job]), refresh: async () => productionCalls.push(['refresh']) }; },
     fetch: (url, options = {}) => new Promise(resolve => requests.push({ url, options, resolve })),
   });
-  vm.runInContext(viewSource.replace(/^export /gm,'')+'\n'+source.slice(0, source.lastIndexOf('\nbindEvents();')).replace(/^import .*;\r?\n/m,''), context);
+  vm.runInContext(viewSource.replace(/^export /gm,'')+'\n'+source.slice(0, source.lastIndexOf('\nbindEvents();')).replace(/^import .*;\r?\n/gm,''), context);
   const run = code => vm.runInContext(code, context); run('bindEvents(); renderControls();');
-  t.after(() => run('state.projectRequest?.abort();state.listRequest?.abort();state.sharedReferenceRequest?.abort();closeDetail();clearTimeout(state.searchTimer);'));
-  return { run, requests, navigations, tabs, nodes, timers, window, get: id => document.getElementById(id),
+  t.after(() => run('state.projectRequest?.abort();state.listRequest?.abort();artifactExportRequest?.abort();state.sharedReferenceRequest?.abort();closeDetail();clearTimeout(state.searchTimer);'));
+  return { run, requests, navigations, productionCalls, productionCreated: () => productionOptions.onExportCreated(), tabs, nodes, timers, window, get: id => document.getElementById(id),
     async reply(index, value, status = 200) { requests[index].resolve(new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } })); await tick(); },
     async fireSearch() { for (const [id, timer] of [...timers.entries()].filter(([, item]) => item.ms === 300)) { timers.delete(id); timer.callback(); } await tick(); },
   };
@@ -53,7 +54,7 @@ const requirement = { id: 'req-one', menuId: 'three', menuPath: ['安全管理',
 test('permission enforcement reading keeps the actual three source declarations separate and preserves the older shape', async t => {
   const parent = { assetId: 'asset-b37c2731cddd6162f241ad590f7960cf', kind: 'permission', name: '后端 · permissionEnforcement',
     revision: '9f6a00ce31333abbef8aa5412f1060d5d01188cf25e5e188311799516abfe6d8', recordType: 'permission-enforcement', sourceTopic: 'permissionEnforcement', sourcePhaseStatus: 'historical',
-    sources: [{ taskId: 'c-534aaa6bfe0d70816f504e8e', pointer: '/permissionEnforcement' }], details: {
+    sources: [{ taskId: 'c-0e254375986948ea7b361297', pointer: '/permissionEnforcement' }], details: {
       trustedFields: 'Tenant, registrar and updater identities remain sourced from trusted session context; the stock command does not accept tenantId, registrarUserId or updateBy from the client.',
       tenantAndScope: 'The repair does not bypass tenant or data-scope checks. stock(...) still calls spareDetail(spareId) before mutation, so non-existent, cross-tenant or out-of-scope spare parts fail before inventory changes.',
       serverPermissions: 'No permission annotations or access resources were changed in this backend repair. Existing fire spare-part list/add/edit/remove/stockIn/stockOut/export permissions remain the enforcement surface.',
@@ -529,7 +530,7 @@ test('page field tables retain recorded business meanings and limitations withou
 test('all eleven modules have their required subviews and separate business columns', t => {
   const f=fixture(t);
   assert.deepEqual(f.tabs.map(tab=>tab.dataset.deliveryTab),['menus','requirements','entities','scenes','database','pages','backend','permissions','acceptance','overview','releases']);
-  for(const [module,views] of Object.entries({menus:['menus','menu-matrix'],requirements:['requirements','requirement-matrix','batches','changes','sources'],entities:['entities','definitions','relations'],scenes:['scenes','processes','tasks'],database:['database','model-mappings','constraints','structure-changes'],pages:['pages','page-implementations'],backend:['backend','calls'],permissions:['permissions','permission-matrix','permission-evidence'],acceptance:['acceptance','test-cases','test-executions','issues','test-materials'],overview:['overview','stages','overview-changes','overview-issues'],releases:['releases','business-versions','artifacts','environments']})){
+  for(const [module,views] of Object.entries({menus:['menus','menu-matrix'],requirements:['requirements','requirement-matrix','batches','changes','sources'],entities:['entities','definitions','relations'],scenes:['scenes','processes','tasks'],database:['database','model-mappings','constraints','structure-changes'],pages:['pages','page-implementations'],backend:['backend','calls'],permissions:['permissions','permission-matrix','permission-evidence'],acceptance:['acceptance','test-cases','test-executions','issues','test-materials'],overview:['overview','stages','overview-changes','overview-issues'],releases:['releases','business-versions','artifacts','environments','production']})){
     f.run(`state.tab=${JSON.stringify(module)};renderControls()`);
     for(const view of views)assert.equal(f.run(`subviews[${JSON.stringify(module)}].includes(${JSON.stringify(view)})`),true);
     assert.ok(f.run(`deliveryTabs[${JSON.stringify(module)}].columns.length`)>=6,module);
@@ -688,17 +689,87 @@ test('zero independent definitions and formal test records retain direct routes 
   }
 });
 
-test('default view is the complete business menu and every authenticated account can read the sole enabled project', async t => {
+test('default view retains every server-authorized project and preserves shared read access', async t => {
   const f = fixture(t, ''); const pending = f.run('initialize()');
   await f.reply(0, { user: { role: 'auditor', username: 'reader', displayName: '业务人员', projectMemberships: [] } });
   await f.reply(1, { items: [{ slug: 'forge-base', name: '示例客户', canEnter: false }, { slug: 'other', name: '其他项目', canEnter: true }] });
   await f.reply(2, { items: menus }); await f.reply(3, { counts: { requirements: 1 }, coverage: { message: '历史来源尚未全部收录' } }); await pending;
-  assert.equal(f.get('delivery-project').children.length, 1);
+  assert.equal(f.get('delivery-project').children.length, 2); assert.equal(f.get('delivery-project').disabled, false);
+  assert.deepEqual(f.get('delivery-project').children.map(option => option.value), ['forge-base', 'other']);
+  assert.equal(f.get('delivery-project-subtitle').textContent, '示例客户 · 业务功能与交付过程');
   assert.equal(f.run('state.tab'), 'menus'); assert.match(f.get('delivery-table-body').textContent, /安全管理.*风险管理.*风险登记/);
   assert.match(f.get('delivery-coverage').textContent, /尚未全部收录/);
   assert.equal(f.tabs[0].dataset.deliveryTab, 'menus');
   assert.ok(f.requests.every(request => !request.options.method || request.options.method === 'GET'));
   assert.doesNotMatch(markup, /新增需求|删除需求|保存修改/);assert.match(markup,/delivery-export/);
+});
+
+test('project selection preserves the requested actual slug and updates center identity and production navigation', async t => {
+  const f = fixture(t, '?project=demo-bilingual-phase2-32148'); const pending = f.run('initialize()');
+  await f.reply(0, { user: { username: 'reader' } });
+  await f.reply(1, { items: [{ slug: 'foundation-32148', displayName: '基础项目' }, { id: 'demo-bilingual-phase2-32148', name: '示例客户项目' }] });
+  await f.reply(2, { items: [] }); await f.reply(3, { counts: {} }); await pending;
+  assert.equal(f.run('state.project'), 'demo-bilingual-phase2-32148');
+  assert.equal(f.get('delivery-project').value, 'demo-bilingual-phase2-32148');
+  assert.equal(f.get('delivery-project-subtitle').textContent, '示例客户项目 · 业务功能与交付过程');
+  assert.equal(f.get('delivery-title').textContent, '示例客户项目 · 需求与交付中心');
+  assert.match(f.run('document.title'), /示例客户项目/);
+  assert.equal(f.get('delivery-reader-panel').hidden, false);
+  for (const request of f.requests.slice(2)) assert.equal(new URL(request.url, 'http://example').searchParams.get('project'), 'demo-bilingual-phase2-32148');
+  f.get('delivery-project').value = 'foundation-32148'; f.get('delivery-project').dispatchEvent(new Event('change'));
+  await f.reply(4, { items: [] }); await f.reply(5, { counts: {} });
+  assert.equal(f.get('delivery-project-subtitle').textContent, '基础项目 · 业务功能与交付过程');
+  for (const id of ['delivery-brand', 'delivery-back']) {
+    assert.equal(new URL(f.get(id).href, 'http://example').searchParams.get('project'), 'foundation-32148');
+  }
+  assert.doesNotMatch(markup, /href="\/forge-gateway\/production-delivery/);
+  assert.equal(new URLSearchParams(f.window.location.search).get('project'), 'foundation-32148');
+});
+
+test('unavailable project is never requested and empty server projects leave production navigation hidden', async t => {
+  for (const items of [[{ projectKey: 'foundation-32148', name: '基础项目' }], []]) {
+    const f = fixture(t, '?project=unknown&menuId=foreign&releaseId=old-release'); const pending = f.run('initialize()');
+    await f.reply(0, { user: { username: 'reader' } }); await f.reply(1, { items });
+    if (items.length) { await f.reply(2, { items: [] }); await f.reply(3, { counts: {} }); }
+    await pending;
+    assert.equal(f.run('state.project'), items.length ? 'foundation-32148' : '');
+    assert.equal(f.run('state.menuId'), ''); assert.equal(f.run('state.releaseId'), '');
+    assert.equal(f.get('delivery-reader-panel').hidden, false);
+    assert.equal(f.get('delivery-project').disabled, true);
+    assert.ok(f.requests.every(request => !request.url.includes('unknown') && !request.url.includes('old-release') && !request.url.includes('foreign')));
+    if (!items.length) { assert.equal(f.requests.length, 2); assert.equal(f.get('delivery-back').href, '/forge-gateway/'); }
+  }
+});
+
+test('artifacts own production navigation without menu filtering and restore menus on other views', async t => {
+  const f = fixture(t, '?project=foundation-32148&tab=artifacts&menuId=three&menuScope=self&menuBinding=linked');
+  for (const tab of ['releases', 'business-versions', 'artifacts', 'environments', 'production']) {
+    f.run(`state.tab='${tab}';renderControls()`);
+    assert.equal(f.get('delivery-menu-panel').hidden, true, tab); assert.equal(f.get('delivery-context').hidden, true, tab);
+    for (const key of ['menuId', 'menuScope', 'menuBinding']) assert.equal(f.run(`queryFor().has('${key}')`), false, `${tab}:${key}`);
+    assert.doesNotMatch(f.get('delivery-list-help').textContent + f.get('delivery-scope-note').textContent, /菜单只保留作阅读导航|当前菜单仅作导航/);
+  }
+  f.run("state.tab='artifacts';renderControls()");
+  assert.equal(f.get('delivery-menu-panel').hidden, true); assert.equal(f.get('delivery-context').hidden, true);
+  assert.equal(f.get('delivery-reader-panel').hidden, false);
+  assert.equal(f.get('delivery-menu-scope'), undefined); assert.equal(f.get('delivery-menu-binding'), undefined);
+  assert.doesNotMatch(f.get('delivery-filters').textContent, /菜单|层级|资料归属/);
+  assert.doesNotMatch(f.get('delivery-scope-note').textContent, /菜单只保留作阅读导航/);
+  assert.match(f.get('delivery-list-help').textContent, /导出生产包.*生产发布包与上线.*离线包/);
+  const pending = f.run('loadList()');
+  const query = new URL(f.requests[0].url, 'http://example').searchParams;
+  for (const key of ['menuId', 'menuScope', 'menuBinding']) {
+    assert.equal(query.has(key), false); assert.equal(f.run(`detailQuery().has('${key}')`), false);
+  }
+  await f.reply(0, { items: [], total: 0 }); await pending;
+  const switched = f.run("navigate({tab:'requirements'})");
+  assert.equal(f.get('delivery-menu-panel').hidden, false); assert.equal(f.get('delivery-context').hidden, false);
+  assert.equal(f.get('delivery-reader-panel').hidden, false);
+  assert.equal(new URL(f.requests[1].url, 'http://example').searchParams.get('menuId'), 'three');
+  await f.reply(1, { items: [], total: 0 }); await switched;
+  const navigation = markup.slice(markup.indexOf('<aside'), markup.indexOf('</aside>'));
+  assert.doesNotMatch(navigation, /delivery-production-link/);
+  assert.match(styles, /delivery-workspace-layout:has\(> \.delivery-sidebar\[hidden\]\)/);
 });
 
 test('choosing an unknown-origin menu reveals that node without overriding later explicit menu presets', t => {
@@ -1698,4 +1769,109 @@ test('stage current and historical scope survives URL navigation and exposes sou
   detailFixture.run(`showDetail('stages',{...${JSON.stringify(summary)},revision:'d'.repeat(64)})`);
   assert.equal(new URL(detailFixture.requests[1].url,'http://local').searchParams.get('revision'),'d'.repeat(64));
   await detailFixture.reply(1,{item:original});assert.ok(detailFixture.get('delivery-detail-body').textContent.includes('快照修订不匹配'));
+});
+
+
+test('production is the fifth same-page release subview and does not call the reader for a fake view', async t => {
+  const f = fixture(t, '?project=foundation-32148&tab=production&menuId=old');
+  assert.deepEqual(Array.from(f.run('subviews.releases')), ['releases', 'business-versions', 'artifacts', 'environments', 'production']);
+  await f.run('loadList()');
+  assert.equal(f.get('delivery-reader-panel').hidden, true); assert.equal(f.get('delivery-menu-panel').hidden, true);
+  assert.equal(f.get('delivery-context').hidden, true); assert.equal(f.requests.length, 0);
+  assert.ok(f.productionCalls.some(call => call[0] === 'project' && call[1] === 'foundation-32148'));
+  assert.ok(f.productionCalls.some(call => call[0] === 'active' && call[1] === true));
+  assert.doesNotMatch(markup, /<iframe|href="\/forge-gateway\/production-delivery/);
+});
+
+test('only image rows open export with their exact artifact and success stays in the center production tab', async t => {
+  const f = fixture(t, '?project=foundation-32148&tab=artifacts');
+  f.run("renderRows([{id:'exact-image-id',type:'container-image',name:'服务镜像',digest:'sha256:abc'},{id:'log',type:'release-log',name:'日志'}])");
+  const actions = walk(f.get('delivery-table-body')).filter(el => el.tagName === 'BUTTON' && el.textContent === '导出生产包');
+  assert.equal(actions.length, 1); actions[0].click(); await tick();
+  assert.equal(f.productionCalls.find(call => call[0] === 'export')[1].id, 'exact-image-id');
+  assert.equal(f.navigations.length, 0); assert.equal(f.requests.length, 0);
+  await f.productionCreated(); assert.equal(f.run('state.tab'), 'production');
+  assert.equal(f.window.location.pathname, '/forge-gateway/delivery-center');
+  assert.equal(new URLSearchParams(f.window.location.search).get('tab'), 'production');
+});
+
+test('changing project during production mount cannot open an old image export', async t => {
+  const f = fixture(t, '?project=foundation-32148&tab=artifacts');
+  f.run("let releaseMount; mountProductionDelivery=()=>new Promise(resolve=>releaseMount=resolve)");
+  const pending = f.run("openProductionExport({id:'old-image',type:'container-image'})");
+  f.run("state.project='other-project';releaseMount({setProject:async()=>{throw new Error('old project used')},openExport:async()=>{throw new Error('old image used')}})");
+  await pending; assert.equal(f.requests.length, 0); assert.equal(f.navigations.length, 0);
+});
+
+
+test('artifact export summaries bind exact IDs, show full actor time, and open the same-page record', async t => {
+  const f = fixture(t, '?project=foundation-32148&tab=artifacts'); const loading = f.run('loadList()');
+  await f.reply(0, { items: [{ id: 'image-a', type: 'container-image', name: '镜像甲', digest: 'sha256:same' }, { id: 'image-b', type: 'container-image', name: '镜像乙', digest: 'sha256:same' }], total: 2 }); await loading;
+  assert.equal(f.get('delivery-table-wrap').hidden, false); assert.match(f.get('delivery-table-body').textContent, /正在读取生产导出记录/);
+  assert.equal(new URL(f.requests[1].url, 'http://example').pathname, '/forge-gateway/api/production/releases');
+  assert.equal(new URL(f.requests[1].url, 'http://example').searchParams.get('project'), 'foundation-32148');
+  await f.reply(1, { items: [{ id: 'release-a', jobs: [{ id: 'full', mode: 'initial', sourceArtifact: { id: 'image-a' }, createdBy: { displayName: '张实施' }, createdAt: '2026-10-15T01:00:00Z' }, { id: 'incremental', mode: 'upgrade', sourceArtifact: { id: 'image-a' }, createdBy: { displayName: '李运维' }, createdAt: '2026-10-15T02:00:00Z' }, { id: 'legacy', mode: 'initial', sourceArtifact: null, createdBy: { displayName: '不得猜关联' }, createdAt: '2026-10-15T03:00:00Z' }] }] });
+  const rows = f.get('delivery-table-body').children;
+  assert.match(rows[0].textContent, /已导出 2 次（全量 1 次）.*最近增量：李运维.*最近全量：张实施/s);
+  assert.match(rows[0].textContent, /2026/); assert.doesNotMatch(rows[0].textContent, /不得猜关联/);
+  assert.match(rows[1].textContent, /本行暂无关联导出记录/); assert.doesNotMatch(rows[1].textContent, /从未导出/);
+  walk(rows[0]).find(el => el.tagName === 'BUTTON' && el.textContent === '查看导出记录').click(); await tick();
+  assert.equal(f.run('state.tab'), 'production'); assert.ok(f.productionCalls.some(call => call[0] === 'job' && call[1] === 'release-a' && call[2] === 'incremental')); assert.equal(f.navigations.length, 0);
+});
+
+test('artifact history failure is nonblocking and late project responses never replace current summaries', async t => {
+  const f = fixture(t, '?project=foundation-32148&tab=artifacts');
+  f.run("renderRows([{id:'image-a',type:'container-image',name:'原制品'}])"); const failed = f.run('loadArtifactExports()');
+  await f.reply(0, { message: '暂不可用' }, 503); await failed;
+  assert.match(f.get('delivery-table-body').textContent, /原制品.*生产导出记录未能读取/s); assert.equal(f.get('delivery-list-error').hidden, true);
+  const stale = f.run('loadArtifactExports()');
+  f.run("state.project='other-project';artifactExportState={project:'other-project',status:'ready',rows:[]};renderRows([{id:'image-b',type:'container-image',name:'新项目制品'}])");
+  await f.reply(1, { items: [{ id: 'old', jobs: [{ id: 'j', mode: 'initial', sourceArtifact: { id: 'image-b' }, createdBy: { displayName: '旧响应不应显示' } }] }] }); await stale;
+  assert.match(f.get('delivery-table-body').textContent, /新项目制品.*本行暂无关联导出记录/s); assert.doesNotMatch(f.get('delivery-table-body').textContent, /旧响应不应显示/);
+  f.run("state.tab='requirements'"); await f.run('loadArtifactExports()'); assert.equal(f.requests.length, 2);
+});
+
+test('artifact version dates use exact source releases and sort only the loaded page newest first', async t => {
+  const f = fixture(t, '?project=foundation-32148&tab=artifacts'); const loading = f.run('loadList()');
+  await f.reply(0, { items: [
+    { id: 'old-image', type: 'container-image', name: '旧镜像', releaseId: 'old-release' },
+    { id: 'unknown-image', type: 'container-image', name: '时间缺失镜像', version: '2099-01-01', commit: '2026123112345678901234567890123456789012', releaseId: 'unknown-release' },
+    { id: 'new-image', type: 'container-image', name: '新镜像', releaseIds: ['new-release'] },
+    { id: 'same-version-ui', type: 'container-image', name: '同版本前端', releaseId: 'new-release', releaseIds: ['new-release'] },
+  ], total: 80 });
+  assert.equal(f.requests.length, 4, 'only the three distinct referenced releases are fetched, not other artifact pages');
+  for (const request of f.requests.slice(1)) assert.equal(new URL(request.url, 'http://example').searchParams.get('project'), 'foundation-32148');
+  assert.equal(new URL(f.requests[1].url, 'http://example').pathname, '/forge-gateway/api/delivery/releases/old-release');
+  await f.reply(1, { item: { id: 'old-release', releasedAt: '2026-10-12T01:00:00Z' } });
+  await f.reply(2, { item: { id: 'unknown-release', commit: '20261231', version: '2099-01-01' } });
+  await f.reply(3, { item: { id: 'new-release', startedAt: '2026-10-15T02:00:00Z' } }); await loading;
+  const rows = f.get('delivery-table-body').children;
+  assert.deepEqual(rows.map(row => row.children[0].textContent), ['新镜像', '同版本前端', '旧镜像', '时间缺失镜像']);
+  assert.match(rows[0].children[3].textContent, /2026.*10.*15.*10:00.*来源发布开始/);
+  assert.match(rows[2].children[3].textContent, /2026.*10.*12.*09:00.*来源发布结束/);
+  assert.equal(rows[3].children[3].textContent, '未记录'); assert.equal(f.run('state.total'), 80);
+  assert.match(f.run('deliveryTabs.artifacts.help'), /当前页/); assert.match(f.run('deliveryTabs.artifacts.help'), /不等于镜像构建时间/);
+  assert.equal(f.requests.length, 5); assert.equal(new URL(f.requests[4].url, 'http://example').pathname, '/forge-gateway/api/production/releases');
+});
+
+test('artifact date fallback labels actual record updates and does not infer missing dates from tags', t => {
+  const f = fixture(t, '?project=foundation-32148&tab=artifacts');
+  f.run("renderRows([{id:'unknown',type:'container-image',name:'未知日期',version:'2099-12-31',commit:'20261231',createdAt:'bad-date'},{id:'recorded',type:'container-image',name:'已收录',recordedAt:'2026-10-12T00:00:00Z'},{id:'updated',type:'container-image',name:'已有更新时间',updatedAt:'2026-10-15T00:00:00Z'}])");
+  const rows = f.get('delivery-table-body').children;
+  assert.deepEqual(rows.map(row => row.children[0].textContent), ['已有更新时间', '已收录', '未知日期']);
+  assert.match(rows[0].children[3].textContent, /记录更新时间/); assert.match(rows[1].children[3].textContent, /收录时间/);
+  assert.equal(rows[2].children[3].textContent, '未记录');
+});
+
+test('artifact source time failure preserves the list and aborted project reads cannot replace new rows', async t => {
+  const f = fixture(t, '?project=foundation-32148&tab=artifacts'); const loading = f.run('loadList()');
+  await f.reply(0, { items: [{ id: 'image', type: 'container-image', name: '可继续导出', releaseId: 'release' }], total: 1 });
+  await f.reply(1, { message: '暂不可用' }, 503); await loading;
+  assert.equal(f.get('delivery-table-wrap').hidden, false); assert.equal(f.get('delivery-list-error').hidden, true);
+  assert.match(f.get('delivery-table-body').textContent, /可继续导出.*来源时间未能读取.*导出生产包/s);
+  const stale = f.run('loadList()');
+  await f.reply(3, { items: [{ id: 'old-image', type: 'container-image', name: '旧项目镜像', releaseId: 'old-release' }], total: 1 });
+  f.run("state.listRequest.abort();state.project='other-project';renderRows([{id:'new-image',type:'container-image',name:'新项目镜像'}])");
+  await f.reply(4, { item: { id: 'old-release', releasedAt: '2026-10-15T00:00:00Z' } }); await stale;
+  assert.match(f.get('delivery-table-body').textContent, /新项目镜像/); assert.doesNotMatch(f.get('delivery-table-body').textContent, /旧项目镜像|来源发布结束/);
 });

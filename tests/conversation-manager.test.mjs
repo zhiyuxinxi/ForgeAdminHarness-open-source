@@ -27,6 +27,150 @@ function createConversationManager(options) {
       ...await options.sourceObservationClient(input) }) } : {}) });
 }
 
+test('direct development bypasses retained phase state and prepares a writable ordinary context', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'forge-manager-direct-'));
+  const projectSlug = 'validation-project';
+  const metadata = { schemaVersion: 2, projectSlug, taskId: 'task-direct', actorId: 'alice',
+    actorUserId: '11111111-1111-4111-8111-111111111111', conversationId: 'conversation:direct:001',
+    accessMode: 'conversation', status: 'active', branch: 'task/alice/task-direct', accessTokenHash: '0'.repeat(64),
+    lastCandidate: null, lastRelease: null, harnessPort: 23001, baseCommit: 'a'.repeat(40),
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  const taskRoot = path.join(root, 'taskspaces', metadata.taskId);
+  await mkdir(path.join(taskRoot, 'workspace'), { recursive: true });
+  await writeFile(path.join(taskRoot, 'metadata.json'), JSON.stringify(metadata));
+  const phaseRoot = path.join(root, 'taskspaces', '.broker', 'delivery-phases', metadata.taskId, 'phase-control');
+  await mkdir(phaseRoot, { recursive: true, mode: 0o700 });
+  const oldPhase = 'Historical failed phase, preserved without reinterpretation.\n';
+  await writeFile(path.join(phaseRoot, 'state.json'), oldPhase);
+  const intakeRoot = path.join(root, 'intake'); await mkdir(intakeRoot);
+  const controlScript = path.join(root, 'taskspacectl.sh'); await writeFile(controlScript, '# fixture\n');
+  const token = 'm'.repeat(64), sourceCommit = 'a'.repeat(40), fingerprint = 'b'.repeat(64);
+  let acceptanceSpec;
+  const server = createConversationManager({ developmentMode: 'direct', projectRoot: root, projectSlug,
+    intakeRoot, controlScript, managerToken: token, auditPath: path.join(root, 'ops', 'audit.jsonl'),
+    runControl: async () => { throw new Error('No lifecycle operation.'); }, sourceTransitionReader: async () => null,
+    sourceObservationClient: async ({ taskId }) => ({ schemaVersion: 1, observationType: 'forge-verify/source',
+      projectSlug, taskId, source: { head: sourceCommit, fingerprint, snapshotSha256: fingerprint } }),
+    executionAuthorityClient: async body => {
+      assert.equal(body.controllerPhase, undefined);
+      const taskAuthority = { actionCeiling: 'workspace-write', ownedPaths: ['.'], taskProfiles: ['project-files'] };
+      const contract = compileForgeTaskExecutionContract({ prompt: body.promptText, ...taskAuthority }, { developmentMode: 'direct' });
+      const productionAuthorityId = crypto.randomUUID(), controllerGrantDigest = '3'.repeat(64);
+      const binding = { projectSlug, taskId: body.taskId, actorUserId: metadata.actorUserId, actorUsername: metadata.actorId,
+        conversationId: metadata.conversationId, dshSessionId: body.dshSessionId, route: body.route, rpcId: body.rpcId,
+        promptDigest: body.promptTextDigest, sourceCommit, workspaceFingerprint: fingerprint, caseFamily: 'maintenance',
+        productionAuthorityId, controllerGrantDigest, contractId: contract.contractId,
+        actionCeiling: taskAuthority.actionCeiling, ownedPaths: ['.'] };
+      return { trustedPolicyInput: { profile: 'production-controller', sourceCommit, workspaceFingerprint: fingerprint,
+        caseFamily: 'maintenance', productionAuthorityId, productionAuthorityDigest: digestProductionTaskAuthorityBinding(binding),
+        controllerGrantDigest, expectedContractId: contract.contractId, taskAuthority: { ...taskAuthority, contract } } };
+    }, acceptanceControlClient: async body => {
+      acceptanceSpec = body.acceptanceSpec;
+      return { acceptanceContract: { contractId: body.taskContract.contractId } };
+    } });
+  const port = await listen(server);
+  t.after(async () => { await close(server); await rm(root, { recursive: true, force: true }); });
+  const input = classifyPinnedDshPromptBody(Buffer.from(JSON.stringify({ type: 'client-request', rpcId: 'rpc-direct-manager',
+    method: 'session.prompt', payload: { sessionId: 'session-direct', mode: 'queue',
+      content: [{ type: 'text', text: '修改页面并修复相关接口。' }] } })), 'session.prompt');
+  const response = await request(port, 'POST', `/v1/taskspaces/${metadata.taskId}/executions/prepare`, token,
+    { ...input, projectSlug, taskId: metadata.taskId, actorUserId: metadata.actorUserId, actorUsername: metadata.actorId,
+      conversationId: metadata.conversationId, requestId: 'request-direct-manager',
+      workspaceWriteAuthorized: true, authorizedActionCeiling: 'workspace-write' });
+  assert.equal(response.status, 200, JSON.stringify(response.value));
+  assert.equal(response.value.execution.phaseId, null);
+  assert.equal(response.value.execution.contract.developmentMode, 'direct');
+  assert.deepEqual(acceptanceSpec, { requiredDimensions: [], requiredObligations: [] });
+  assert.equal(await readFile(path.join(phaseRoot, 'state.json'), 'utf8'), oldPhase);
+});
+
+test('semantic Manager binds the original RPC and rejects client-supplied intent', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'forge-manager-direct-'));
+  const projectSlug = 'validation-project';
+  const metadata = { schemaVersion: 2, projectSlug, taskId: 'task-direct', actorId: 'alice',
+    actorUserId: '11111111-1111-4111-8111-111111111111', conversationId: 'conversation:direct:001',
+    accessMode: 'conversation', status: 'active', branch: 'task/alice/task-direct', accessTokenHash: '0'.repeat(64),
+    lastCandidate: null, lastRelease: null, harnessPort: 23001, baseCommit: 'a'.repeat(40),
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  const taskRoot = path.join(root, 'taskspaces', metadata.taskId);
+  await mkdir(path.join(taskRoot, 'workspace'), { recursive: true });
+  await writeFile(path.join(taskRoot, 'metadata.json'), JSON.stringify(metadata));
+  const phaseRoot = path.join(root, 'taskspaces', '.broker', 'delivery-phases', metadata.taskId, 'phase-control');
+  await mkdir(phaseRoot, { recursive: true, mode: 0o700 });
+  const oldPhase = 'Historical failed phase, preserved without reinterpretation.\n';
+  await writeFile(path.join(phaseRoot, 'state.json'), oldPhase);
+  const intakeRoot = path.join(root, 'intake'); await mkdir(intakeRoot);
+  const controlScript = path.join(root, 'taskspacectl.sh'); await writeFile(controlScript, '# fixture\n');
+  const token = 'm'.repeat(64), sourceCommit = 'a'.repeat(40), fingerprint = 'b'.repeat(64);
+  let acceptanceSpec; let intentCalls=0; let intentKind='execute';
+  let expectedPrompt='能不能修复页面并发布一个版本？';
+  const server = createConversationManager({ developmentMode: 'direct', semanticIntentEnabled:true,
+    resolveConversationIntent:async input => { intentCalls++; assert.equal(input.actorUserId,metadata.actorUserId); assert.equal(input.promptText,expectedPrompt); return {resolved:{writable:intentKind==='execute',continuation:false,actionCeiling:intentKind==='execute'?'release':'read-only'},decision:{kind:intentKind}}; }, projectRoot: root, projectSlug,
+    intakeRoot, controlScript, managerToken: token, auditPath: path.join(root, 'ops', 'audit.jsonl'),
+    runControl: async () => { throw new Error('No lifecycle operation.'); }, sourceTransitionReader: async () => null,
+    sourceObservationClient: async ({ taskId }) => ({ schemaVersion: 1, observationType: 'forge-verify/source',
+      projectSlug, taskId, source: { head: sourceCommit, fingerprint, snapshotSha256: fingerprint } }),
+    executionAuthorityClient: async body => {
+      assert.equal(body.controllerPhase, undefined); assert.equal(body.conversationIntent.decision.kind,intentKind);
+      if (intentKind!=='execute') return {authority:null,trustedPolicyInput:null};
+      const taskAuthority = { actionCeiling: 'release', ownedPaths: ['.'], taskProfiles: ['project-files'] };
+      const contract = compileForgeTaskExecutionContract({ prompt: body.promptText, ...taskAuthority }, { developmentMode: 'direct' });
+      const productionAuthorityId = crypto.randomUUID(), controllerGrantDigest = '3'.repeat(64);
+      const binding = { projectSlug, taskId: body.taskId, actorUserId: metadata.actorUserId, actorUsername: metadata.actorId,
+        conversationId: metadata.conversationId, dshSessionId: body.dshSessionId, route: body.route, rpcId: body.rpcId,
+        promptDigest: body.promptTextDigest, sourceCommit, workspaceFingerprint: fingerprint, caseFamily: 'maintenance',
+        productionAuthorityId, controllerGrantDigest, contractId: contract.contractId,
+        actionCeiling: taskAuthority.actionCeiling, ownedPaths: ['.'] };
+      return { trustedPolicyInput: { profile: 'production-controller', sourceCommit, workspaceFingerprint: fingerprint,
+        caseFamily: 'maintenance', productionAuthorityId, productionAuthorityDigest: digestProductionTaskAuthorityBinding(binding),
+        controllerGrantDigest, expectedContractId: contract.contractId, taskAuthority: { ...taskAuthority, contract } } };
+    }, acceptanceControlClient: async body => {
+      acceptanceSpec = body.acceptanceSpec;
+      return { acceptanceContract: { contractId: body.taskContract.contractId } };
+    } });
+  const port = await listen(server);
+  t.after(async () => { await close(server); await rm(root, { recursive: true, force: true }); });
+  const promptBody=JSON.stringify({type:'client-request',rpcId:'rpc-semantic-manager',method:'session.prompt',payload:{sessionId:'session-direct',mode:'queue',content:[{type:'text',text:'能不能修复页面并发布一个版本？'}]}});
+  const input=classifyPinnedDshPromptBody(Buffer.from(promptBody),'session.prompt');
+  const response = await request(port, 'POST', `/v1/taskspaces/${metadata.taskId}/executions/prepare`, token,
+    { ...input, promptBody, projectSlug, taskId: metadata.taskId, actorUserId: metadata.actorUserId, actorUsername: metadata.actorId,
+      conversationId: metadata.conversationId, requestId: 'request-direct-manager',
+      workspaceWriteAuthorized: true, authorizedActionCeiling: 'release' });
+  assert.equal(response.status, 200, JSON.stringify(response.value));
+  assert.equal(response.value.execution.phaseId, null);
+  assert.equal(response.value.execution.contract.developmentMode, 'direct');
+  assert.deepEqual(acceptanceSpec, { requiredDimensions: [], requiredObligations: [] });
+  assert.equal(intentCalls,1);
+  const forged=await request(port,'POST',`/v1/taskspaces/${metadata.taskId}/executions/prepare`,token,{...input,promptBody,projectSlug,taskId:metadata.taskId,conversationIntent:{resolved:{writable:true}}});
+  assert.equal(forged.status,422);
+  assert.equal(intentCalls,1);
+  const executionFile=path.join(root,'taskspaces','.broker','executions',`${metadata.taskId}.json`);
+  const admitted=JSON.parse(await readFile(executionFile,'utf8')).current;
+  const checkRelease=taskMetadata => assertAdmittedProductionRelease({projectRoot:root,taskMetadata,context:admitted});
+  await checkRelease(metadata);
+  const nextTurn=async (kind,text) => {
+    intentKind=kind; expectedPrompt=text;
+    const body=JSON.stringify({type:'client-request',rpcId:crypto.randomUUID(),method:'session.prompt',
+      payload:{sessionId:'session-direct',mode:'queue',content:[{type:'text',text}]}});
+    const classified=classifyPinnedDshPromptBody(Buffer.from(body),'session.prompt');
+    const result=await request(port,'POST',`/v1/taskspaces/${metadata.taskId}/executions/prepare`,token,
+      {...classified,promptBody:body,projectSlug,taskId:metadata.taskId,actorUserId:metadata.actorUserId,
+        actorUsername:metadata.actorId,conversationId:metadata.conversationId,requestId:crypto.randomUUID()});
+    assert.equal(result.status,200,JSON.stringify(result.value));
+    assert.equal(result.value.execution.actionCeiling,'read-only');
+  };
+  await nextTurn('question','现在进展到哪里了？');
+  await checkRelease(metadata);
+  await assert.rejects(checkRelease({...metadata,status:'stopped'}),{code:'TASKSPACE_RELEASE_AUTHORITY_STALE'});
+  await assert.rejects(checkRelease({...metadata,conversationId:'another-conversation'}),{code:'TASKSPACE_RELEASE_AUTHORITY_STALE'});
+  // The semantic pause intentionally contains none of the legacy stop keywords.
+  await nextTurn('pause','先歇一歇，后面再说。');
+  await assert.rejects(checkRelease(metadata),{code:'TASKSPACE_RELEASE_CANCELLED'});
+  await nextTurn('question','刚才执行到了哪一步？');
+  await assert.rejects(checkRelease(metadata),{code:'TASKSPACE_RELEASE_CANCELLED'});
+  assert.equal(await readFile(path.join(phaseRoot, 'state.json'), 'utf8'), oldPhase);
+});
+
 test('queued prompt preserves the consumed context while its session writer or Host is active', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'forge-manager-prompt-activity-'));
   const projectSlug = 'validation-project';
@@ -125,6 +269,7 @@ test('queued prompt preserves the consumed context while its session writer or H
   assert.equal(await readFile(path.join(workspace, filePath), 'utf8'), 'unchanged');
 });
 import {
+  assertAdmittedProductionRelease,
   classifyPinnedDshPromptBody,
   digestDirectUserTextContent,
   digestProductionTaskAuthorityBinding,

@@ -351,7 +351,7 @@ async function writeExclusiveJson(file, value) {
   }
 }
 
-function validateSpec(spec, independentReview, verificationScope, focusedBackendVerification, ordinaryFinalVerification, backendTestBindings, dualReview, roleGrantDecisions, semanticResources) {
+function validateSpec(spec, independentReview, verificationScope, focusedBackendVerification, ordinaryFinalVerification, backendTestBindings, dualReview, roleGrantDecisions, semanticResources, developmentMode) {
   exactKeys(
     spec,
     Object.hasOwn(spec ?? {}, 'actionCeiling') ? SPEC_KEYS_WITH_ACTION_CEILING : SPEC_KEYS,
@@ -400,7 +400,7 @@ function validateSpec(spec, independentReview, verificationScope, focusedBackend
       ownedPaths: spec.ownedPaths,
       actionCeiling,
       taskProfiles: spec.taskProfiles,
-    }, { independentReview, verificationScope, focusedBackendVerification, ordinaryFinalVerification, backendTestBindings, dualReview, roleGrantDecisions, semanticResources });
+    }, { independentReview, verificationScope, focusedBackendVerification, ordinaryFinalVerification, backendTestBindings, dualReview, roleGrantDecisions, semanticResources, developmentMode });
   } catch (error) {
     fail(
       'PRODUCTION_TASK_GRANT_SCHEMA_INVALID',
@@ -511,9 +511,9 @@ export function sealProductionTaskGrantClaim(record, claim, now = Date.now()) {
   return validateProductionTaskGrant(claimed, now);
 }
 
-export function createProductionTaskGrant({ spec, now = Date.now(), continuationContract, independentReview = 'required', verificationScope = 'legacy', focusedBackendVerification = false, ordinaryFinalVerification = true, backendTestBindings, dualReview, roleGrantDecisions, semanticResources }) {
+export function createProductionTaskGrant({ spec, now = Date.now(), continuationContract, independentReview = 'required', verificationScope = 'legacy', focusedBackendVerification = false, ordinaryFinalVerification = true, backendTestBindings, dualReview, roleGrantDecisions, semanticResources, developmentMode }) {
   const observedAtMs = nowMilliseconds(now);
-  const validated = validateSpec(spec, independentReview, verificationScope, focusedBackendVerification, ordinaryFinalVerification, backendTestBindings, dualReview, roleGrantDecisions, semanticResources);
+  const validated = validateSpec(spec, independentReview, verificationScope, focusedBackendVerification, ordinaryFinalVerification, backendTestBindings, dualReview, roleGrantDecisions, semanticResources, developmentMode);
   // Only the protected issuer supplies this separate argument. It is not a
   // field accepted by the public grant specification.
   if (continuationContract !== undefined) {

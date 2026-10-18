@@ -18,7 +18,7 @@ import {
   hostVerificationCommand,
   validateHostVerificationContract,
 } from '../docker/harness/host-verify-policy.mjs';
-import { assertHostJobDirectories, HostVerificationRunner, preparedFrontendDependencies, preparedDependencyInputs, runHostProcess } from '../docker/harness/host-verification-runner.mjs';
+import { assertHostJobDirectories, HostVerificationRunner, hostTestDatabaseEnvironment, preparedFrontendDependencies, preparedDependencyInputs, runHostProcess } from '../docker/harness/host-verification-runner.mjs';
 import { hostRevalidationToolchainsMatch, validateHostExecutionAdmissionReceipt, validateHostRunReceipt } from '../docker/harness/forge-host-verification-receipt.mjs';
 import { controlledEvidenceReceipt } from '../docker/harness/forge-controlled-command.mjs';
 import { VERIFY_PROFILE_NAMES, governanceRoleGrantPolicyForContract, governanceTaskScopeForContract, revalidatedGovernanceTaskArguments } from '../docker/harness/verify-policy.mjs';
@@ -627,11 +627,41 @@ test('Host sandbox exposes only the current job, task cache and fixed runtime in
   assert.deepEqual(plan.argv.slice(-4), ['--', tools.node, 'run', 'test']);
   assert.throws(() => hostSandboxCommand(step, { ...paths, cacheRoot: '/srv/forge-delivery/secrets' }, tools), /scope/u);
   assert.throws(() => hostSandboxCommand({ ...step, cwd: `${jobRoot}/workspace-other` }, paths, tools), /scope/u);
-  assert.throws(() => hostSandboxReadOnlyRoots({ node: '/srv/forge-delivery/secrets/bin/node' }), /versioned/u);
+  assert.throws(() => hostSandboxReadOnlyRoots({ node: '/srv/forge-delivery/secrets/bin/node' }), /credential scope/u);
   const legacy = validateHostVerificationContract(contract(path.resolve('sandbox-contract')));
   const isolated = validateHostVerificationContract({ ...legacy, processIsolation: 'bubblewrap' });
   assert.notEqual(hostProfilePolicyDigest(legacy), hostProfilePolicyDigest(isolated));
   assert.throws(() => validateHostVerificationContract({ ...legacy, processIsolation: 'fallback' }), /bubblewrap/u);
+});
+
+test('Host sandbox mounts protected tool installations without requiring a legacy deployment layout', () => {
+  const projectRoot = '/srv/forge-delivery/projects/forge-base';
+  const currentContract = { projectSlug: 'forge-base', taskspacesRoot: `${projectRoot}/taskspaces`,
+    stateRoot: `${projectRoot}/verification/host-state` };
+  const jobRoot = `${currentContract.stateRoot}/taskspaces/task-one/jobs/job-one`;
+  const paths = { jobRoot, cacheRoot: path.posix.resolve(jobRoot, '../../cache') };
+  for (const installation of [
+    `${projectRoot}/runtime-versions/stable/r1/host-bundle/versions/2026.10.16.3212-runtime`,
+    `${projectRoot}/runtime-versions/enhanced/r2/host-bundle/versions/2026.10.16.runtime`,
+    `${projectRoot}/registered-tools/governance-2026.10.16`,
+  ]) {
+    const tools = { node: '/usr/bin/node', forgeGovernance: `${installation}/bin/forge-governance` };
+    const protectedContract = { ...currentContract, toolchains: tools };
+    assert.deepEqual(hostSandboxReadOnlyRoots(tools, protectedContract), [installation]);
+    const plan = hostSandboxCommand({ executable: tools.forgeGovernance, argv: ['check'], cwd: `${jobRoot}/workspace` },
+      paths, tools, [], protectedContract);
+    const offset = plan.argv.indexOf(installation);
+    assert.deepEqual(plan.argv.slice(offset - 1, offset + 2), ['--ro-bind', installation, installation]);
+    assert.equal(plan.argv.includes(projectRoot), false);
+    assert.equal(plan.argv.includes(`${projectRoot}/runtime-versions`), false);
+  }
+  for (const installation of ['/srv/forge-delivery/projects/another-project/tools/v1', projectRoot,
+    `${projectRoot}/ops`, currentContract.taskspacesRoot, currentContract.stateRoot,
+    '/srv/forge-delivery/secrets', '/etc', '/run', '/root', '/home']) {
+    assert.throws(() => hostSandboxReadOnlyRoots({ node: `${installation}/bin/node` }, currentContract), /scope/u);
+  }
+  assert.throws(() => hostSandboxReadOnlyRoots({ node: `${projectRoot}/tools/../ops/bin/node` }, currentContract), /normalized/u);
+  assert.throws(() => hostSandboxReadOnlyRoots({ node: '/usr/bin/../../etc/node' }, currentContract), /normalized/u);
 });
 
 test('Host refuses a child-replaced report root or a cache ancestor symlink before reading reports', async (t) => {
@@ -824,9 +854,10 @@ test('Host explicitly revalidates a canonical passed receipt under current autho
 });
 
 test('Host revalidates only an issuer-bound same-content checkpoint without rewriting original evidence', async (t) => {
-  for (const scenario of ['checkpoint', 'missing', 'integrated', 'changed-content', 'wrong-from', 'wrong-task']) {
-    await t.test(scenario, async (subtest) => {
+  for (const mode of ['contract', 'direct']) for (const scenario of ['checkpoint', 'missing', 'integrated', 'changed-content', 'wrong-from', 'wrong-task']) {
+    await t.test(`${mode}-${scenario}`, async (subtest) => {
       const f = await hostReceiptReuseFixture(subtest);
+      if (mode === 'direct') f.runner.developmentMode = 'direct';
       const nextHead = '8'.repeat(40);
       const payload = {
         schemaVersion: 1, operationId: crypto.randomUUID(),
@@ -855,8 +886,11 @@ test('Host revalidates only an issuer-bound same-content checkpoint without rewr
       const issuer = f.runner.acceptanceIssuerClient;
       f.runner.acceptanceIssuerClient = async (route, body, options) => {
         const result = await issuer(route, body, options);
-        return route === '/v1/candidate-bindings' && scenario !== 'missing'
-          ? { ...result, sourceTransition: transition } : result;
+        if (route !== '/v1/candidate-bindings') return result;
+        return { ...result,
+          ...(mode === 'direct' ? { developmentMode: 'direct',
+            acceptanceContract: { ...result.acceptanceContract, developmentMode: 'direct' } } : {}),
+          ...(scenario === 'missing' ? {} : { sourceTransition: transition }) };
       };
       const request = { ...f.request, admissionId: admission.admissionId };
       const commands = f.commands();
@@ -1921,7 +1955,8 @@ async function hostReceiptReuseFixture(t, profile = 'frontend-admin-build', sele
   const root = await mkdtemp(path.join(os.tmpdir(), 'forge-host-reuse-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await fixture(root);
-  const currentContract = validateHostVerificationContract(contract(root));
+  const currentContract = validateHostVerificationContract({ ...contract(root),
+    ...(reportFixture.inputScopes ? { inputScopes: reportFixture.inputScopes } : {}) });
   const state = sourceState ?? inventoryState();
   const routes = [];
   let commands = 0;
@@ -2006,6 +2041,43 @@ async function hostReceiptReuseFixture(t, profile = 'frontend-admin-build', sele
   };
 }
 
+test('Host and issuer reuse unchanged declared inputs across another module and reject changed dependencies', async t => {
+  const state = inventoryState();
+  let frontend = '1'.repeat(64), backend = '2'.repeat(64), shared = '3'.repeat(64), manifests = '4'.repeat(64);
+  const source = { ...state, inventory: async () => ({ ...await state.inventory(), fileCount: 3, bytes: 3,
+    dependencyManifestFingerprint: manifests,
+    files: [{ relative: 'forge-admin-ui/src/example.ts', sha256: frontend, bytes: 1 },
+      { relative: 'forge-server/pom.xml', sha256: backend, bytes: 1 },
+      { relative: 'shared/schema.json', sha256: shared, bytes: 1 }] }) };
+  const inputScopes = { 'frontend-admin-build': { kind: 'tree', root: 'forge-admin-ui', inputs: ['shared'], rootFiles: true } };
+  const f = await hostReceiptReuseFixture(t, 'frontend-admin-build', {}, undefined, false, source, '', undefined, { inputScopes });
+  const command = f.runner.command;
+  f.runner.command = async (executable, argv, options) => argv[0] === 'rev-parse'
+    ? result({ stdout: 'b'.repeat(40) }) : argv[0] === 'merge-base' ? result() : command(executable, argv, options);
+  assert.match(f.original.inputIdentity.digest, /^[a-f0-9]{64}$/);
+  const commands = f.commands();
+  f.runner.prepareJob = async () => assert.fail('unchanged inputs must not create or execute another job');
+  backend = '5'.repeat(64); manifests = '6'.repeat(64);
+  state.setFingerprint('7'.repeat(64)); state.setHead('8'.repeat(40));
+  const admission = await f.runner.admit('task-one', ['frontend-admin-build']);
+  const projection = await f.runner.execute({ ...f.request, admissionId: admission.admissionId });
+  assert.equal(projection.revalidation.sourceProjection.kind, 'verification-input-source-projection');
+  assert.deepEqual(projection.execution, f.original.execution);
+  validateHostRunReceipt(projection, { sourceFingerprint: '7'.repeat(64), reuseReceiptId: f.original.receiptId });
+  assert.deepEqual(f.routes.at(-1).body.runnerReceipt, projection);
+  assert.equal(f.commands(), commands);
+  assert.deepEqual(await readFile(f.receiptFile), f.originalBytes);
+  assert.equal((await f.runner.receipt('task-one', f.original.receiptId)).freshness, 'current');
+  const forged = structuredClone(projection);
+  forged.revalidation.sourceProjection.inputDigest = '9'.repeat(64);
+  assert.throws(() => validateHostRunReceipt(forged), /input projection/);
+  shared = 'a'.repeat(64); state.setFingerprint('c'.repeat(64));
+  const changed = await f.runner.admit('task-one', ['frontend-admin-build']);
+  await assert.rejects(f.runner.execute({ ...f.request, admissionId: changed.admissionId, idempotencyKey: 'shared-input-changed' }),
+    { code: 'VERIFY_RECEIPT_REUSE_INVALID' });
+  assert.equal(f.commands(), commands);
+});
+
 function inventoryState() {
   let head = 'b'.repeat(40);
   let fingerprint = 'a'.repeat(64);
@@ -2059,7 +2131,7 @@ test('optional backend source quality keeps scope and real exit status in a reta
   assert.throws(() => sourceQualitySelectors({ files: ['forge-server/example/target/Example.java'] }));
   assert.throws(() => sourceQualitySelectors({ modules: ['forge-server/example'] }));
   assert.equal(VERIFY_PROFILE_NAMES.includes(SOURCE_QUALITY_PROFILE), false);
-  for (const [status, exitCode] of [['passed', 0], ['findings', 1], ['error', 2]]) {
+  for (const [status, exitCode] of [['passed', 0], ['advisory', 0], ['findings', 1], ['error', 2]]) {
     await t.test(status, async () => {
       const root = await mkdtemp(path.join(os.tmpdir(), 'forge-source-quality-'));
       try {
@@ -2068,7 +2140,8 @@ test('optional backend source quality keeps scope and real exit status in a reta
         const state = inventoryState();
         const report = { schemaVersion: 1, mode: 'fast', bundleSha256: SOURCE_QUALITY_BUNDLE_SHA256,
           status, files: [{ path: selected, sha256: 'd'.repeat(64) }],
-          findings: status === 'findings' ? [{ tool: 'pmd', rule: 'GodClass', reviewKind: 'structure', path: selected }] : [],
+          findings: ['findings', 'advisory'].includes(status) ? [{ tool: 'pmd', rule: 'GodClass', reviewKind: 'structure', path: selected }] : [],
+          ...(status === 'advisory' ? { scannerExitCode: 1 } : {}),
           errors: status === 'error' ? ['scanner unavailable'] : [] };
         let commands = 0;
         const runner = new HostVerificationRunner({ projectSlug: 'forge-host', contract: current,
@@ -2519,13 +2592,117 @@ async function vitestFailureFixture(root, options = {}) {
   return { runner, admission, acceptanceBodies };
 }
 
+function testDatabaseContract(root) {
+  return { ...contract(root), processIsolation: 'bubblewrap', testDatabase: {
+    taskId: 'task-one', port: 13306, database: 'forge_host_fixture_test', username: 'forge_host_fixture',
+    passwordFile: path.join(root, 'protected', 'test-database.password'),
+  } };
+}
+
+test('Host test database binding rejects production, other projects and writable secrets; changes receipt policy', () => {
+  const root = path.resolve(os.tmpdir(), 'forge-host-db-policy');
+  const input = testDatabaseContract(root);
+  input.inputScopes = { 'backend-module-test': { kind: 'maven', root: 'forge-server', inputs: [], rootFiles: true } };
+  const valid = validateHostVerificationContract(input);
+  assert.deepEqual(valid.inputScopes, input.inputScopes, 'input reuse and the isolated database binding coexist');
+  assert.deepEqual(valid.testDatabase, input.testDatabase);
+  const without = validateHostVerificationContract({ ...contract(root), processIsolation: 'bubblewrap' });
+  assert.notEqual(hostProfilePolicyDigest(valid), hostProfilePolicyDigest(without));
+  for (const patch of [{ database: 'forge_host_production' }, { database: 'other_project_test' },
+    { username: 'root' }, { port: 330 }, { host: 'production.internal' }, { taskId: '../task-two' },
+    { database: 'forge_host_' + 'x'.repeat(60) + '_test' },
+    { passwordFile: path.join(input.taskspacesRoot, 'task-one', 'secret') },
+    { passwordFile: path.join(input.stateRoot, 'secret') }]) {
+    assert.throws(() => validateHostVerificationContract({ ...input, testDatabase: { ...input.testDatabase, ...patch } }));
+  }
+  assert.throws(() => validateHostVerificationContract({ ...input, processIsolation: undefined }));
+  for (const patch of [{ port: 13307 }, { taskId: 'task-two' }, { database: 'forge_host_other_test' }]) {
+    assert.notEqual(hostProfilePolicyDigest(valid), hostProfilePolicyDigest(validateHostVerificationContract({
+      ...input, testDatabase: { ...input.testDatabase, ...patch },
+    })));
+  }
+  assert.equal(Object.hasOwn(hostProfilePolicyDescriptor(valid).testDatabase, 'passwordFile'), false);
+});
+
+test('Host test database credentials reach only the bound backend test command and require a protected file', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'forge-host-db-env-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const current = validateHostVerificationContract(testDatabaseContract(root));
+  const step = { executable: current.toolchains.maven, argv: ['-Pdev,enable-tests', 'test'] };
+  const run = (task = 'task-one', profile = 'backend-test-class', command = step) =>
+    hostTestDatabaseEnvironment(current, task, profile, command, current.toolchains);
+  for (const profile of ['governance', 'frontend-admin-test', 'backend-module-compile', 'full-regression']) {
+    assert.deepEqual(await run('task-one', profile), {});
+  }
+  assert.deepEqual(await run('task-two'), {});
+  assert.deepEqual(await run('task-one', 'backend-test-class', { ...step, argv: ['--version'] }), {});
+  await assert.rejects(run(), { code: 'VERIFY_TEST_DATABASE_CREDENTIAL_INVALID' });
+  await mkdir(path.dirname(current.testDatabase.passwordFile), { recursive: true });
+  await writeFile(current.testDatabase.passwordFile, 'fixture-password-1234567890\n', { mode: 0o600 });
+  const env = await run();
+  assert.match(env.FORGE_TEST_JDBC_URL, /^jdbc:mysql:\/\/127\.0\.0\.1:13306\/forge_host_fixture_test\?/u);
+  assert.equal(env.FORGE_TEST_JDBC_USER, 'forge_host_fixture');
+  assert.equal(env.FORGE_TEST_JDBC_PASSWORD, 'fixture-password-1234567890');
+  if (process.platform !== 'win32') {
+    await chmod(current.testDatabase.passwordFile, 0o644);
+    await assert.rejects(run(), { code: 'VERIFY_TEST_DATABASE_CREDENTIAL_INVALID' });
+    await chmod(current.testDatabase.passwordFile, 0o600);
+    const original = current.testDatabase.passwordFile + '.original';
+    await rename(current.testDatabase.passwordFile, original);
+    await symlink(original, current.testDatabase.passwordFile);
+    await assert.rejects(run(), { code: 'VERIFY_TEST_DATABASE_CREDENTIAL_INVALID' });
+  }
+});
+
+test('Host test database execution binds evidence and redacts the credential from returned output and failures', { skip: process.platform !== 'linux' }, async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'forge-host-db-run-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await fixture(root);
+  const current = validateHostVerificationContract(testDatabaseContract(root));
+  const password = 'fixture-password-1234567890';
+  await mkdir(path.dirname(current.testDatabase.passwordFile), { recursive: true });
+  await writeFile(current.testDatabase.passwordFile, password, { mode: 0o600 });
+  let testCalls = 0;
+  const runner = new HostVerificationRunner({ projectSlug: 'forge-host', contract: current,
+    inventory: inventoryState().inventory, snapshot,
+    toolchainProbe: async () => toolchainIdentity(current),
+    command: async (_exe, argv, options) => {
+      if (argv.at(-1) !== 'test') {
+        assert.equal(options.env?.FORGE_TEST_JDBC_PASSWORD, undefined);
+        return result({ stdout: argv.at(-1)?.includes('forge-host-sandbox-ready/v1') ? 'forge-host-sandbox-ready/v1' : '' });
+      }
+      testCalls += 1;
+      assert.equal(options.env.FORGE_TEST_JDBC_PASSWORD, password);
+      assert.equal(argv.includes(password), false);
+      assert.equal(argv.includes(current.testDatabase.passwordFile), false);
+      const reports = path.join(options.cwd, 'target', 'surefire-reports');
+      await mkdir(reports, { recursive: true });
+      await writeFile(path.join(reports, 'TEST-fixture.xml'),
+        `<testsuite tests="1" failures="1" errors="0" skipped="0"><testcase name="fixture"><failure message="${password}"/></testcase></testsuite>`);
+      return result({ exitCode: 1, stdout: `unlabelled ${password}` });
+    } });
+  const admission = await runner.admit('task-one', ['backend-test-class']);
+  const receipt = await runner.run('task-one', { action: 'run', profile: 'backend-test-class',
+    selectors: { modules: ['forge-server/example'], tests: ['example.FixtureTest'] },
+    admissionId: admission.admissionId, idempotencyKey: 'isolated-database-fixture' });
+  assert.equal(testCalls, 1);
+  assert.equal(receipt.status, 'failed');
+  assert.equal(receipt.results.failed, 1);
+  assert.equal(receipt.policy.profilePolicyDigest, hostProfilePolicyDigest(current));
+  assert.equal(JSON.stringify(receipt).includes(password), false);
+  const log = await readFile(receipt.logs.path, 'utf8');
+  assert.equal(log.includes(password), false);
+  assert.match(log, /\[REDACTED\]/u);
+  validateHostRunReceipt(receipt);
+});
+
 test('host contract and profile plan reject dynamic command surfaces and use absolute reviewed executables', () => {
   const root = path.resolve(os.tmpdir(), 'forge-host-policy');
   const current = validateHostVerificationContract(contract(root), 'forge-host');
   assert.equal(current.executionMode, 'host-toolchain');
   assert.equal(
     hostProfilePolicyDigest(current),
-    'adb49f9acca2990bdf9e656cb80c3bb927b242fd7aa28efbd6a63120a4100599',
+    '1bf591297381f171dac367ab8ebae9cbc8cc20646f1b6923681fdda4be9eb899',
   );
   assert.throws(() => validateHostVerificationContract({ ...contract(root), shell: '/bin/sh' }), /unsupported field/u);
   assert.throws(() => validateHostVerificationContract({ ...contract(root), profiles: ['governance'] }), /reviewed ordered/u);
@@ -3555,83 +3732,88 @@ test('Host projects passed governance advisories from the verified log without c
   }
 });
 
-test('Host projects missing Maven assertion details from the retained log without rewriting receipt or outcome', async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'forge-host-maven-diagnostics-'));
-  try {
-    await fixture(root);
-    const currentContract = validateHostVerificationContract(contract(root));
-    const state = inventoryState();
-    const runner = new HostVerificationRunner({
-      projectSlug: 'forge-host', contract: currentContract, inventory: state.inventory, snapshot,
-      toolchainProbe: async () => toolchainIdentity(currentContract),
-      command: async (_executable, _argv, options) => {
-        const reports = path.join(options.cwd, 'target', 'surefire-reports');
-        await mkdir(reports, { recursive: true });
-        await writeFile(path.join(reports, 'TEST-ExampleTest.xml'), '<testsuite tests="4" failures="1" errors="0" skipped="0"></testsuite>');
-        return result({ exitCode: 1, stdout: `${'[INFO] unrelated compilation\n'.repeat(400)}[ERROR] Tests run: 4, Failures: 1 <<< FAILURE! -- in ExampleTest\n[ERROR] ExampleTest.rejectsMissingCategory <<< FAILURE!\nExpecting BusinessException but was NullPointerException\n at ImmutableCollections$Set12.contains\n token=private-maven-diagnostic-value\n[INFO] Next module\n${'[INFO] unrelated reactor summary\n'.repeat(400)}` });
-      },
-    });
-    const admission = await runner.admit('task-one', ['backend-module-test']);
-    const receipt = await runner.execute({ taskId: 'task-one', action: 'run', profile: 'backend-module-test',
-      selectors: { modules: ['forge-server/example'] }, idempotencyKey: 'maven-diagnostics-0001', admissionId: admission.admissionId });
-    assert.equal(receipt.status, 'failed');
-    assert.equal(receipt.results.failed, 1);
-    const receiptFile = path.join(root, 'state', 'receipts', 'task-one', `${receipt.receiptId}.json`);
-    const beforeReceipt = await readFile(receiptFile);
-    const beforeLog = await readFile(receipt.logs.path);
-    const projected = await runner.execute({ taskId: 'task-one', action: 'receipt', receiptId: receipt.receiptId, includeDiagnostics: true });
-    assert.match(projected.logs.excerpt, /ExampleTest\.rejectsMissingCategory/u);
-    assert.match(projected.logs.excerpt, /BusinessException but was NullPointerException/u);
-    assert.match(projected.logs.excerpt, /ImmutableCollections\$Set12\.contains/u);
-    assert.doesNotMatch(projected.logs.excerpt, /private-maven-diagnostic-value/u);
-    assert.ok(Buffer.byteLength(projected.logs.excerpt, 'utf8') <= 16 * 1024);
-    assert.equal(projected.status, 'failed');
-    assert.equal(projected.truth.verificationProven, false);
-    assert.deepEqual(projected.results, receipt.results);
-    assert.deepEqual(await readFile(receiptFile), beforeReceipt);
-    assert.deepEqual(await readFile(receipt.logs.path), beforeLog);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
+for (const formatName of ['classic', 'SLF4J']) {
+  const formatMavenLog = (text) => formatName === 'classic' ? text : text
+    .replaceAll('[ERROR]', '[ThreadedStreamConsumer] ERROR org.apache.maven.plugin.surefire.SurefirePlugin -')
+    .replaceAll('[INFO]', '[main] INFO org.apache.maven.cli.event.ExecutionEventLogger -');
+  test(`Host projects missing Maven assertion details from the retained log without rewriting receipt or outcome (${formatName})`, async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'forge-host-maven-diagnostics-'));
+    try {
+      await fixture(root);
+      const currentContract = validateHostVerificationContract(contract(root));
+      const state = inventoryState();
+      const runner = new HostVerificationRunner({
+        projectSlug: 'forge-host', contract: currentContract, inventory: state.inventory, snapshot,
+        toolchainProbe: async () => toolchainIdentity(currentContract),
+        command: async (_executable, _argv, options) => {
+          const reports = path.join(options.cwd, 'target', 'surefire-reports');
+          await mkdir(reports, { recursive: true });
+          await writeFile(path.join(reports, 'TEST-ExampleTest.xml'), '<testsuite tests="4" failures="1" errors="0" skipped="0"></testsuite>');
+          return result({ exitCode: 1, stdout: formatMavenLog(`${'[INFO] unrelated compilation\n'.repeat(400)}[ERROR] Tests run: 4, Failures: 1 <<< FAILURE! -- in ExampleTest\n[ERROR] ExampleTest.rejectsMissingCategory <<< FAILURE!\nExpecting BusinessException but was NullPointerException\n at ImmutableCollections$Set12.contains\n token=private-maven-diagnostic-value\n[INFO] Next module\n${'[INFO] unrelated reactor summary\n'.repeat(400)}`) });
+        },
+      });
+      const admission = await runner.admit('task-one', ['backend-module-test']);
+      const receipt = await runner.execute({ taskId: 'task-one', action: 'run', profile: 'backend-module-test',
+        selectors: { modules: ['forge-server/example'] }, idempotencyKey: 'maven-diagnostics-0001', admissionId: admission.admissionId });
+      assert.equal(receipt.status, 'failed');
+      assert.equal(receipt.results.failed, 1);
+      const receiptFile = path.join(root, 'state', 'receipts', 'task-one', `${receipt.receiptId}.json`);
+      const beforeReceipt = await readFile(receiptFile);
+      const beforeLog = await readFile(receipt.logs.path);
+      const projected = await runner.execute({ taskId: 'task-one', action: 'receipt', receiptId: receipt.receiptId, includeDiagnostics: true });
+      assert.match(projected.logs.excerpt, /ExampleTest\.rejectsMissingCategory/u);
+      assert.match(projected.logs.excerpt, /BusinessException but was NullPointerException/u);
+      assert.match(projected.logs.excerpt, /ImmutableCollections\$Set12\.contains/u);
+      assert.doesNotMatch(projected.logs.excerpt, /private-maven-diagnostic-value/u);
+      assert.ok(Buffer.byteLength(projected.logs.excerpt, 'utf8') <= 16 * 1024);
+      assert.equal(projected.status, 'failed');
+      assert.equal(projected.truth.verificationProven, false);
+      assert.deepEqual(projected.results, receipt.results);
+      assert.deepEqual(await readFile(receiptFile), beforeReceipt);
+      assert.deepEqual(await readFile(receipt.logs.path), beforeLog);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 
-test('Host projects the first Maven compiler errors instead of only cascading tail errors without changing evidence', async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'forge-host-compiler-diagnostics-'));
-  try {
-    await fixture(root);
-    const currentContract = validateHostVerificationContract(contract(root));
-    const state = inventoryState();
-    const runner = new HostVerificationRunner({
-      projectSlug: 'forge-host', contract: currentContract, inventory: state.inventory, snapshot,
-      toolchainProbe: async () => toolchainIdentity(currentContract),
-      command: async () => result({ exitCode: 1, stdout:
-        `${'[INFO] successful dependency compilation\n'.repeat(400)}[ERROR] COMPILATION ERROR :\n[INFO] -------------------------------------------------------------\n`
-        + "[ERROR] [JOB_WORKSPACE]/forge-server/example/src/main/java/SecurityDefenseController.java:[56,24] annotation values must be of the form 'name=value'\n"
-        + "[ERROR] [JOB_WORKSPACE]/forge-server/example/src/main/java/SecurityDefenseController.java:[67,24] annotation values must be of the form 'name=value'\n"
-        + ' token=private-compiler-diagnostic-value\n'
-        + '[ERROR] [JOB_WORKSPACE]/forge-server/example/src/main/java/OtherService.java:[83,17] cannot find symbol\n'.repeat(400)
-        + '[INFO] BUILD FAILURE\n' }),
-    });
-    const admission = await runner.admit('task-one', ['backend-module-test']);
-    const receipt = await runner.execute({ taskId: 'task-one', action: 'run', profile: 'backend-module-test',
-      selectors: { modules: ['forge-server/example'] }, idempotencyKey: 'compiler-diagnostics-0001', admissionId: admission.admissionId });
-    const receiptFile = path.join(root, 'state', 'receipts', 'task-one', `${receipt.receiptId}.json`);
-    const beforeReceipt = await readFile(receiptFile);
-    const beforeLog = await readFile(receipt.logs.path);
-    const projected = await runner.execute({ taskId: 'task-one', action: 'receipt', receiptId: receipt.receiptId, includeDiagnostics: true });
-    assert.match(projected.logs.excerpt, /SecurityDefenseController\.java:\[56,24\] annotation values/u);
-    assert.match(projected.logs.excerpt, /SecurityDefenseController\.java:\[67,24\] annotation values/u);
-    assert.doesNotMatch(projected.logs.excerpt, /private-compiler-diagnostic-value/u);
-    assert.ok(Buffer.byteLength(projected.logs.excerpt, 'utf8') <= 16 * 1024);
-    assert.equal(projected.status, 'failed');
-    assert.equal(projected.truth.verificationProven, false);
-    assert.deepEqual(projected.results, receipt.results);
-    assert.deepEqual(await readFile(receiptFile), beforeReceipt);
-    assert.deepEqual(await readFile(receipt.logs.path), beforeLog);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
+  test(`Host projects the first Maven compiler errors instead of only cascading tail errors without changing evidence (${formatName})`, async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'forge-host-compiler-diagnostics-'));
+    try {
+      await fixture(root);
+      const currentContract = validateHostVerificationContract(contract(root));
+      const state = inventoryState();
+      const runner = new HostVerificationRunner({
+        projectSlug: 'forge-host', contract: currentContract, inventory: state.inventory, snapshot,
+        toolchainProbe: async () => toolchainIdentity(currentContract),
+        command: async () => result({ exitCode: 1, stdout: formatMavenLog(
+          `${'[INFO] successful dependency compilation\n'.repeat(400)}[ERROR] COMPILATION ERROR :\n[INFO] -------------------------------------------------------------\n`
+          + "[ERROR] [JOB_WORKSPACE]/forge-server/example/src/main/java/SecurityDefenseController.java:[56,24] annotation values must be of the form 'name=value'\n"
+          + "[ERROR] [JOB_WORKSPACE]/forge-server/example/src/main/java/SecurityDefenseController.java:[67,24] annotation values must be of the form 'name=value'\n"
+          + ' token=private-compiler-diagnostic-value\n'
+          + '[ERROR] [JOB_WORKSPACE]/forge-server/example/src/main/java/OtherService.java:[83,17] cannot find symbol\n'.repeat(400)
+          + '[INFO] BUILD FAILURE\n') }),
+      });
+      const admission = await runner.admit('task-one', ['backend-module-test']);
+      const receipt = await runner.execute({ taskId: 'task-one', action: 'run', profile: 'backend-module-test',
+        selectors: { modules: ['forge-server/example'] }, idempotencyKey: 'compiler-diagnostics-0001', admissionId: admission.admissionId });
+      const receiptFile = path.join(root, 'state', 'receipts', 'task-one', `${receipt.receiptId}.json`);
+      const beforeReceipt = await readFile(receiptFile);
+      const beforeLog = await readFile(receipt.logs.path);
+      const projected = await runner.execute({ taskId: 'task-one', action: 'receipt', receiptId: receipt.receiptId, includeDiagnostics: true });
+      assert.match(projected.logs.excerpt, /SecurityDefenseController\.java:\[56,24\] annotation values/u);
+      assert.match(projected.logs.excerpt, /SecurityDefenseController\.java:\[67,24\] annotation values/u);
+      assert.doesNotMatch(projected.logs.excerpt, /private-compiler-diagnostic-value/u);
+      assert.ok(Buffer.byteLength(projected.logs.excerpt, 'utf8') <= 16 * 1024);
+      assert.equal(projected.status, 'failed');
+      assert.equal(projected.truth.verificationProven, false);
+      assert.deepEqual(projected.results, receipt.results);
+      assert.deepEqual(await readFile(receiptFile), beforeReceipt);
+      assert.deepEqual(await readFile(receipt.logs.path), beforeLog);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+}
 
 test('host Runner persists bounded Vitest failure diagnostics before deleting the job and projects them only on request', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'forge-host-diagnostics-'));
@@ -4650,5 +4832,51 @@ test('Host seed-only policy reuse preserves original execution and refuses a rea
       assert.deepEqual(f.routes.at(-1).body.runnerReceipt, projection);
     }
     assert.equal(f.commands(), before); assert.deepEqual(await readFile(f.receiptFile), originalBytes);
+  });
+});
+
+
+test('direct development Host runs optional checks and preserves actual failure without required-profile submission', async t => {
+  for (const exitCode of [0, 7]) await t.test(`exit-${exitCode}`, async sub => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'forge-host-direct-'));
+    sub.after(() => rm(root, { recursive: true, force: true }));
+    await fixture(root);
+    const currentContract = validateHostVerificationContract(contract(root));
+    const state = inventoryState();
+    const routes = [];
+    const environments = [];
+    const contractId = 'd'.repeat(64);
+    const runner = new HostVerificationRunner({ projectSlug: 'forge-host', contract: currentContract,
+      developmentMode: 'direct', inventory: state.inventory, snapshot,
+      toolchainProbe: async () => toolchainIdentity(currentContract),
+      command: async (_exe, argv, options) => {
+        if (['merge-base', 'rev-parse', 'diff', 'ls-files', 'ls-tree'].includes(argv[0])) return result();
+        environments.push(options.env);
+        return result({ exitCode, stderr: exitCode ? 'actual compile failure' : '' });
+      }, acceptanceIssuerClient: async (route, body) => {
+        routes.push(route);
+        assert.equal(route, '/v1/candidate-bindings', 'optional checks do not require fixed obligations');
+        const source = await state.inventory();
+        return { developmentMode: 'direct', acceptanceContract: { developmentMode: 'direct',
+          contractId: body.contractId, projectSlug: 'forge-host', taskId: 'task-one', requiredProfiles: [],
+          candidate: { source: { head: source.head, fingerprint: source.workspaceFingerprint } } } };
+      } });
+    const admission = await runner.admit('task-one', ['backend-module-compile']);
+    const receipt = await runner.execute({ action: 'run', taskId: 'task-one', profile: 'backend-module-compile',
+      selectors: { modules: ['forge-server/example'] }, admissionId: admission.admissionId,
+      acceptanceContractId: contractId, candidateBinding: {}, idempotencyKey: `direct-compile-${exitCode}` });
+    assert.equal(receipt.status, exitCode === 0 ? 'passed' : 'failed');
+    assert.equal(receipt.execution.exitCode, exitCode);
+    assert.equal(receipt.truth.verificationProven, exitCode === 0);
+    assert.equal(receipt.truth.releaseProven, false);
+    assert.deepEqual(routes, ['/v1/candidate-bindings']);
+    assert.equal(environments[0].FORGE_DEVELOPMENT_MODE, 'direct');
+    validateHostRunReceipt(receipt);
+    assert.equal((await runner.receipt('task-one', receipt.receiptId)).status, receipt.status);
+    state.setFingerprint('f'.repeat(64));
+    await assert.rejects(runner.execute({ action: 'run', taskId: 'task-one', profile: 'backend-module-compile',
+      selectors: { modules: ['forge-server/example'] }, admissionId: admission.admissionId,
+      acceptanceContractId: contractId, candidateBinding: {}, idempotencyKey: `direct-stale-${exitCode}` }),
+      { code: 'VERIFY_ADMISSION_SOURCE_CHANGED' });
   });
 });

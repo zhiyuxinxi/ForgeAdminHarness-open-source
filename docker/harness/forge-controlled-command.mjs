@@ -30,7 +30,7 @@ const CHECKPOINT_IGNORED_PATH_PARTS = new Set([
 const RELEASE_SERVICES = new Set(['forge-admin', 'forge-app', 'forge-flow', 'forge-ui']);
 const VERIFY_RUN_STATUSES = new Set(['passed', 'failed', 'timed-out', 'failed-zero-tests']);
 const VERIFY_ADMISSION_OUTCOMES = new Set(['ready', 'cache_miss', 'cache_invalid', 'executor_unavailable']);
-const RELEASE_INSPECTION_ACTIONS = new Set(['contract', 'capability', 'preflight', 'status', 'diagnose', '--help']);
+const RELEASE_INSPECTION_ACTIONS = new Set(['contract', 'capability', 'preflight', 'plan', 'status', 'diagnose', 'logs', '--help']);
 // Complete module paths can exceed 8 KiB. Match the existing Broker request
 // envelope for typed release mutations; other commands keep their old limit.
 export const CONTROLLED_RELEASE_COMMAND_MAX_LENGTH = 64 * 1024;
@@ -145,7 +145,7 @@ function parseEvidenceCommand(command, onInvalid) {
     options['--execution-mode'] = 'background';
   }
   try {
-    validateVerifyAction(action === 'admit'
+    const validated = validateVerifyAction(action === 'admit'
       ? { action, profiles: options['--profile'] }
       : action === 'review'
       ? { action, acceptanceContractId: options['--contract-id'] }
@@ -169,6 +169,7 @@ function parseEvidenceCommand(command, onInvalid) {
         : ['status', 'watch'].includes(action)
           ? { action: 'status', jobId: options['--job-id'], ...(options['--wait-seconds'] === undefined ? {} : { waitSeconds: Number(options['--wait-seconds']) }) }
           : { action, receiptId: options['--receipt-id'] });
+    if (action === 'admit') options['--profile'] = validated.profiles;
   } catch (error) {
     // Surface the same validator that authorizes execution, without accepting
     // a repaired diagnostic copy or disclosing option values.
@@ -311,6 +312,22 @@ export function parseControlledReleaseInspectionCommand(command) {
   if (action === 'status' && tokens.length > 0) {
     options = consumeOptions(tokens, { '--operation-id': { pattern: STRICT_UUID } }, () => null);
     if (!options || !options['--operation-id']) return null;
+  } else if (action === 'logs') {
+    options = consumeOptions(tokens, {
+      '--services': { pattern: /^[a-z-]+(?:,[a-z-]+)*$/u },
+      '--tail': { pattern: /^[1-9][0-9]{0,3}$/u },
+      '--since': { pattern: /^[1-9][0-9]{0,4}[smh]$/u },
+    }, () => null);
+    if (!options) return null;
+    const services = options['--services']?.split(',');
+    if (services && (new Set(services).size !== services.length
+      || services.some(service => !RELEASE_SERVICES.has(service)))) return null;
+    if (options['--tail'] && Number(options['--tail']) > 1000) return null;
+    if (options['--since']) {
+      const since = options['--since'];
+      const seconds = Number(since.slice(0, -1)) * { s: 1, m: 60, h: 3600 }[since.at(-1)];
+      if (seconds > 86400) return null;
+    }
   } else if (tokens.length !== 0) return null;
   return {
     family: 'forge-release-inspection',

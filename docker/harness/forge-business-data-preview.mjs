@@ -59,7 +59,7 @@ export function createBrokerBusinessDataPreviewClient({
 } = {}) {
   if (typeof brokerUrl !== 'string' || typeof tokenFile !== 'string') return undefined;
   const endpoint = new URL(brokerUrl);
-  if (endpoint.protocol !== 'http:' || !['taskspace-broker', '127.0.0.1', 'localhost'].includes(endpoint.hostname)
+  if (endpoint.protocol !== 'http:' || !['taskspace-broker', 'taskspace-broker-stable', 'taskspace-broker-enhanced', '127.0.0.1', 'localhost'].includes(endpoint.hostname)
     || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || endpoint.pathname !== '/'
     || !tokenFile.startsWith('/run/forge-taskspace/') || path.posix.normalize(tokenFile) !== tokenFile
     || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 30_000

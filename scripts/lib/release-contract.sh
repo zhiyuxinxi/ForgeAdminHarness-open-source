@@ -120,6 +120,7 @@ render_release_contract() {
   local redis_host redis_port redis_database redis_test_database compose_project
   local test_database_operator_image
   local protected='[]' protected_paths relative_path file_path file_hash temp_file
+  local input_model input_model_source
 
   for command_name in awk jq sha256sum mktemp; do
     require_command "${command_name}"
@@ -176,6 +177,20 @@ render_release_contract() {
       '. + [{relativePath: $relative_path, sha256: $file_hash}]' <<<"${protected}")"
   done <<<"${protected_paths}"
 
+  # Preserve project-owned definitions across idempotent upgrades. New and
+  # legacy projects receive the reviewed platform layout, scoped to topology.
+  input_model_source="${project_root}/ops/runtime-contract.json"
+  if [[ -f "${output_file}" ]] && jq -e '.release.inputModel != null' "${output_file}" >/dev/null; then
+    input_model_source="${output_file}"
+  fi
+  if [[ -f "${input_model_source}" ]] && jq -e '.release.inputModel != null' "${input_model_source}" >/dev/null; then
+    input_model="$(jq -c '.release.inputModel' "${input_model_source}")"
+  else
+    input_model="$(cat "${REPO_ROOT}/templates/project/release-inputs.json")"
+  fi
+  input_model="$(jq -c --argjson services "${allowed_release_services_json}" \
+    --slurpfile defaults "${REPO_ROOT}/templates/project/release-inputs.json" \
+    '.services = ($defaults[0].services + .services) | .services |= with_entries(select(.key as $key | $services | index($key)))' <<<"${input_model}")"
   temp_file="$(mktemp "$(dirname -- "${output_file}")/.runtime-contract.XXXXXX")"
   jq --null-input \
     --arg slug "${slug}" \
@@ -194,6 +209,7 @@ render_release_contract() {
     --argjson allowed_release_services "${allowed_release_services_json}" \
     --argjson compose_application_services "${compose_application_services_json}" \
     --argjson protected "${protected}" \
+    --argjson input_model "${input_model}" \
     '{
       schemaVersion: 3,
       projectSlug: $slug,
@@ -219,6 +235,7 @@ render_release_contract() {
         }
       },
       release: {
+        inputModel: $input_model,
         fixedComposeFile: ($project_root + "/ops/compose.yaml"),
         allowedComposeServices: ([
           "forge-admin", "forge-app", "forge-flow", "forge-ui", "release-runner", "taskspace-broker",

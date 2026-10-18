@@ -405,6 +405,50 @@ test('owned migration SQL binds only its verified JUnit source through normal pr
     backendTestBindings: [{ ...trustedInput.backendTestBindings[0], coveredPaths: [testPath, 'forge-server/db/migration/V3__outside.sql'] }] }));
 });
 
+test('platform project context references verify the read-only mounted source and reject stale or forged bytes', async (t) => {
+  const value = await fixture();
+  t.after(() => value.cleanup());
+  const issue = issueInput('修复页面并验证。');
+  await value.service.issueExecutionAuthority(issue);
+  const taskMetadata = { schemaVersion: 2, projectSlug: issue.projectSlug, taskId: issue.taskId,
+    actorUserId: ACTOR_USER_ID, actorId: 'lyl', conversationId: issue.conversationId,
+    status: 'active', accessMode: 'conversation' };
+  const workspace = path.join(value.root, 'taskspaces', issue.taskId, 'workspace');
+  const contextFile = path.join(value.root, 'governance', 'PROJECT_CONTEXT.md');
+  const content = '# Platform-owned project context\n';
+  await mkdir(workspace, { recursive: true });
+  await mkdir(path.dirname(contextFile), { recursive: true });
+  await writeFile(path.join(workspace, 'PROJECT_CONTEXT.md'), '');
+  const origin = await prepareProtectedExecutionContext({ projectRoot: value.root,
+    projectSlug: issue.projectSlug, taskMetadata,
+    request: { ...classifyPinnedDshPromptBody(Buffer.from(JSON.stringify({ type: 'client-request',
+      rpcId: issue.rpcId, method: 'session.prompt', payload: { sessionId: issue.dshSessionId,
+        mode: 'queue', content: [{ type: 'text', text: issue.promptText }] } })), 'session.prompt'),
+      actorUserId: ACTOR_USER_ID, actorUsername: 'lyl', conversationId: issue.conversationId,
+      requestId: 'project-context-reference' }, policyPath: POLICY_PATH, now: START.getTime() });
+  const request = { action: 'prepare-task', operation: 'propose',
+    lookup: Object.fromEntries(['projectSlug', 'taskId', 'conversationId', 'actorUserId',
+      'dshSessionId', 'rpcId', 'textDigest'].map(key => [key, origin[key]])),
+    expectedExecutionId: origin.executionId, expectedGeneration: origin.generation,
+    promptText: issue.promptText, proposal: { goal: issue.promptText, ownedPaths: [taskPaths.page],
+      taskProfiles: ['frontend-admin'], references: [{ path: 'PROJECT_CONTEXT.md',
+        sha256: createHash('sha256').update(content).digest('hex') }] } };
+  let authorized = 0;
+  const execute = () => prepareConversationTaskExecution({ projectRoot: value.root, taskMetadata, workspace,
+    request: validateTaskspaceAction(request), inspectSource: async () => ({ head: HEAD, fingerprint: FINGERPRINT }),
+    authorizeProposal: input => { authorized++; return value.service.prepareConversationTask(input); },
+    policyPath: POLICY_PATH, now: START.getTime() });
+  await assert.rejects(execute(), { code: 'CONVERSATION_TASK_REFERENCE_INVALID' });
+  await writeFile(contextFile, 'changed authoritative context');
+  await writeFile(path.join(workspace, 'PROJECT_CONTEXT.md'), content);
+  await assert.rejects(execute(), { code: 'CONVERSATION_TASK_REFERENCE_CHANGED' });
+  assert.equal(authorized, 0, 'A matching workspace copy cannot override the platform source.');
+  await writeFile(contextFile, content);
+  await writeFile(path.join(workspace, 'PROJECT_CONTEXT.md'), '');
+  assert.equal((await execute()).status, 'prepared');
+  assert.equal(authorized, 1);
+});
+
 test('inspect recovers only the completed preparation for its exact original request and unchanged source', async (t) => {
   const value = await fixture();
   t.after(() => value.cleanup());

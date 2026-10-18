@@ -1,0 +1,14 @@
+#!/bin/sh
+# All execution still occurs in the current project tool worker and its sandbox.
+# Use the matching image browser, never a host browser or downloaded npx package.
+export PLAYWRIGHT_BROWSERS_PATH=/opt/forge-agent-tools/browsers
+# --config belongs to open in this pinned CLI, not to fill/snapshot/close.
+for argument do
+  case "$argument" in
+    --config|--config=*) break ;;
+    -*) ;;
+    open) exec node /opt/forge-agent-tools/node_modules/@playwright/cli/playwright-cli.js --config=/usr/local/share/forge-playwright.config.json "$@" ;;
+    *) break ;;
+  esac
+done
+exec node /opt/forge-agent-tools/node_modules/@playwright/cli/playwright-cli.js "$@"

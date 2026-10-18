@@ -2,6 +2,7 @@
 
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
+import { INPUT_SOURCE_PROJECTION, verificationInputIdentity } from './verification-inputs.mjs';
 import { constants as fsConstants, realpathSync } from 'node:fs';
 import path from 'node:path';
 import {
@@ -10,6 +11,7 @@ import {
   copyFile,
   lstat,
   mkdir,
+  open,
   readFile,
   readdir,
   realpath,
@@ -873,8 +875,39 @@ async function removeAndProveHostJob(jobRoot, jobsRoot) {
   }
 }
 
+// Only the protected runner reads this fixture-only credential. It is never
+// mounted into the source snapshot or inherited by Git, installers or tools.
+export async function hostTestDatabaseEnvironment(contract, taskId, profile, step, resolved) {
+  const binding = contract.testDatabase;
+  if (!binding || binding.taskId !== taskId
+    || !['backend-red-test', 'backend-module-test', 'backend-test-class'].includes(profile)
+    || step.executable !== resolved.maven || step.argv.at(-1) !== 'test') return {};
+  let file;
+  try {
+    if (await realpath(binding.passwordFile) !== binding.passwordFile) throw new Error();
+    file = await open(binding.passwordFile, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+    const info = await file.stat();
+    if (!info.isFile() || info.nlink !== 1 || info.size < 16 || info.size > 129
+      || (process.platform !== 'win32'
+        && (![0, process.getuid()].includes(info.uid) || (info.mode & 0o077) !== 0))) throw new Error();
+    const password = (await file.readFile('utf8')).replace(/\r?\n$/u, '');
+    if (!/^[A-Za-z0-9_-]{16,128}$/u.test(password)) throw new Error();
+    return {
+      FORGE_TEST_JDBC_URL: `jdbc:mysql://127.0.0.1:${binding.port}/${binding.database}?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=UTC`,
+      FORGE_TEST_JDBC_USER: binding.username,
+      FORGE_TEST_JDBC_PASSWORD: password,
+    };
+  } catch {
+    throw verifyError('VERIFY_TEST_DATABASE_CREDENTIAL_INVALID',
+      'The configured isolated test database credential is unavailable or unprotected. Operator repair is required; no test was executed.');
+  } finally {
+    await file?.close();
+  }
+}
+
 export class HostVerificationRunner {
   constructor(options) {
+    this.developmentMode = options.developmentMode ?? process.env.FORGE_DEVELOPMENT_MODE;
     this.projectSlug = options.projectSlug;
     this.contract = validateHostVerificationContract(options.contract, this.projectSlug);
     this.taskspacesRoot = this.contract.taskspacesRoot;
@@ -888,6 +921,9 @@ export class HostVerificationRunner {
     this.now = options.now ?? (() => Date.now());
     this.runnerBootId = options.runnerBootId ?? crypto.randomUUID();
     this.profilePolicyDigest = hostProfilePolicyDigest(this.contract);
+    if (this.developmentMode === 'direct') {
+      this.profilePolicyDigest = executionDigest({ policy: this.profilePolicyDigest, developmentMode: 'direct' });
+    }
     this.preinstalledFrontend = createPreparedDependencyResolver({ cacheRoot: path.join(this.stateRoot, 'prepared-dependency-checks') });
     this.preinstalledMaven = createReadOnlyMavenResolver();
     this.activeByTask = new Map();
@@ -1221,6 +1257,10 @@ export class HostVerificationRunner {
   }
 
   async submitProtectedAcceptance(taskId, contractId, receipt, options = {}) {
+    // This flag is set only after the protected issuer binds the exact candidate.
+    // Optional direct-mode checks keep their real Host receipt without becoming
+    // mandatory development-contract obligations.
+    if (this.developmentMode === 'direct' && options.directDevelopment === true) return null;
     if (this.acceptanceIssuerClient === null) return null;
     if (typeof contractId !== 'string' || !/^[0-9a-f]{64}$/u.test(contractId)) {
       throw verifyError('VERIFY_ACCEPTANCE_CONTRACT_REQUIRED', 'Protected host verification requires the current acceptance contract.');
@@ -1249,6 +1289,14 @@ export class HostVerificationRunner {
       || contract?.candidate?.source?.head !== source.inventory.head
       || contract?.candidate?.source?.fingerprint !== source.inventory.workspaceFingerprint) {
       throw verifyError('VERIFY_ACCEPTANCE_BINDING_INVALID', 'Protected acceptance did not bind the admitted candidate.');
+    }
+    if (this.developmentMode === 'direct' && binding.developmentMode === 'direct'
+      && contract.developmentMode === 'direct') {
+      // No task path whitelist or development-review policy is applied to an
+      // optional direct-mode check. Task, project and source checks above remain.
+      return { acceptanceContract: contract, developmentMode: 'direct',
+        // Revalidation still validates this issuer-bound same-content transition.
+        ...(binding.sourceTransition === undefined ? {} : { sourceTransition: binding.sourceTransition }) };
     }
     if (binding.governanceTaskScope !== undefined) {
       const scope = normalizeGovernanceTaskScope(binding.governanceTaskScope);
@@ -1326,21 +1374,31 @@ export class HostVerificationRunner {
     resolved.javaHome = toolchain.javaHome;
     let sourceProjection;
     if (original.source.workspaceFingerprint !== source.inventory.workspaceFingerprint) {
-      const policy = protectedBinding?.reviewedReceiptSourceProjections?.find(item => item.receiptId === request.receiptId);
-      if (policy !== undefined) {
-        try { sourceProjection = reconstructReviewedReceiptSourceProjection(source, original, policy, protectedBinding, toolchain); }
-        catch (error) { refuse(`The operator-reviewed source projection is invalid: ${error.message}`); }
+      const inputIdentity = original.inputIdentity
+        ? await verificationInputIdentity(source, request.profile, request.selectors, this.contract.inputScopes) : null;
+      if (inputIdentity && inputIdentity.digest === original.inputIdentity.digest) {
+        sourceProjection = { schemaVersion: 1, kind: INPUT_SOURCE_PROJECTION,
+          originalFingerprint: original.source.workspaceFingerprint, currentFingerprint: source.inventory.workspaceFingerprint,
+          originalHead: original.source.head, currentHead: source.inventory.head, inputDigest: inputIdentity.digest };
       } else {
-        sourceProjection = await reconstructBackendSourceProjection(source, original, request.profile,
-          () => readHostFrontendSource(path.join(this.stateRoot, 'receipt-source-frontends', taskId, `${request.receiptId}.json`), original));
+        const policy = protectedBinding?.reviewedReceiptSourceProjections?.find(item => item.receiptId === request.receiptId);
+        if (original.inputIdentity) refuse('The saved execution input boundary or dependency inputs changed; execute the affected check.');
+        if (policy !== undefined) {
+          try { sourceProjection = reconstructReviewedReceiptSourceProjection(source, original, policy, protectedBinding, toolchain); }
+          catch (error) { refuse(`The operator-reviewed source projection is invalid: ${error.message}`); }
+        } else {
+          sourceProjection = await reconstructBackendSourceProjection(source, original, request.profile,
+            () => readHostFrontendSource(path.join(this.stateRoot, 'receipt-source-frontends', taskId, `${request.receiptId}.json`), original));
+        }
+        if (sourceProjection === null) refuse('The saved execution source cannot be reconstructed from unchanged backend inputs.');
       }
-      if (sourceProjection === null) refuse('The saved execution source cannot be reconstructed from unchanged backend inputs.');
     }
+    const inputProjected = sourceProjection?.kind === INPUT_SOURCE_PROJECTION;
     let transitionSource = sourceProjection
       ? { ...original.source, workspaceFingerprint: sourceProjection.currentFingerprint } : original.source;
     let sourceTransition;
     let previousRevalidation;
-    if (original.source.head !== source.inventory.head) {
+    if (original.source.head !== source.inventory.head && !inputProjected) {
       try {
         if (protectedBinding?.sourceTransition?.from.head !== transitionSource.head && sourceProjection === undefined) {
           // Continue the already issuer-confirmed projection for this receipt;
@@ -1386,7 +1444,7 @@ export class HostVerificationRunner {
       }
     }
     if ((!sourceProjection && original.source.workspaceFingerprint !== source.inventory.workspaceFingerprint)
-      || original.source.dependencyManifestFingerprint !== source.inventory.dependencyManifestFingerprint
+      || (!inputProjected && original.source.dependencyManifestFingerprint !== source.inventory.dependencyManifestFingerprint)
       || original.request.selectorsSha256 !== selectorDigest(request.selectors)
       || selectorDigest(original.request.selectors) !== selectorDigest(request.selectors)
       || !hostRevalidationToolchainsMatch(original.toolchain, toolchain, request.profile)
@@ -1510,6 +1568,13 @@ export class HostVerificationRunner {
     // Recheck current admission after reading the historical evidence; no job is created.
     const currentSource = await this.source(taskId, options);
     const { admission: currentAdmission } = await this.validatedAdmission(taskId, request.profile, request.admissionId, currentSource, options);
+    if (inputProjected) {
+      const currentIdentity = await verificationInputIdentity(currentSource, request.profile, request.selectors, this.contract.inputScopes);
+      if (currentSource.inventory.workspaceFingerprint !== source.inventory.workspaceFingerprint
+        || currentSource.inventory.head !== source.inventory.head || currentIdentity?.digest !== original.inputIdentity.digest) {
+        refuse('Verification inputs changed before issuer submission.');
+      }
+    }
     if (sourceProjection?.kind === REVIEWED_RECEIPT_SOURCE_PROJECTION) {
       const currentBinding = await this.bindProtectedCandidate(taskId, currentAdmission, currentSource, options);
       const policy = currentBinding?.reviewedReceiptSourceProjections?.find(item => item.receiptId === request.receiptId);
@@ -1649,6 +1714,7 @@ export class HostVerificationRunner {
     let source;
     let persistedLogs;
     const stepResults = [];
+    const credentialRedactions = [];
     const preparationEvents = [];
     const readOnlyDependencies = [];
     const phase = (value) => {
@@ -1663,6 +1729,8 @@ export class HostVerificationRunner {
       source = await this.source(taskId, options);
       const { admission, toolchain } = await this.validatedAdmission(taskId, request.profile, request.admissionId, source, options);
       const protectedBinding = await this.bindProtectedCandidate(taskId, admission, source, options);
+      options = { ...options, directDevelopment: this.developmentMode === 'direct'
+        && protectedBinding?.developmentMode === 'direct' };
       // Candidate signing precedes the execution whose evidence it will accept.
       startedAt = new Date().toISOString();
       const idempotencyDigest = executionDigest({
@@ -1722,6 +1790,7 @@ export class HostVerificationRunner {
         frontendProject: !emptyLint && request.profile.startsWith('frontend-')
           ? (request.profile.startsWith('frontend-h5-') ? 'forge-h5-ui' : 'forge-admin-ui') : undefined,
       });
+      if (options.directDevelopment) job.environment.FORGE_DEVELOPMENT_MODE = 'direct';
       readOnlyDependencies.push(...(job.readOnlyDependencies ?? []));
       this.activeByTask.set(taskId, { jobId, receiptId, startedAt, phase: 'running' });
       const plan = hostVerificationCommand(
@@ -1732,18 +1801,19 @@ export class HostVerificationRunner {
         protectedBinding?.governanceAcceptedApiContract,
         typecheckFiles,
       );
+      const inputIdentity = await verificationInputIdentity(source, request.profile, request.selectors, this.contract.inputScopes);
       if (this.contract.processIsolation === 'bubblewrap') {
         if (process.platform !== 'linux') {
           throw verifyError('VERIFY_HOST_SANDBOX_UNAVAILABLE', 'Configured Host process isolation requires Linux bubblewrap.');
         }
         await assertHostJobDirectories(job.paths);
-        for (const directory of hostSandboxReadOnlyRoots(job.resolved)) {
+        for (const directory of hostSandboxReadOnlyRoots(job.resolved, this.contract)) {
           if (await realpath(directory) !== directory || !(await lstat(directory)).isDirectory()) {
-            throw verifyError('VERIFY_HOST_SANDBOX_UNAVAILABLE', 'Host sandbox requires ordinary versioned toolchain directories.');
+            throw verifyError('VERIFY_HOST_SANDBOX_UNAVAILABLE', 'Host sandbox requires ordinary tool installation directories.');
           }
         }
         const probe = hostSandboxCommand({ executable: job.resolved.node, cwd: job.paths.snapshotRoot,
-          argv: ['-e', `const fs=require('node:fs');if(fs.existsSync('/srv/forge-delivery/secrets')||fs.existsSync('/proc/${process.pid}'))process.exit(2);process.stdout.write('forge-host-sandbox-ready/v1')`] }, job.paths, job.resolved);
+          argv: ['-e', `const fs=require('node:fs');if(fs.existsSync('/srv/forge-delivery/secrets')||fs.existsSync('/proc/${process.pid}'))process.exit(2);process.stdout.write('forge-host-sandbox-ready/v1')`] }, job.paths, job.resolved, [], this.contract);
         const result = await this.command(probe.executable, probe.argv, {
           cwd: probe.cwd, env: job.environment, timeoutSeconds: 15, maxOutputBytes: 4096, signal: options.signal,
         });
@@ -1822,13 +1892,18 @@ export class HostVerificationRunner {
         }
         const command = this.contract.processIsolation === 'bubblewrap'
           ? hostSandboxCommand(step, job.paths, job.resolved, readOnlyDependencies, this.contract) : step;
-        const environment = request.profile === 'frontend-admin-typecheck'
+        let environment = request.profile === 'frontend-admin-typecheck'
           && step.executable === job.resolved.node
           && step.argv.length === 5 && step.argv[0] === HOST_FRONTEND_TYPECHECK_PATH
           && step.argv[1] === '--project' && step.argv[2] === 'forge-admin-ui' && step.argv[3] === '--files'
           ? { ...job.environment, NODE_OPTIONS: '--max-old-space-size=8192' }
           : shared ? { ...job.environment, NPM_CONFIG_REGISTRY: 'https://registry.npmjs.org/', NPM_CONFIG_VERIFY_STORE_INTEGRITY: 'true',
             NPM_CONFIG_GLOBALCONFIG: job.paths.npmConfig, NPM_CONFIG_IGNORE_PNPMFILE: 'true' } : job.environment;
+        const databaseEnvironment = await hostTestDatabaseEnvironment(this.contract, taskId, request.profile, step, job.resolved);
+        if (databaseEnvironment.FORGE_TEST_JDBC_PASSWORD) {
+          credentialRedactions.push({ prefix: databaseEnvironment.FORGE_TEST_JDBC_PASSWORD, replacement: '[REDACTED]' });
+          environment = { ...environment, ...databaseEnvironment };
+        }
         const result = await this.command(command.executable, command.argv, {
           cwd: step.cwd,
           env: environment,
@@ -1902,6 +1977,7 @@ export class HostVerificationRunner {
         step.stderr,
       ].join('\n')).join('\n');
       const pathPrefixes = [
+        ...credentialRedactions,
         { prefix: job.paths.homeRoot, replacement: '[HOME]' },
         { prefix: job.paths.cacheRoot, replacement: '[TASKSPACE_CACHE]' },
         { prefix: job.paths.snapshotRoot, replacement: '[JOB_WORKSPACE]' },
@@ -1945,6 +2021,7 @@ export class HostVerificationRunner {
         taskId,
         status: passed ? 'passed' : timedOut ? 'timed-out' : zeroTests ? 'failed-zero-tests' : 'failed',
         ...(sourceQuality === undefined ? {} : { sourceQuality }),
+        ...(inputIdentity ? { inputIdentity } : {}),
         source: {
           head: source.inventory.head,
           workspaceFingerprint: source.inventory.workspaceFingerprint,
@@ -2044,6 +2121,7 @@ export class HostVerificationRunner {
     } catch (error) {
       preserveJobRoot = error?.preserveJobRoot === true || error?.code === 'VERIFY_HOST_CLEANUP_UNPROVEN';
       const prefixes = [
+        ...credentialRedactions,
         { prefix: job?.paths?.homeRoot, replacement: '[HOME]' },
         { prefix: job?.paths?.cacheRoot, replacement: '[TASKSPACE_CACHE]' },
         { prefix: job?.paths?.snapshotRoot, replacement: '[JOB_WORKSPACE]' },
@@ -2124,10 +2202,13 @@ export class HostVerificationRunner {
             sourceFingerprint: source.inventory.workspaceFingerprint,
           });
           const admission = projection.revalidation.admissionReceipt;
+          const inputProjected = projection.revalidation.sourceProjection?.kind === INPUT_SOURCE_PROJECTION;
+          const inputIdentity = inputProjected ? await verificationInputIdentity(source, receipt.request.profile,
+            receipt.request.selectors, this.contract.inputScopes) : null;
           if (projection.revalidation.originalReceiptSha256 === hostRunReceiptDigest(receipt)
-            && receipt.source.head === source.inventory.head
+            && (inputProjected ? inputIdentity?.digest === receipt.inputIdentity?.digest : receipt.source.head === source.inventory.head
             && receipt.source.workspaceFingerprint === source.inventory.workspaceFingerprint
-            && receipt.source.dependencyManifestFingerprint === source.inventory.dependencyManifestFingerprint
+            && receipt.source.dependencyManifestFingerprint === source.inventory.dependencyManifestFingerprint)
             && admission.source.head === source.inventory.head
             && admission.source.workspaceFingerprint === source.inventory.workspaceFingerprint
             && admission.toolchain.digest === toolchain.digest
@@ -2184,12 +2265,13 @@ export class HostVerificationRunner {
           // middle of Maven stdout. Project the first matching error block
           // from this integrity-checked log, never a changed receipt or log.
           const lines = text.slice(end + 1 + DIAGNOSTIC_END.length).split('\n');
-          const assertion = lines.findIndex((line) => /^\[ERROR\].*<<< (?:FAILURE|ERROR)/u.test(line));
+          const assertion = lines.findIndex((line) => /^(?:\[ERROR\]|\[[^\]\r\n]+\]\s+ERROR\s+\S+\s+-).*<<< (?:FAILURE|ERROR)/u.test(line));
           const first = assertion >= 0 ? assertion
-            : lines.findIndex((line) => /^\[ERROR\]\s+.+\.java:\[\d+,\d+\]/u.test(line));
+            : lines.findIndex((line) => /^(?:\[ERROR\]|\[[^\]\r\n]+\]\s+ERROR\s+\S+\s+-)\s+.+\.java:\[\d+,\d+\]/u.test(line));
           if (first >= 0) {
             let last = first + 1;
-            while (last < lines.length && last < first + 80 && !/^\[INFO\]/u.test(lines[last])) last += 1;
+            while (last < lines.length && last < first + 80
+              && !/^(?:\[INFO\]|\[[^\]\r\n]+\]\s+INFO\s+\S+\s+-)/u.test(lines[last])) last += 1;
             const label = assertion >= 0 ? 'Maven failed test details' : 'Maven initial compiler errors';
             const detail = redacted(boundedStreamSummary(label, lines.slice(first, last).join('\n')));
             excerpt = `${text.slice(0, end)}\n\n${detail}\n${DIAGNOSTIC_END}`;

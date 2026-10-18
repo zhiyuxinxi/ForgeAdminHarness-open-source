@@ -2,7 +2,7 @@ import http from 'node:http';
 
 const STAGES = new Set([
   'preflight', 'candidate-validation', 'candidate-preflight', 'candidate-build',
-  'candidate-prepared', 'candidate-reused', 'promote-candidate', 'controlled-release',
+  'candidate-prepared', 'candidate-unchanged', 'candidate-reused', 'promote-candidate', 'controlled-release',
   'test-database-orphan-cleanup', 'test-database-plan', 'test-database-snapshot',
   'test-database-restore', 'test-database-migration', 'publish-configuration',
   'application-deployment', 'application-smoke', 'application-rollback',
@@ -39,6 +39,7 @@ export function publicReleaseOperation(value, { status, action = 'release' } = {
     commit: /^[a-f0-9]{40}$/u.test(value.commit ?? '') ? value.commit : null,
     version: typeof value.version === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/u.test(value.version) ? value.version : null,
     services: Array.isArray(value.services) ? value.services.filter((item) => ['forge-admin', 'forge-ui', 'forge-app', 'forge-flow'].includes(item)) : [],
+    ...(value.releaseApplied === false || value.result?.releaseApplied === false ? { releaseApplied: false, outcome: 'unchanged' } : {}),
     startedAt: date(value.startedAt ?? value.createdAt),
     updatedAt: date(value.updatedAt ?? value.completedAt ?? value.startedAt ?? value.createdAt),
     completedAt: date(value.completedAt),

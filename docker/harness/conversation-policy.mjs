@@ -243,6 +243,8 @@ export function publicConversation(conversation) {
     lastOpenedAt: conversation.lastOpenedAt ?? null,
     lastError: conversation.lastError ?? null,
     kind: conversation.conversationKind === 'legacy-session' ? 'legacy-session' : 'taskspace',
+    runtimeChannel: conversation.runtimeChannel ?? null,
+    runtimeVersion: conversation.runtimeVersion ?? null,
   };
 }
 

@@ -1,0 +1,61 @@
+  <div id="production-surface" class="production-main">
+    <section class="workspace-section production-toolbar" aria-label="项目与交付视图">
+      <div id="production-project-field" class="production-field"><label for="production-project">当前项目</label><select id="production-project" disabled><option value="">正在读取项目…</option></select></div>
+      <nav class="production-tabs" aria-label="生产交付导航"><button id="production-packages-tab" type="button" class="secondary-button" aria-pressed="true">生产发布包</button><button id="production-targets-tab" type="button" class="secondary-button" aria-pressed="false">交付对象与上线记录</button></nav>
+      <button id="production-refresh" type="button" class="secondary-button">刷新记录</button>
+    </section>
+    <p id="production-message" class="form-message" role="status" aria-live="polite"></p>
+    <section id="production-packages" class="workspace-section">
+      <div class="section-heading"><div><h1>生产发布包</h1><p class="section-help">每次导出单独一行，保留来源、交付用途和验证结果。生产包和历史基线永久保存，测试版本不会混入列表。</p></div><button id="production-artifacts-open" type="button" class="secondary-button">从发布包与制品导出</button></div>
+      <div class="production-filters">
+        <div class="production-field production-search"><label for="production-search">查找生产包</label><input id="production-search" type="search" placeholder="名称、导出人、交付对象或项目"></div>
+        <div class="production-field"><label for="production-filter-mode">交付方式</label><select id="production-filter-mode"><option value="">全部生产包</option><option value="initial">全量包</option><option value="upgrade">增量包</option></select></div>
+        <div class="production-field"><label for="production-filter-from">导出日期起</label><input id="production-filter-from" type="date"></div>
+        <div class="production-field"><label for="production-filter-to">导出日期止</label><input id="production-filter-to" type="date"></div>
+      </div>
+      <div id="production-release-list" aria-live="polite"></div>
+    </section>
+    <section id="production-detail" class="workspace-section" hidden aria-labelledby="production-detail-title">
+      <div class="section-heading"><div><p class="section-kicker">生产包详情</p><h2 id="production-detail-title"></h2><p id="production-detail-summary" class="section-help"></p></div><button id="production-detail-close" type="button" class="secondary-button">收起详情</button></div>
+      <p class="production-notice">首次安装验证空环境；增量升级会新建独立环境，先恢复并启动所选历史版本，再使用本次交付材料升级。每次生成保留独立记录。</p>
+      <div id="production-jobs"></div>
+    </section>
+    <section id="production-targets" class="workspace-section" hidden>
+      <div class="section-heading"><div><h1>交付对象与上线记录</h1><p class="section-help">按客户或生产环境共享记录。生成、验证和下载都不会自动记为生产已上线。</p></div></div>
+      <form id="production-target-form" class="production-form"><div class="production-field"><label for="production-target-name">新增交付对象</label><input id="production-target-name" name="name" required maxlength="120" placeholder="例如：客户名称 · 生产环境"></div><div class="production-field"><label for="production-target-description">说明</label><input id="production-target-description" name="description" maxlength="1000" placeholder="环境用途或交付说明"></div><button class="secondary-button" type="submit">添加交付对象</button></form>
+      <div class="production-field production-target-picker"><label for="production-target-select">查看交付对象</label><select id="production-target-select"><option value="">请选择交付对象</option></select></div>
+      <div id="production-target-current" class="production-notice"></div>
+      <form id="production-deployment-form" class="production-form" hidden>
+        <h2 class="production-form-heading">登记实际上线结果</h2>
+        <div class="production-field"><label for="production-deployment-job">实际使用的生产包</label><select id="production-deployment-job" name="jobId" required><option value="">请选择已验收生产包</option></select></div>
+        <div class="production-field"><label for="production-occurred-at">实际操作时间</label><input id="production-occurred-at" type="datetime-local" name="occurredAt" required></div>
+        <div class="production-field"><label for="production-database-status">数据库执行结果</label><select id="production-database-status" name="databaseStatus" required><option value="">请选择实际结果</option><option value="success">执行成功</option><option value="partial">部分执行</option><option value="failed">执行失败</option><option value="not-required">本次无需执行</option></select></div>
+        <div class="production-field"><label for="production-application-status">应用部署结果</label><select id="production-application-status" name="applicationStatus" required><option value="">请选择实际结果</option><option value="success">部署成功</option><option value="failed">部署失败</option><option value="not-run">尚未部署</option></select></div>
+        <div class="production-field production-wide"><label for="production-deployment-notes">实施说明或失败情况</label><textarea id="production-deployment-notes" name="notes" rows="3" maxlength="4000"></textarea></div>
+        <div class="production-field"><label for="production-receipt-file">导入运维结果文件（JSON）</label><input id="production-receipt-file" type="file" accept=".json,application/json"><small class="field-help">导入后核对表单，再提交登记。</small></div>
+        <button class="primary-button" type="submit">保存上线记录</button>
+      </form>
+      <div id="production-deployments"></div>
+    </section>
+  </div>
+  <dialog id="production-create-dialog" aria-labelledby="production-create-title">
+    <form id="production-create-form" class="production-dialog-form">
+      <div class="dialog-heading"><h2 id="production-create-title">导出生产包</h2><button id="production-create-close" class="icon-button" type="button" aria-label="关闭">×</button></div>
+      <div class="production-dialog-body">
+      <div id="production-capacity" class="production-notice" role="status"></div>
+      <p id="production-create-message" class="form-message" role="status"></p>
+      <p class="section-help">生成所选版本的整套交付材料，独立验证并人工确认后开放下载。每次导出永久保留。</p>
+      <p id="production-export-source" class="production-notice"></p>
+      <details class="production-source-details"><summary>查看来源技术信息</summary><p id="production-export-technical" class="production-hash"></p></details>
+      <div class="production-dialog-grid">
+      <div class="production-field"><label for="production-architecture">生产服务器架构</label><select id="production-architecture" name="architecture" required><option value="">正在读取可用架构…</option></select></div>
+      <div class="production-field"><label for="production-mode">交付方式</label><select id="production-mode" name="mode"><option value="initial">全量包（首次安装）</option><option id="production-upgrade-option" value="upgrade" disabled>增量包（从历史全量包升级）</option></select><small id="production-base-help" class="field-help"></small></div>
+      <div id="production-base-field" class="production-field production-wide" hidden><label for="production-base">历史全量基线</label><select id="production-base" name="baseJobId"><option value="">请选择历史全量包</option></select><small class="field-help">可选择任意历史版本中同架构、已验收且恢复材料完整的全量包。</small></div>
+      <div class="production-field"><label for="production-recipient">交付给谁</label><input id="production-recipient" name="recipient" required maxlength="120" placeholder="客户、单位或接收团队"></div>
+      <div class="production-field"><label for="production-delivery-project">用于哪个项目</label><input id="production-delivery-project" name="projectName" required maxlength="120" placeholder="接收方的项目名称"></div>
+      <div class="production-field production-wide"><label for="production-purpose">环境与用途</label><textarea id="production-purpose" name="purpose" required maxlength="1000" rows="2" placeholder="例如：客户生产环境首次安装，或从某版本升级"></textarea></div>
+      </div>
+      </div>
+      <div class="dialog-actions"><button id="production-create-cancel" class="secondary-button" type="button">取消</button><button id="production-export-submit" class="primary-button" type="submit" disabled>生成生产包并验证</button></div>
+    </form>
+  </dialog>

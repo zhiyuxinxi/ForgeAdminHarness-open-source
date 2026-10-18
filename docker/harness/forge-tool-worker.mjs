@@ -4,6 +4,7 @@ import { Worker } from 'node:worker_threads';
 import { chmod } from 'node:fs/promises';
 import { once } from 'node:events';
 import { frames, send, wireError } from './forge-tool-worker-wire.mjs';
+import { directWorkerConfinement, directWorkerSpawnSpec } from './forge-direct-worker-sandbox.mjs';
 
 // The caller supplies the installed native services in the dedicated worker
 // container. Never instantiate this endpoint in the credential-bearing native
@@ -22,6 +23,8 @@ export function nativeCollectorSnapshot(reader) {
     ...(observed.spillPath === undefined ? {} : { spillPath: observed.spillPath }) };
 }
 export async function serveToolWorker({ socketPath, fs, subprocess, sandbox, typed, workflowEntry }) {
+  const direct = process.env.FORGE_DEVELOPMENT_MODE === 'direct';
+  const confinedCommands = new Set();
   const processes = new Map();
   const sockets = new Set();
   const workflows = new Set();
@@ -44,7 +47,10 @@ export async function serveToolWorker({ socketPath, fs, subprocess, sandbox, typ
       let value;
       switch (op) {
         case 'fs.capabilities': value = { sandboxMode: fs.sandboxMode }; break;
-        case 'sandbox.confine': value = sandbox.confine(...args); break;
+        case 'sandbox.confine':
+          value = direct ? directWorkerConfinement(...args) : sandbox.confine(...args);
+          if (direct) confinedCommands.add(JSON.stringify(value.argv));
+          break;
         case 'typed.remove':
         case 'typed.copy': {
           const request = args[0];
@@ -75,7 +81,16 @@ export async function serveToolWorker({ socketPath, fs, subprocess, sandbox, typ
           socket.end(); return;
         case 'process.resolveExecutable': value = await subprocess.resolveExecutable(args[0], args[1], signal); break;
         case 'process.spawn': {
-          const handle = subprocess.spawn(args[0]);
+          let spec = args[0];
+          if (direct) {
+            // Native grep/read helpers also use this seam. Wrap them here rather
+            // than accidentally disabling structured tools or trusting raw argv.
+            const key = JSON.stringify(spec.argv);
+            if (!confinedCommands.delete(key)) spec = { ...spec, argv: directWorkerConfinement(spec.argv,
+              { mode: 'read-only', workspaceRoot: '/workspace' }).argv };
+            spec = directWorkerSpawnSpec(spec);
+          }
+          const handle = subprocess.spawn(spec);
           const id = randomUUID();
           const entry = { handle, outcome: handle.done.then(value => ({ value }), error => ({ error: wireError(error) })), observed: false };
           // A client dying between the synchronous spawn acknowledgement and
@@ -95,6 +110,7 @@ export async function serveToolWorker({ socketPath, fs, subprocess, sandbox, typ
           value = null; break;
         }
         case 'terminal.spawn': {
+          if (direct) throw Object.assign(new Error('Use the confined development Bash tool.'), { code: 'SANDBOX_UNAVAILABLE' });
           const handle = await subprocess.spawnTerminal(args[0]);
           const id = randomUUID();
           const entry = { handle, terminal: true, outcome: handle.done.then(value => ({ value }), error => ({ error: wireError(error) })), observed: false };
@@ -146,6 +162,7 @@ export async function serveToolWorker({ socketPath, fs, subprocess, sandbox, typ
           socket.end(); return;
         }
         case 'workflow.run': {
+          if (direct) throw Object.assign(new Error('Use the confined development Bash tool.'), { code: 'SANDBOX_UNAVAILABLE' });
           if (!workflowEntry) throw new Error('TOOL_WORKER_WORKFLOW_NOT_INSTALLED');
           // This is the *installed fixed native* script engine. Its thread is
           // inside the isolated container; it is not the isolation boundary.

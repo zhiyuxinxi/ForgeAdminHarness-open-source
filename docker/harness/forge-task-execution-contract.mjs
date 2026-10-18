@@ -606,6 +606,10 @@ function classifyProfiles(prompt, ownedPaths, actionCeiling, declaredProfiles) {
       // delivery mechanism, not database source work. Separate requests survive.
       .replace(/\btest-database-snapshot\b/giu, '发布快照阶段')
       .replace(/平台(?:现在)?按(?:本次|当前)(?:实际)?发布的服务(?:判断|确定)数据库义务/gu, '平台判断发布检查范围')
+      // Delegating existing release checks to Runner does not request database
+      // development. Match the whole clause; mixed/new database work, declared
+      // responsibilities and SQL paths still supply their original obligations.
+      .replace(/(^|[。！？!?;；\n，,])\s*(?:发布时(?:的)?)?数据库(?:校验|检查|备份|快照)(?:(?:及|和|与|、)(?:校验|检查|备份|快照))*\s*按(?:照)?(?:现役|现有|当前)\s*Runner\s*(?:的)?(?:真实|现有|实际)?要求(?:办理|执行|处理)\s*(?=$|[。！？!?;；\n，,])/giu, '$1发布检查沿现有执行器办理')
       // A saved form-asset property is a UI schema, not a database schema.
       // Retain separate database requests and the original fingerprint text.
       .replace(/(\b(?:forms|formAssets)\[\d+\])\.schema\b/gu, '$1.界面结构')
@@ -1073,6 +1077,7 @@ function normalizedSourceInput(input) {
 }
 
 export function verificationScopeForContract(contract) {
+  if (isForgeDirectDevelopmentContract(contract)) return 'changed';
   if (!contract) return 'legacy';
   const fields = derivedFields(contract.taskProfiles, contract.actionCeiling, 'required', false, contract.ownedPaths);
   applyIntegrationVerification(fields, contract.backendTestBindings);
@@ -1117,6 +1122,50 @@ export function deriveForgeTaskIntent({ prompt, actionCeiling }) {
 function withoutContractId(contract) {
   const { contractId: _ignored, ...payload } = contract;
   return payload;
+}
+
+// This marker is compiled by the protected issuer, never from a model proposal.
+// The root scope identifies the isolated repository; it is not a file allowlist.
+export function isForgeDirectDevelopmentContract(contract) {
+  return contract?.developmentMode === 'direct';
+}
+
+function compileDirectDevelopmentContract(input) {
+  exactKeys(input, INPUT_KEYS, 'Direct development input');
+  const prompt = normalizePrompt(input.prompt);
+  const actionCeiling = normalizeActionCeiling(input.actionCeiling);
+  const readOnly = actionCeiling === 'read-only';
+  const ownedPaths = readOnly ? [] : ['.'];
+  const taskProfiles = [readOnly ? 'read-only-review' : 'project-files'];
+  if (canonicalStringify(input.ownedPaths) !== canonicalStringify(ownedPaths)
+    || canonicalStringify(input.taskProfiles) !== canonicalStringify(taskProfiles)) {
+    fail('CONTRACT_DIRECT_SCOPE_INVALID', 'Direct development is limited to the current isolated repository.');
+  }
+  const contract = {
+    schemaVersion: FORGE_TASK_EXECUTION_CONTRACT_SCHEMA_VERSION, developmentMode: 'direct', contractId: '',
+    taskProfiles, requiredSkills: [], tddRequired: false, requiredVerificationProfiles: [],
+    requiredRedProfiles: [], requiredObligations: [], semanticOwners: [], actionCeiling, ownedPaths,
+    sourceFingerprint: sha256(canonicalStringify({ prompt, actionCeiling, developmentMode: 'direct' })),
+  };
+  contract.contractId = sha256(canonicalStringify(withoutContractId(contract)));
+  return deepFreeze(contract);
+}
+
+function validateDirectDevelopmentContract(value) {
+  exactKeys(value, [...CONTRACT_KEYS, 'developmentMode'], 'Direct development authority');
+  const readOnly = normalizeActionCeiling(value.actionCeiling) === 'read-only';
+  if (value.developmentMode !== 'direct' || value.schemaVersion !== FORGE_TASK_EXECUTION_CONTRACT_SCHEMA_VERSION
+    || value.tddRequired !== false || !SHA256_PATTERN.test(value.sourceFingerprint ?? '')
+    || canonicalStringify(value.ownedPaths) !== canonicalStringify(readOnly ? [] : ['.'])
+    || canonicalStringify(value.taskProfiles) !== canonicalStringify([readOnly ? 'read-only-review' : 'project-files'])
+    || ['requiredSkills', 'requiredVerificationProfiles', 'requiredRedProfiles', 'requiredObligations', 'semanticOwners']
+      .some(key => !Array.isArray(value[key]) || value[key].length !== 0)) {
+    fail('CONTRACT_DIRECT_SCOPE_INVALID', 'Direct development authority contains unsupported scope or obligations.');
+  }
+  if (value.contractId !== sha256(canonicalStringify(withoutContractId(value)))) {
+    fail('CONTRACT_HASH_MISMATCH', 'contractId does not match canonical contract content.');
+  }
+  return deepFreeze(structuredClone(value));
 }
 
 function deepFreeze(value) {
@@ -1178,7 +1227,9 @@ function contractSemanticResources(value) {
 }
 
 export function compileForgeTaskExecutionContract(input, options = {}) {
-  exactKeys(options, new Set(['independentReview', 'verificationScope', 'focusedBackendVerification', 'ordinaryFinalVerification', 'backendTestBindings', 'dualReview', 'roleGrantDecisions', 'semanticResources']), 'Task contract compiler options');
+  exactKeys(options, new Set(['developmentMode', 'independentReview', 'verificationScope', 'focusedBackendVerification', 'ordinaryFinalVerification', 'backendTestBindings', 'dualReview', 'roleGrantDecisions', 'semanticResources']), 'Task contract compiler options');
+  if (options.developmentMode === 'direct') return compileDirectDevelopmentContract(input);
+  if (options.developmentMode !== undefined && options.developmentMode !== 'controlled') fail('CONTRACT_DEVELOPMENT_MODE_INVALID', 'Development mode must be operator-selected.');
   if (options.ordinaryFinalVerification !== undefined && typeof options.ordinaryFinalVerification !== 'boolean') {
     fail('CONTRACT_VERIFICATION_SCOPE_INVALID', 'Ordinary final verification support must be boolean.');
   }
@@ -1271,6 +1322,7 @@ function assertEqualArray(actual, expected, label) {
 }
 
 export function validateForgeTaskExecutionContract(value) {
+  if (Object.hasOwn(value, 'developmentMode')) return validateDirectDevelopmentContract(value);
   const suspendedReview = Object.hasOwn(value, 'suspendedReviewObligations');
   const boundBackendTests = Object.hasOwn(value, 'backendTestBindings');
   const dualReview = Object.hasOwn(value, 'dualReview');

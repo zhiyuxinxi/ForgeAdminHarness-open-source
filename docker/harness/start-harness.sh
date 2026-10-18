@@ -2,6 +2,8 @@
 
 set -Eeuo pipefail
 
+/usr/local/bin/node /usr/local/lib/forge-sync-model-catalog.mjs
+
 if [ -n "${HARNESS_DEFAULT_WORKSPACE:-}" ]; then
   /usr/local/bin/node /usr/local/lib/seed-default-workspace.mjs
 fi

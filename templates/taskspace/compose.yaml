@@ -13,6 +13,8 @@ services:
     working_dir: /workspace
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     environment:
+      FORGE_DEVELOPMENT_MODE: ${FORGE_DEVELOPMENT_MODE:-controlled}
+      FORGE_SEMANTIC_INTENT_ENABLED: ${FORGE_SEMANTIC_INTENT_ENABLED:-false}
       HOME: /home/node
       DSH_HOME: /home/node/.dsh
       # A proxy is an operator-owned opt-in for this TaskSpace only. Node's
@@ -21,7 +23,7 @@ services:
       # never put upstream node credentials or OpenAI tokens in this URL.
       NODE_USE_ENV_PROXY: ${TASKSPACE_HTTPS_PROXY:+1}
       HTTPS_PROXY: ${TASKSPACE_HTTPS_PROXY:-}
-      NO_PROXY: localhost,127.0.0.1,::1,taskspace-broker,harness-upload${TASKSPACE_NO_PROXY:+,}${TASKSPACE_NO_PROXY:-}
+      NO_PROXY: localhost,127.0.0.1,::1,taskspace-broker,harness-upload${TASKSPACE_RUNTIME_BROKER_HOST:+,}${TASKSPACE_RUNTIME_BROKER_HOST:-}${TASKSPACE_NO_PROXY:+,}${TASKSPACE_NO_PROXY:-}
       # The protected phase guard only admits real project writes when DSH is
       # itself constrained to the TaskSpace workspace boundary.
       DSH_PERMISSION_MODE: workspace-write
@@ -66,7 +68,7 @@ services:
       HARNESS_DOCUMENT_MAX_SPREADSHEET_ROWS: ${HARNESS_DOCUMENT_MAX_SPREADSHEET_ROWS:-2000}
       HARNESS_DOCUMENT_MAX_SPREADSHEET_COLUMNS: ${HARNESS_DOCUMENT_MAX_SPREADSHEET_COLUMNS:-100}
       HARNESS_PROTOTYPE_DIRECTORY_STABILITY_MS: ${HARNESS_PROTOTYPE_DIRECTORY_STABILITY_MS:-2000}
-      FORGE_TASKSPACE_BROKER_URL: http://taskspace-broker:3100
+      FORGE_TASKSPACE_BROKER_URL: ${FORGE_TASKSPACE_BROKER_URL:-http://taskspace-broker:3100}
       FORGE_TASKSPACE_TOKEN_FILE: /run/forge-taskspace/broker-token
       PROJECT_SLUG: ${PROJECT_SLUG:?PROJECT_SLUG is required}
       FORGE_TASKSPACE_ID: ${TASKSPACE_ID:?TASKSPACE_ID is required}

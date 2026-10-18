@@ -133,15 +133,34 @@ test('checkpoint capture reads only fixed committed shared blocks and preserves 
   const mismatch = await captureDeliveryCheckpointDocuments(options);
   assert.equal(mismatch.status, 'failed'); assert.equal(mismatch.code, 'CHECKPOINT_DOCUMENT_EXISTING_MISMATCH');
   assert.deepEqual(await readFile(filename), originalBad);
-  const disabled = await captureDeliveryCheckpointDocuments({ ...options, stateRoot: path.join(f.projectRoot, 'must-not-create'),
-    sourceTransition: transition(f.base, commit, 'other-project') });
-  assert.equal(disabled.status, 'not-applicable'); assert.equal(disabled.reason, 'project-not-enabled');
+  const invalid = await captureDeliveryCheckpointDocuments({ ...options, stateRoot: path.join(f.projectRoot, 'must-not-create'),
+    sourceTransition: transition(f.base, commit, '../other-project') });
+  assert.equal(invalid.status, 'failed'); assert.equal(invalid.code, 'CHECKPOINT_DOCUMENT_CAPTURE_FAILED');
   await assert.rejects(readFile(path.join(f.projectRoot, 'must-not-create')), { code: 'ENOENT' });
   const noDocument = await captureDeliveryCheckpointDocuments({ ...options, changedPaths: ['src/feature.js'] });
   assert.equal(noDocument.status, 'not-applicable');
 });
 
-async function brokerFixture(t, invalidDocument = false) {
+test('checkpoint capture binds each project and cannot overwrite another project packet', async t => {
+  for (const projectSlug of ['foundation-32148', 'demo-customer-32148']) {
+    const f = await fixture(t); const commit = await f.commit(content);
+    const options = { ...f, commit, tree: git(f.repositoryRoot, 'rev-parse', `${commit}^{tree}`),
+      sourceTransition: transition(f.base, commit, projectSlug), changedPaths: [DOC] };
+    const result = await captureDeliveryCheckpointDocuments(options);
+    assert.equal(result.status, 'captured');
+    const filename = path.join(f.stateRoot, 'delivery-phases', result.relativePath);
+    const bytes = await readFile(filename); const envelope = JSON.parse(bytes);
+    assert.equal(envelope.projectSlug, projectSlug);
+    assert.equal(envelope.sourceTransitionDigest, options.sourceTransition.digest);
+    const otherProject = projectSlug === 'foundation-32148' ? 'demo-customer-32148' : 'foundation-32148';
+    const mismatch = await captureDeliveryCheckpointDocuments({ ...options,
+      sourceTransition: transition(f.base, commit, otherProject) });
+    assert.equal(mismatch.status, 'failed'); assert.equal(mismatch.code, 'CHECKPOINT_DOCUMENT_EXISTING_MISMATCH');
+    assert.deepEqual(await readFile(filename), bytes);
+  }
+});
+
+async function brokerFixture(t, invalidDocument = false, projectSlug = 'forge-base') {
   const f = await fixture(t); const taskId = 'fixture-task'; const actorId = 'fixture';
   const actorUserId = '11111111-1111-4111-8111-111111111111'; const conversationId = 'fixture-conversation';
   const taskRoot = path.join(f.projectRoot, 'taskspaces', taskId); const workspace = path.join(taskRoot, 'workspace');
@@ -150,13 +169,13 @@ async function brokerFixture(t, invalidDocument = false) {
   git(workspace, 'config', 'user.name', actorId); git(workspace, 'config', 'user.email', 'fixture@example.invalid');
   git(workspace, 'config', 'core.autocrlf', 'false'); git(workspace, 'checkout', '-b', `task/${actorId}/${taskId}`);
   const token = 'a'.repeat(64); const now = Date.now();
-  const metadata = { schemaVersion: 2, projectSlug: 'forge-base', taskId, actorId, actorUserId, conversationId,
+  const metadata = { schemaVersion: 2, projectSlug, taskId, actorId, actorUserId, conversationId,
     branch: `task/${actorId}/${taskId}`, baseCommit: f.base, status: 'active', createdAt: new Date(now).toISOString(),
     updatedAt: new Date(now).toISOString(), accessTokenHash: hashTaskspaceToken(token), harnessPort: 21000, accessMode: 'conversation' };
   await writeFile(path.join(taskRoot, 'metadata.json'), JSON.stringify(metadata));
   await mkdir(path.join(f.projectRoot, 'verification'));
   await writeFile(path.join(f.projectRoot, 'verification', 'contract.json'), JSON.stringify({ schemaVersion: 1,
-    projectSlug: 'forge-base', runnerRevision: 'test-runner-v1', toolchainImage: `test.invalid/forge@sha256:${'f'.repeat(64)}`,
+    projectSlug, runnerRevision: 'test-runner-v1', toolchainImage: `test.invalid/forge@sha256:${'f'.repeat(64)}`,
     cacheRoot: path.join(f.projectRoot, 'verification', 'cache'), stateRoot: path.join(f.projectRoot, 'verification', 'state'),
     profiles: VERIFY_PROFILE_NAMES, limits }));
   await mkdir(path.dirname(path.join(workspace, DOC)), { recursive: true });
@@ -167,25 +186,26 @@ async function brokerFixture(t, invalidDocument = false) {
     method: 'session.prompt', payload: { sessionId: 'session:fixture', mode: 'queue', content: [{ type: 'text', text: prompt }] } })), 'session.prompt');
   const taskAuthority = { actionCeiling, ownedPaths, taskProfiles: ['requirements'] };
   const contract = compileForgeTaskExecutionContract({ prompt, ...taskAuthority });
-  const authority = { projectSlug: 'forge-base', taskId, actorUserId, actorUsername: actorId, conversationId,
+  const authority = { projectSlug, taskId, actorUserId, actorUsername: actorId, conversationId,
     dshSessionId: classified.dshSessionId, route: classified.route, rpcId: classified.rpcId, promptDigest: classified.textDigest,
     sourceCommit: f.base, workspaceFingerprint: source.workspaceFingerprint, caseFamily: 'maintenance',
     productionAuthorityId: randomUUID(), controllerGrantDigest: '3'.repeat(64), contractId: contract.contractId, actionCeiling, ownedPaths };
-  await prepareProtectedExecutionContext({ projectRoot: f.projectRoot, projectSlug: 'forge-base', taskMetadata: metadata,
+  await prepareProtectedExecutionContext({ projectRoot: f.projectRoot, projectSlug, taskMetadata: metadata,
     request: { ...classified, actorUserId, actorUsername: actorId, conversationId, requestId: 'request:checkpoint-doc' }, now,
     policyPath: path.resolve('docker/harness/forge-execution-policy.json'), trustedPolicyInput: { profile: 'production-controller',
       sourceCommit: f.base, workspaceFingerprint: source.workspaceFingerprint, caseFamily: authority.caseFamily,
       productionAuthorityId: authority.productionAuthorityId, productionAuthorityDigest: digestProductionTaskAuthorityBinding(authority),
       controllerGrantDigest: authority.controllerGrantDigest, expectedContractId: contract.contractId, taskAuthority } });
   await readProtectedExecutionContext({ projectRoot: f.projectRoot, taskMetadata: metadata, now: now + 1,
-    lookup: { projectSlug: 'forge-base', taskId, conversationId, actorUserId, dshSessionId: classified.dshSessionId,
+    lookup: { projectSlug, taskId, conversationId, actorUserId, dshSessionId: classified.dshSessionId,
       rpcId: classified.rpcId, textDigest: classified.textDigest } });
   return { ...f, workspace, token, source };
 }
 
-test('normal authorized Broker checkpoint audits automatic capture without publishing unmarked prose', async t => {
-  const f = await brokerFixture(t);
-  const broker = new TaskspaceBroker({ projectRoot: f.projectRoot, projectSlug: 'forge-base' });
+test('normal authorized non-forge-base Broker checkpoint audits capture without publishing unmarked prose', async t => {
+  const projectSlug = 'foundation-32148';
+  const f = await brokerFixture(t, false, projectSlug);
+  const broker = new TaskspaceBroker({ projectRoot: f.projectRoot, projectSlug });
   const result = await broker.executeAuthenticated(f.token, { action: 'checkpoint', paths: [DOC], message: 'Share fixture definition',
     expectedHead: f.base, expectedWorkspaceFingerprint: f.source.workspaceFingerprint });
   assert.equal(result.status, 'checkpointed'); assert.equal(result.deliveryCenterDocuments.status, 'captured');
@@ -194,6 +214,7 @@ test('normal authorized Broker checkpoint audits automatic capture without publi
   assert.equal(audit.status, 'success'); assert.equal(audit.checkpointStatus, 'checkpointed');
   assert.deepEqual(audit.deliveryCenterDocuments, result.deliveryCenterDocuments);
   const packet = JSON.parse(await readFile(path.join(f.stateRoot, 'delivery-phases', result.deliveryCenterDocuments.relativePath), 'utf8'));
+  assert.equal(packet.projectSlug, projectSlug);
   assert.equal(packet.sourceTransitionDigest, result.sourceTransition.digest); assert.equal(packet.sourceCommit, result.commit);
 });
 

@@ -4,6 +4,8 @@ import { pathToFileURL } from 'node:url';
 
 const MARKER = "forge-compaction-budget-v1";
 const SELECTION_MARKER = 'forge-compaction-model-selection-v2';
+const RECOVERY_MARKER = 'forge-compaction-recovery-v1';
+const PROGRESS_MARKER = 'forge-compaction-progress-v2';
 const EDITS = [
   [
     "var BasicCompactionEngine = class extends CompactionEngine {",
@@ -119,7 +121,7 @@ export function patchAgentModelSelection(source) {
   return source;
 }
 
-export function patchCompactionBudget(source) {
+function patchCompactionSelection(source) {
   if (source.includes(SELECTION_MARKER)) {
     let legacy = source;
     for (const [before, after, count] of SELECTION_EDITS) {
@@ -132,6 +134,158 @@ export function patchCompactionBudget(source) {
   source = patchLegacyCompactionBudget(source);
   for (const [before, , count] of SELECTION_EDITS) if (source.split(before).length - 1 !== count) throw new Error('Unsupported compaction model selection anchor');
   for (const [before, after] of SELECTION_EDITS) source = source.split(before).join(after);
+  return source;
+}
+
+const RECOVERY_HELPER = `// ${RECOVERY_MARKER}: only repeat the summary stream, never the agent/tool loop.
+async function forgeSummaryStream(ctx, options, agent) {
+\tconst defaults = resolveRetryPolicy(void 0, "compaction retry policy");
+\tconst configured = ctx.llm.providerRetryPolicy?.(options.provider) ?? defaults;
+\t// An unbounded interactive policy must not make context maintenance unbounded.
+\tconst policy = configured.mode === "normal" ? configured : { ...configured, mode: "normal", maxRetries: defaults.maxRetries, retryableCodes: defaults.retryableCodes };
+\tconst signal = options.signal;
+\tconst retryId = randomUUID();
+\tconst turn = agent.session.events.findLast((event) => event.type === "turn/start")?.data.turn ?? 0;
+\tconst step = agent.session.events.findLast((event) => event.type === "step/start" && event.data.turn === turn)?.data.step ?? 0;
+\tconst policyKey = JSON.stringify(["compaction", retryId, policy]);
+\tfor (let retry = 0; ; retry += 1) {
+\t\tsignal?.throwIfAborted();
+\t\ttry {
+\t\t\tconst assembler = new BlockAssembler();
+\t\t\tfor await (const chunk of ctx.llm.stream(options)) {
+\t\t\t\tsignal?.throwIfAborted();
+\t\t\t\tassembler.push(chunk);
+\t\t\t}
+\t\t\tsignal?.throwIfAborted();
+\t\t\tconst failure = finishError(assembler.finish);
+\t\t\tif (failure !== void 0) throw failure;
+\t\t\treturn assembler;
+\t\t} catch (error) {
+\t\t\tsignal?.throwIfAborted();
+\t\t\tconst typed = error instanceof LlmError ? error : new LlmError(error instanceof Error ? error.message : String(error), error?.name === "AbortError" ? "ABORTED" : typeof error?.code === "string" ? error.code : "UNKNOWN", { cause: error });
+\t\t\tconst failure = typed.failure;
+\t\t\tconst canRetry = defaults.retryableCodes.includes(failure.code) && policy.retryableCodes.includes(failure.code) && retry < policy.maxRetries;
+\t\t\tconst retryAfter = failure.providerRetryAfterMs;
+\t\t\tif (!canRetry || (retryAfter !== void 0 && retryAfter > policy.maxDelayMs)) {
+\t\t\t\tthrow new LlmError(\`上下文整理失败（\${failure.code}，已自动重试 \${retry} 次）；原始会话与已有修改已保留，可继续原任务。原因：\${failure.message}\`, failure.code, { ...failure, cause: typed });
+\t\t\t}
+\t\t\tconst exponential = Math.min(policy.initialDelayMs * 2 ** Math.min(retry, 1024), policy.maxDelayMs);
+\t\t\tconst delayMs = retryAfter ?? Math.min(exponential * (1 - policy.jitterRatio + 2 * policy.jitterRatio * Math.random()), policy.maxDelayMs);
+\t\t\tagent.session.append("llm/retry", { retryId, turn, step, provider: options.provider, mode: "normal", policyKey, retry: retry + 1, maxRetries: policy.maxRetries, delayMs, failure });
+\t\t\tawait ctx.sessions.flush(agent.session);
+\t\t\tawait new Promise((resolve, reject) => {
+\t\t\t\tconst onAbort = () => { clearTimeout(timer); reject(signal.reason); };
+\t\t\t\tconst timer = setTimeout(() => { signal?.removeEventListener("abort", onAbort); resolve(); }, delayMs);
+\t\t\t\tsignal?.addEventListener("abort", onAbort, { once: true });
+\t\t\t\tif (signal?.aborted) onAbort();
+\t\t\t});
+\t\t\tsignal?.throwIfAborted();
+\t\t\tagent.session.append("llm/retry-started", { retryId, turn, step, retry: retry + 1 });
+\t\t}
+\t}
+}
+`;
+
+const RECOVERY_EDITS = [
+  ['createUserMessage, deepFreeze, errorChain } from "@deepseek-ai/dsh-llm";', 'createUserMessage, deepFreeze, errorChain, resolveRetryPolicy } from "@deepseek-ai/dsh-llm";'],
+  ['async function summarizeWithLlm(ctx, config, input, agent, signal) {', `${RECOVERY_HELPER}async function summarizeWithLlm(ctx, config, input, agent, signal) {`],
+  ['\tconst assembler = new BlockAssembler();\n\tconst messages = [...input.messages, createUserMessage({', '\tconst messages = [...input.messages, createUserMessage({'],
+  ['\tfor await (const chunk of ctx.llm.stream(options)) assembler.push(chunk);\n\tconst error = finishError(assembler.finish);\n\tif (error !== void 0) throw error;', '\tconst assembler = await forgeSummaryStream(ctx, options, agent);'],
+  ['\t\tcase "error":\n\t\tcase "aborted": {\n\t\t\tconst error = new Error(finish.failure.message);\n\t\t\terror.code = finish.failure.code;\n\t\t\treturn error;\n\t\t}', '\t\tcase "error":\n\t\t\treturn new LlmError(finish.failure.message, finish.failure.code, finish.failure);\n\t\tcase "aborted":\n\t\t\treturn new LlmError(finish.failure.message, "ABORTED", finish.failure);'],
+];
+
+function patchCompactionRecovery(source) {
+  if (source.includes(RECOVERY_MARKER)) {
+    let previous = source;
+    for (const [before, after] of RECOVERY_EDITS) {
+      if (previous.split(after).length - 1 !== 1) throw new Error('Incomplete compaction recovery patch');
+      previous = previous.replace(after, before);
+    }
+    if (patchCompactionSelection(previous) !== previous) throw new Error('Incomplete compaction selection patch');
+    return source;
+  }
+  source = patchCompactionSelection(source);
+  for (const [before] of RECOVERY_EDITS) if (source.split(before).length - 1 !== 1) throw new Error('Unsupported compaction recovery anchor');
+  for (const [before, after] of RECOVERY_EDITS) source = source.replace(before, after);
+  return source;
+}
+
+const PROGRESS_HELPERS = `// ${PROGRESS_MARKER}: pressure is advisory; capacity and original-node progress are hard bounds.
+class ForgeCompactionNoProgressError extends Error {}
+function forgeRequestMaxTokens(agent, target, modelInfo, fallback) {
+\tconst header = agent.session.requestHeader();
+\tconst sameTarget = header?.config.provider === target.provider && header.config.model === target.model;
+\t// Adapter defaults belong to their exact model, not the previous request's model.
+\tconst explicit = agent.options.maxTokens ?? (sameTarget && header?.adapterDefaults?.maxTokens !== true ? header?.config.maxTokens : void 0);
+\treturn explicit ?? modelInfo.defaultMaxTokens ?? fallback;
+}
+async function forgeModelBudget(engine, agent, signal, summary = false) {
+\tconst routed = forgeRoutedTarget(agent);
+\tif (routed === void 0) return null;
+\tconst policy = resolveTargetPolicy(engine.config, routed);
+\tconst target = summary && policy.summarizationProvider.length > 0 ? { provider: policy.summarizationProvider, model: policy.summarizationModel } : routed;
+\tconst modelInfo = await engine.ctx.llm.resolveModelInfo(target.provider, target.model, signal);
+\tif (modelInfo.context === void 0) return null;
+\treturn { window: modelInfo.context.contextWindow, preferredWindow: Math.floor(modelInfo.context.contextWindow * policy.thresholdRatio), maxTokens: summary ? policy.maxTokens : forgeRequestMaxTokens(agent, target, modelInfo, policy.maxTokens) };
+}`;
+
+const PROGRESS_PRE_STEP = `\t\tctx.on("agent/pre-step", async ({ agent, signal }, next) => {
+\t\t\tconst decision = await next();
+\t\t\tif (decision.kind !== "enter" || signal.aborted) return decision;
+\t\t\ttry {
+\t\t\t\tlet noProgress;
+\t\t\t\ttry {
+\t\t\t\t\tconst result = await this.compactIfNeeded(agent, "pressure", signal, decision.messages);
+\t\t\t\t\tif (result !== null) logResult(result, "step pressure");
+\t\t\t\t} catch (error) {
+\t\t\t\t\tsignal.throwIfAborted();
+\t\t\t\t\tif (!(error instanceof ForgeCompactionNoProgressError)) throw error;
+\t\t\t\t\tnoProgress = error;
+\t\t\t\t}
+\t\t\t\tconst budget = await forgeModelBudget(this, agent, signal);
+\t\t\t\tsignal.throwIfAborted();
+\t\t\t\tif (budget === null && noProgress !== void 0) throw noProgress;
+\t\t\t\tif (budget !== null) {
+\t\t\t\t\tconst estimated = forgeRequestTokens(this, agent.session, decision.messages, budget.maxTokens);
+\t\t\t\t\tif (estimated > budget.window) throw new Error(\x60compaction: request estimate \x24{estimated} exceeds model context capacity \x24{budget.window}; original messages preserved for continuation\x24{noProgress === void 0 ? "" : "; " + noProgress.message}\x60, { cause: noProgress });
+\t\t\t\t}
+\t\t\t\tif (noProgress !== void 0) ctx.logger.warn(\x60step compaction made no progress: \x24{noProgress.message}; original context remains within model capacity, continuing the request\x60);
+\t\t\t\treturn decision;
+\t\t\t} catch (error) {
+\t\t\t\t// The inbox already claimed these messages; preserve their identities and sources once.
+\t\t\t\tfor (const message of decision.messages) agent.session.append("user/message", message, { surfaceOp: "append" });
+\t\t\t\tthrow error;
+\t\t\t}
+\t\t});`;
+
+const PROGRESS_EDITS = [
+  [EDITS[0][1].slice(EDITS[0][1].indexOf('async function forgeModelBudget('), EDITS[0][1].indexOf('async function forgeBoundedRange(')).trimEnd().replace('const routed = routedTarget(agent.session);', 'const routed = forgeRoutedTarget(agent);'), PROGRESS_HELPERS],
+  [EDITS[1][1], PROGRESS_PRE_STEP],
+  ['async function forgeBoundedRange(engine, agent, start, end, signal) {', 'async function forgeBoundedRange(engine, agent, start, end, signal, requireOriginal = false) {'],
+  ['\tlet selected = null;\n\tconst input = buildSummarizationInput(agent.session, []);', '\tlet selected = null;\n\tlet preferred = null;\n\tlet includesOriginal = false;\n\tconst input = buildSummarizationInput(agent.session, []);'],
+  ['\t\tif (toolPairingBalancedAfter(agent.session, nodes[index])) selected = { start, end: nodes[index] };', '\t\tif (message !== null && !(message.source?.kind === "plugin" && message.source.plugin === "compact")) includesOriginal = true;\n\t\tif ((!requireOriginal || includesOriginal) && toolPairingBalancedAfter(agent.session, nodes[index])) {\n\t\t\tselected = { start, end: nodes[index] };\n\t\t\tif (bytes <= budget.preferredWindow) preferred = selected;\n\t\t}'],
+  ['\treturn selected;\n}\nvar BasicCompactionEngine', '\treturn preferred ?? selected;\n}\nvar BasicCompactionEngine'],
+  ['if (selected === null) throw new Error("compaction: no complete tool-balanced prefix fits the model context budget");', 'if (selected === null) throw new ForgeCompactionNoProgressError("compaction: no complete tool-balanced prefix containing new original history fits the summary model capacity");'],
+  ['({ start, end } = await forgeBoundedRange(this, agent, start, end, signal));', '({ start, end } = await forgeBoundedRange(this, agent, start, end, signal, true));'],
+  ['const requestMaxTokens = Math.max(policy.maxTokens, agent.session.requestHeader()?.config.maxTokens ?? 0);', 'const requestMaxTokens = (await forgeModelBudget(this, agent, signal)).maxTokens;'],
+  ['if (framedSummaryTokenCount >= prepared.shadowedTokenCount) throw new Error(', 'if (framedSummaryTokenCount >= prepared.shadowedTokenCount) throw new ForgeCompactionNoProgressError('],
+  ['throw new Error("compaction: summary did not strictly reduce the serialized request estimate");', 'throw new ForgeCompactionNoProgressError("compaction: summary did not strictly reduce the serialized request estimate");'],
+  ['throw new Error(`compaction still above threshold or serialized budget after ${segmentLimit} bounded prefix segments (${measurement.totalTokens} estimated tokens >= threshold ${spec.thresholdTokens})`);', 'throw new ForgeCompactionNoProgressError(`compaction remains above the advisory threshold after ${segmentLimit} bounded prefix segments (${measurement.totalTokens} estimated tokens >= threshold ${spec.thresholdTokens})`);'],
+];
+
+export function patchCompactionBudget(source) {
+  if (source.includes(PROGRESS_MARKER)) {
+    let previous = source;
+    for (const [before, after] of [...PROGRESS_EDITS].reverse()) {
+      if (previous.split(after).length - 1 !== 1) throw new Error('Incomplete compaction progress patch');
+      previous = previous.replace(after, before);
+    }
+    if (patchCompactionRecovery(previous) !== previous) throw new Error('Incomplete compaction recovery patch');
+    return source;
+  }
+  source = patchCompactionRecovery(source);
+  for (const [before] of PROGRESS_EDITS) if (source.split(before).length - 1 !== 1) throw new Error('Unsupported compaction progress anchor');
+  for (const [before, after] of PROGRESS_EDITS) source = source.replace(before, after);
   return source;
 }
 
@@ -149,7 +303,7 @@ export function applyPatch(root) {
   });
   // Validate both pinned inputs before either file is changed.
   for (const item of packages) if (item.after !== item.before) writeFileSync(item.file, item.after);
-  return { patch: SELECTION_MARKER, changed: packages.some((item) => item.after !== item.before),
+  return { patch: PROGRESS_MARKER, changed: packages.some((item) => item.after !== item.before),
     packages: packages.map(({ name, before, after }) => ({ name, changed: before !== after })) };
 }
 

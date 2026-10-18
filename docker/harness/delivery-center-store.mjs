@@ -11,7 +11,7 @@ export { readDeliveryDatabaseConfig as readDeliveryCenterDatabaseConfig } from '
 const require = createRequire(import.meta.url);
 const SLUG = /^[a-z][a-z0-9-]{2,31}$/u;
 const MAX_ENTITIES = 10000;
-const MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024;
+const MAX_SNAPSHOT_BYTES = 128 * 1024 * 1024;
 const ENTITY_LISTS = ['batches', 'menus', 'requirements', 'stages', 'releases', 'artifacts'];
 
 export class DeliveryCenterError extends Error {
@@ -232,7 +232,9 @@ export function validateDeliverySnapshot(input) {
       const identity = key === 'stages' ? `${entity.id}:${digest({ ...entity, isCurrent: undefined })}` : entity.id;
       if (ids.has(identity)) invalid(`${key} contains duplicate ids.`);
       ids.add(identity);
-      if (Buffer.byteLength(json(entity)) > 1024 * 1024) invalid(`${key} entity is oversized.`);
+      // Full code and relationship assets from recorded sources need a bounded 2 MiB allowance.
+      const maxEntityBytes = key === 'artifacts' && entity.kind === 'specification-asset' ? 2 * 1024 * 1024 : 1024 * 1024;
+      if (Buffer.byteLength(json(entity)) > maxEntityBytes) invalid(`${key} entity is oversized.`);
     }
   }
   for (const menu of snapshot.menus) {

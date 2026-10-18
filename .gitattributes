@@ -10,6 +10,7 @@
 *.yaml text eol=lf
 *.md text eol=lf
 *.patch text eol=lf whitespace=-blank-at-eol
+templates/apparmor/forge-direct-worker text eol=lf
 # Preserve raw browser tool evidence; whitespace inside captured output is data.
 docs/validation-evidence/*-browser-*.result.txt -text -whitespace
 docs/validation-evidence/2026-09-23-current-release-continuation-*.txt -text -whitespace
@@ -46,3 +47,11 @@ scripts/prepare-host-pnpm-10.34.5.py text eol=lf
 scripts/deploy-fce722-dependency-preload.py text eol=lf
 # Pinned upstream distribution: preserve bytes covered by the vendor manifest.
 docker/harness/conversation-gateway/mermaid/** -text -whitespace
+# Archived originals keep the bytes recorded in their migration SHA-256 maps.
+docs/90-a4/** -text whitespace=cr-at-eol
+# Public documentation candidates retain the source bytes recorded in SOURCE.json.
+docs/30-a3/public-distribution/** -text whitespace=cr-at-eol,-blank-at-eol
+# Raw test output is evidence, including native diagnostic whitespace.
+docs/long-tasks/project-archive-32148-20261015/*.tap -text -whitespace
+# Preserve transported runtime originals and their recorded SHA-256 values.
+docs/long-tasks/project-archive-32148-20261015/runtime-evidence/** -text -whitespace

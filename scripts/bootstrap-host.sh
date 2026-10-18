@@ -48,6 +48,7 @@ install -d -m 0750 -o "${DELIVERY_OWNER}" -g "${DELIVERY_GROUP}" \
   "${DELIVERY_ROOT}/file-gateway/data"
 install -d -m 0700 -o root -g root \
   "${DELIVERY_ROOT}/secrets"
+repair_harness_deepseek_secret_access
 
 registry_file="${DELIVERY_ROOT}/registry/projects.tsv"
 taskspace_registry_file="${DELIVERY_ROOT}/registry/taskspace-ports.tsv"

@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { validateVerificationInputScopes } from './verification-inputs.mjs';
 import path from 'node:path';
 import { lstatSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -100,7 +101,8 @@ function selectorsFor(profile, selectors = {}) {
 export function validateHostVerificationContract(value, expectedProjectSlug) {
   exactKeys(value, [
     'schemaVersion', 'executionMode', 'projectSlug', 'runnerRevision', 'profileCatalogVersion',
-    'taskspacesRoot', 'stateRoot', 'toolchains', 'profiles', 'limits', 'processIsolation', 'independentReview', 'dependencySeed', 'preparedDependencies',
+    'taskspacesRoot', 'stateRoot', 'toolchains', 'profiles', 'limits', 'processIsolation', 'independentReview', 'dependencySeed', 'preparedDependencies', 'testDatabase',
+    'inputScopes',
   ], 'host verification contract');
   if (value.schemaVersion !== 2 || value.executionMode !== 'host-toolchain') {
     throw new Error('Unsupported host verification contract schema or execution mode.');
@@ -163,6 +165,30 @@ export function validateHostVerificationContract(value, expectedProjectSlug) {
     }
     preparedDependencies = { root, manifestSha256: value.preparedDependencies.manifestSha256 };
   }
+  let testDatabase;
+  if (value.testDatabase !== undefined) {
+    const binding = value.testDatabase;
+    exactKeys(binding, ['taskId', 'port', 'database', 'username', 'passwordFile'], 'host test database');
+    const projectPrefix = value.projectSlug.replaceAll('-', '_') + '_';
+    if (value.processIsolation !== 'bubblewrap'
+      || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,95}$/u.test(binding.taskId ?? '')
+      || !/^[a-z][a-z0-9_]{0,58}_test$/u.test(binding.database ?? '')
+      || !binding.database.startsWith(projectPrefix)
+      || !/^[a-z][a-z0-9_]{0,31}$/u.test(binding.username ?? '')
+      || !binding.username.startsWith(projectPrefix)) {
+      throw new Error('Host test database requires bubblewrap, a fixed task and project-owned test database/account.');
+    }
+    const passwordFile = absolutePath(binding.passwordFile, 'host test database password file');
+    for (const root of [value.taskspacesRoot, value.stateRoot]) {
+      const relative = path.relative(absolutePath(root, 'host writable root'), passwordFile);
+      if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
+        throw new Error('Host test database password file must be outside writable taskspaces and state.');
+      }
+    }
+    testDatabase = { taskId: binding.taskId,
+      port: boundedInteger(binding.port, 1024, 65535, 'host test database loopback port'),
+      database: binding.database, username: binding.username, passwordFile };
+  }
   return {
     schemaVersion: 2,
     executionMode: 'host-toolchain',
@@ -176,7 +202,9 @@ export function validateHostVerificationContract(value, expectedProjectSlug) {
     ...(value.independentReview === undefined ? {} : { independentReview: value.independentReview }),
     ...(dependencySeed === undefined ? {} : { dependencySeed }),
     ...(preparedDependencies === undefined ? {} : { preparedDependencies }),
+    ...(testDatabase === undefined ? {} : { testDatabase }),
     profiles: [...value.profiles],
+    ...(value.inputScopes === undefined ? {} : { inputScopes: validateVerificationInputScopes(value.inputScopes, value.profiles) }),
     limits: {
       maxFiles: boundedInteger(value.limits.maxFiles, 1, 250_000, 'host verification maxFiles'),
       maxBytes: boundedInteger(value.limits.maxBytes, 1, 4 * 1024 * 1024 * 1024, 'host verification maxBytes'),
@@ -195,6 +223,8 @@ export function hostProfilePolicyDescriptor(contract) {
     ...(contract.processIsolation === 'bubblewrap' ? { processIsolation: 'bubblewrap/v1' } : {}),
     ...(contract.preparedDependencies ? { preparedDependencies: contract.preparedDependencies.manifestSha256 } : {}),
     ...(contract.processIsolation === 'bubblewrap' && contract.dependencySeed ? { dependencySeed: contract.dependencySeed.manifestSha256 } : {}),
+    ...(contract.testDatabase ? { testDatabase: { taskId: contract.testDatabase.taskId,
+      port: contract.testDatabase.port, database: contract.testDatabase.database, username: contract.testDatabase.username } } : {}),
   };
 }
 
@@ -266,17 +296,31 @@ export function validateHostProfilePolicyTransition(value, previousDigest, curre
   return value;
 }
 
-// Only fixed platform toolchain directories enter the child filesystem. The
-// caller supplies the protected contract; a business request cannot add mounts.
-export function hostSandboxReadOnlyRoots(toolchains) {
+// The Runner resolves and probes these tools from its protected contract. Mount
+// their installation directories, without imposing an older deployment layout.
+export function hostSandboxReadOnlyRoots(toolchains, contract = {}) {
   const roots = new Set();
-  for (const executable of Object.values(toolchains)) {
-    if (executable.startsWith('/usr/')) continue;
-    const match = /^(\/srv\/forge-delivery\/(?:canary\/[a-zA-Z0-9._-]+\/)?(?:toolchains|host-runner)\/versions\/[a-zA-Z0-9._-]+)\//u.exec(executable);
-    if (!match || match[1].split('/').some((part) => part === '.' || part === '..')) {
-      throw new Error('Host sandbox requires tools under /usr or a versioned platform toolchain directory.');
+  const within = (value, root) => value === root || value.startsWith(`${root}/`);
+  const projectsRoot = '/srv/forge-delivery/projects';
+  const projectRoot = `${projectsRoot}/${contract.projectSlug}`;
+  const privateRoots = ['/etc', '/run', '/root', '/home', '/srv/forge-delivery/secrets',
+    `${projectRoot}/ops`, contract.taskspacesRoot, contract.stateRoot].filter(Boolean);
+  for (const [name, executable] of Object.entries(toolchains)) {
+    if (typeof executable !== 'string' || !path.posix.isAbsolute(executable)
+      || executable.includes('\0') || path.posix.normalize(executable) !== executable) {
+      throw new Error('Host sandbox tool paths must be absolute and normalized.');
     }
-    roots.add(match[1]);
+    if (executable.startsWith('/usr/')) continue;
+    const directory = name === 'javaHome' ? executable : path.posix.dirname(executable);
+    const root = name !== 'javaHome' && ['bin', 'sbin'].includes(path.posix.basename(directory))
+      ? path.posix.dirname(directory) : directory;
+    if (root === '/' || within(projectsRoot, root)
+      || (within(root, projectsRoot) && (!PROJECT_PATTERN.test(contract.projectSlug ?? '')
+        || !within(root, projectRoot) || root === projectRoot))
+      || privateRoots.some((privateRoot) => within(root, privateRoot) || within(privateRoot, root))) {
+      throw new Error('Host sandbox tool installation root exceeds the protected project or credential scope.');
+    }
+    roots.add(root);
   }
   return [...roots].sort();
 }
@@ -306,7 +350,7 @@ export function hostSandboxCommand(step, paths, toolchains, readOnlyDependencies
     '/etc/ssl/certs', '/etc/java-17-openjdk', '/etc/maven/m2.conf', '/etc/maven/logging']) {
     argv.push('--ro-bind-try', file, file);
   }
-  for (const root of hostSandboxReadOnlyRoots(toolchains)) argv.push('--ro-bind', root, root);
+  for (const root of hostSandboxReadOnlyRoots(toolchains, contract)) argv.push('--ro-bind', root, root);
   // The running Host bundle may differ from a toolchain's pinned bundle (for
   // example forgeGovernance). Expose only this fixed scanner's runtime inputs.
   if (step.executable === toolchains.node && step.argv[0] === HOST_BACKEND_SOURCE_QUALITY_PATH) {

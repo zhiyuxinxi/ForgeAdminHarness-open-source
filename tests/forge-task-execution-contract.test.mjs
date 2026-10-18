@@ -22,6 +22,17 @@ import {
   verificationScopeForContract,
 } from '../docker/harness/forge-task-execution-contract.mjs';
 
+test('direct development has no workflow obligations and cannot enter through public input', () => {
+  const input = { prompt: '修改当前项目并发布', actionCeiling: 'release', ownedPaths: ['.'], taskProfiles: ['project-files'] };
+  const contract = compileForgeTaskExecutionContract(input, { developmentMode: 'direct' });
+  assert.deepEqual(validateForgeTaskExecutionContract(contract), contract);
+  assert.deepEqual(contract.requiredObligations, []);
+  assert.equal(contract.tddRequired, false);
+  assert.throws(() => compileForgeTaskExecutionContract({ ...input, developmentMode: 'direct' }));
+  assert.throws(() => compileForgeTaskExecutionContract(input));
+  assert.throws(() => validateForgeTaskExecutionContract({ ...contract, ownedPaths: ['../other'] }));
+});
+
 test('UI release retry context does not create database source work', async t => {
   const promptText = await readFile(new URL('./fixtures/frontend-security-ui-release-after-platform-fix.md', import.meta.url), 'utf8');
   const ownedPaths = ['forge-admin-ui/src/views/security', 'forge-admin-ui/src/views/security-guard'];
@@ -31,6 +42,9 @@ test('UI release retry context does not create database source work', async t =>
     ['full actual retry request', promptText, false],
     ['recorded failed release step', '发布当前前端。上一发布在 test-database-snapshot 失败。', false],
     ['service-based release responsibility', '平台按本次实际发布的服务判断数据库义务。不再因候选继承并行后端源码而强制执行数据库快照。', false],
+    ['Runner release operations are not database development', '修改页面文案。数据库校验及备份按现役Runner的真实要求办理。', false],
+    ['separate database work survives Runner context', '修改页面文案。数据库校验及备份按现役Runner的真实要求办理。同时修改数据库表结构。', true],
+    ['mixed database work survives Runner context', '数据库校验及备份按现役Runner的真实要求办理并修改数据库表结构。', true],
     ['explicit database operation remains', promptText + '\n同时执行数据库快照。', true],
     ['separate schema repair remains', promptText + '\n请修改数据库表结构。', true],
     ['positive work in the same clause remains', '不再因历史失败而执行旧检查但仍需修改数据库表结构。', true],
@@ -39,13 +53,18 @@ test('UI release retry context does not create database source work', async t =>
     const value = compileConversationTaskProposal({ promptText: prompt, actionCeiling: 'release', proposal,
       writerScopes: [{ taskProfile: 'frontend-admin', ownedPaths }] });
     assert.equal(value.contract.taskProfiles.includes('database'), expected);
+    assert.equal(value.contract.requiredVerificationProfiles.includes('backend-module-test'), expected);
     assert.deepEqual(validateForgeTaskExecutionContract(value.contract), value.contract);
+    const direct = compileForgeTaskExecutionContract({ prompt, actionCeiling: 'release', ownedPaths });
+    assert.equal(direct.taskProfiles.includes('database'), expected);
   });
   await t.test('declared and actual database ownership stays binding', () => {
     for (const input of [
       { ownedPaths, taskProfiles: ['frontend-admin', 'database'] },
       { ownedPaths: [...ownedPaths, 'forge-server/db/migration/V1__repair.sql'] },
-    ]) assert.ok(compileForgeTaskExecutionContract({ prompt: promptText, actionCeiling: 'release', ...input }).taskProfiles.includes('database'));
+    ]) for (const prompt of [promptText, '修改页面文案。数据库校验及备份按现役Runner的真实要求办理。']) {
+      assert.ok(compileForgeTaskExecutionContract({ prompt, actionCeiling: 'release', ...input }).taskProfiles.includes('database'));
+    }
   });
 });
 

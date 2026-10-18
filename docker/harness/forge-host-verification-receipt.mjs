@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { INPUT_SOURCE_PROJECTION, validateVerificationInputIdentity, validateInputSourceProjection } from './verification-inputs.mjs';
 import { SOURCE_QUALITY_PROFILE, validateSourceQualityPayload } from './forge-backend-source-quality.mjs';
 import { validateHostProfilePolicyTransition } from './host-verify-policy.mjs';
 import { validateSourceTransition } from './taskspace-policy.mjs';
@@ -476,6 +477,7 @@ export function validateHostRunReceipt(value, options = {}) {
     'execution', 'isolation', 'jobId', 'logs', 'policy', 'projectSlug', 'receiptId',
     'receiptType', 'request', 'results', 'schemaVersion', 'source', 'status', 'taskId',
     'toolchain', 'truth',
+    ...(Object.hasOwn(value, 'inputIdentity') ? ['inputIdentity'] : []),
     ...(redProfile ? ['redExpectation'] : []),
     ...(Object.hasOwn(value, 'freshness') ? ['freshness'] : []),
     ...(Object.hasOwn(value, 'workflowInventoryObservation') ? ['workflowInventoryObservation'] : []),
@@ -494,6 +496,7 @@ export function validateHostRunReceipt(value, options = {}) {
   }
   if (!HOST_RUN_STATUSES.has(value.status)) throw new Error('host run status is invalid.');
   validateHostRunSource(value.source);
+  if (value.inputIdentity !== undefined) validateVerificationInputIdentity(value.inputIdentity);
   let effectiveSourceFingerprint = value.source.workspaceFingerprint;
   exactKeys(value.request, [
     'admissionId', 'idempotencyDigest', 'profile', 'selectors', 'selectorsSha256',
@@ -638,7 +641,9 @@ export function validateHostRunReceipt(value, options = {}) {
       ...(projected ? {} : { sourceFingerprint: value.source.workspaceFingerprint }),
     }).receipt;
     let transitionSource = projected
-      ? review.sourceProjection?.kind === REVIEWED_RECEIPT_SOURCE_PROJECTION
+      ? review.sourceProjection?.kind === INPUT_SOURCE_PROJECTION
+        ? validateInputSourceProjection(review.sourceProjection, value, admission.source)
+        : review.sourceProjection?.kind === REVIEWED_RECEIPT_SOURCE_PROJECTION
         ? validateReviewedReceiptSourceProjection(review.sourceProjection, value, admission.source)
         : validateBackendSourceProjection(review.sourceProjection, value.source, admission.source, value.request.profile)
       : value.source;
@@ -662,8 +667,9 @@ export function validateHostRunReceipt(value, options = {}) {
       value.policy.profilePolicyDigest, admission.profilePolicyDigest, value.request.profile, value.projectSlug);
     const transitioned = Object.hasOwn(review, 'sourceTransition');
     if (transitioned) validateHostCheckpointTransition(review.sourceTransition, transitionSource, admission.source, value);
-    if ((!transitioned && admission.source.head !== value.source.head)
-        || admission.source.dependencyManifestFingerprint !== value.source.dependencyManifestFingerprint
+    const inputProjected = projected && review.sourceProjection.kind === INPUT_SOURCE_PROJECTION;
+    if ((!transitioned && !inputProjected && admission.source.head !== value.source.head)
+        || (!inputProjected && admission.source.dependencyManifestFingerprint !== value.source.dependencyManifestFingerprint)
         || !admission.profiles.includes(value.request.profile)
         || (!policyTransitioned && admission.profilePolicyDigest !== value.policy.profilePolicyDigest)
         || admission.profileCatalogVersion !== value.policy.profileCatalogVersion

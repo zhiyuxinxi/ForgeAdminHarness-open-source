@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -44,15 +44,20 @@ test('the reviewed Forge bundle has positive and negative trigger coverage withi
     evalPath: path.join(testRoot, 'fixtures', 'forge-skill-evals'),
     strict: true,
   });
-  assert.equal(result.bundleVersion, '2026.10.10.94');
-  assert.equal(result.skillCount, 21);
-  assert.equal(result.caseCount, 26);
-
   const catalog = JSON.parse(await readFile(catalogPath, 'utf8'));
+  const evalRoot = path.join(testRoot, 'fixtures', 'forge-skill-evals');
+  const suites = await Promise.all((await readdir(evalRoot)).filter(name => name.endsWith('.eval.json'))
+    .map(async name => JSON.parse(await readFile(path.join(evalRoot, name), 'utf8'))));
+  assert.equal(result.bundleVersion, catalog.bundleVersion);
+  assert.equal(result.skillCount, catalog.skills.length);
+  assert.equal(result.caseCount, suites.reduce((total, suite) => total + suite.cases.length, 0));
   const byName = new Map(catalog.skills.map((skill) => [skill.name, skill]));
   assert.deepEqual(
     [
       'forge-task-router',
+      'browser-playwright',
+      'api-bruno',
+      'code-ast-grep',
       'forge-database-migration',
       'forge-backend-architecture',
       'forge-crud-production',

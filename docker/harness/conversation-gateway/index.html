@@ -49,7 +49,7 @@
     <section id="conversation-section" class="workspace-section" aria-labelledby="conversations-title" hidden>
       <div class="section-heading">
         <div><p class="section-kicker">当前项目 · <span id="selected-project-slug">—</span></p><h2 id="conversations-title" tabindex="-1"><span id="selected-project-name">—</span> · 我的对话</h2></div>
-        <div class="heading-actions"><label id="all-conversations-control" class="scope-toggle" hidden><input id="all-conversations-toggle" type="checkbox">所有人的对话</label><button id="switch-project-button" class="secondary-button" type="button" disabled>切换项目</button><a id="forge-admin-link" class="secondary-button button-link" target="_blank" rel="noopener">打开 Forge Admin</a><button id="new-conversation-button" class="primary-button" type="button" disabled>新建独立对话</button><a id="project-delivery-link" class="secondary-button button-link" href="/forge-gateway/delivery-center?project=forge-base" hidden>需求与交付中心</a></div>
+        <div class="heading-actions"><label id="all-conversations-control" class="scope-toggle" hidden><input id="all-conversations-toggle" type="checkbox">所有人的对话</label><button id="switch-project-button" class="secondary-button" type="button" disabled>切换项目</button><a id="forge-admin-link" class="secondary-button button-link" target="_blank" rel="noopener">打开 Forge Admin</a><button id="new-conversation-button" class="primary-button" type="button" disabled>新建独立对话</button><a id="project-delivery-link" class="secondary-button button-link" href="/forge-gateway/delivery-center" hidden>需求与交付中心</a></div>
       </div>
       <p id="project-access-note" class="section-help"></p>
       <section id="project-release-panel" class="release-panel" aria-labelledby="project-release-title">
@@ -72,7 +72,7 @@
         <button id="load-more-button" class="secondary-button" type="button" hidden disabled>加载更多</button>
       </div>
       <section id="conversation-output-panel" class="output-panel" aria-labelledby="output-title" hidden>
-        <div class="section-heading compact-heading"><div><p class="section-kicker">阶段成果与聊天归档 · 只读</p><h3 id="output-title" tabindex="-1">对话文件</h3></div><button id="close-output-button" class="secondary-button" type="button" disabled>返回对话列表</button></div>
+        <div class="section-heading compact-heading"><div><p class="section-kicker">阶段成果与聊天归档 · 只读</p><h3 id="output-title" tabindex="-1">对话文件</h3><p id="output-runtime-version" class="field-help"></p></div><button id="close-output-button" class="secondary-button" type="button" disabled>返回对话列表</button></div>
         <p id="output-owner-note" class="section-help"></p>
         <p class="section-help">管理员可查阅对话输入、输出和归档文件；此页面不会打开、恢复、停止工作舱或代发消息。</p>
         <section class="phase-output-section" aria-labelledby="phase-output-heading">
@@ -137,6 +137,9 @@
       <label for="conversation-title">对话名称</label>
       <input id="conversation-title" maxlength="100" required placeholder="例如：订单模块验收与发布">
       <p class="field-help">名称只用于你自己的列表。创建后会初始化一个独立 Git 工作区和 Harness 状态。</p>
+      <label for="conversation-runtime-channel">Harness 版本</label>
+      <select id="conversation-runtime-channel" required disabled aria-describedby="conversation-runtime-help"><option value="">正在加载版本…</option></select>
+      <p id="conversation-runtime-help" class="field-help">稳定版：功能精简，稳定优先。增强试验版：功能较全，用于验证新能力。创建后保留所选版本。</p>
       <p id="conversation-error" class="form-message error" role="alert" hidden></p>
       <div class="dialog-actions"><button class="secondary-button" type="button" data-close-dialog="conversation-dialog" disabled>取消</button><button id="conversation-submit" class="primary-button" type="submit">创建工作舱</button></div>
     </form>

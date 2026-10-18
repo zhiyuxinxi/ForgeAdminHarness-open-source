@@ -1,6 +1,6 @@
 # Forge Admin 变更设计合同
 
-在正式设计、多人交接或高风险复核时使用本合同。它是结构化交付物，不是平台权威状态；除非用户授权写入项目文档，否则只在当前响应中维护。
+在正式设计、多人交接或高风险复核时选用本合同的相关部分，保留既有Spec格式和ID，不为每项工作填满全部表格。只梳理需求时使用 [需求方法](requirements-discovery.md)，不展开本合同的技术层。除非用户授权写入项目文档，否则只在当前响应中维护。
 
 ## 1. 身份与范围
 
@@ -10,17 +10,17 @@
 | Project / TaskSpace | 精确项目；有工作舱时记录 TaskSpace ID |
 | Base | 分支与完整 Git commit；工作区状态 |
 | Objective | 一个可验收业务结果 |
-| Authority | 已批准需求、用户决定、当前源码/合同 |
-| References | 原型、截图、旧系统或相似实现，明确非权威 |
+| Authority | 当前用户决定、已采用需求和适用业务合同；用户指定附件按其指定用途作为需求来源 |
+| References | 原型、旧系统、源码或相似实现的实际用途与来源；实现观察不倒推原始要求 |
 | In scope / Out of scope | 本次包含与明确排除 |
 | Allowed actions | 只读、设计、实现、测试、提交、发布分别列明 |
 | Stop conditions | 冲突、缺证据、越权或不可逆风险的停止点 |
 
-`OPERATOR_ONLY_REFERENCE_V1`：只有平台/operator 通过独立授权的 `forge-delivery` 类型化动作返回成功 receipt 时，设计文档才记录 `changeId`、当前 `state/version` 与该回执；标准模型不探测或调用该 CLI。未提供回执时写 `guidance_only`，不能手工补状态。本地状态目录必须先由受审项目模板登记为 ignored，不能为单个业务变更临时放宽仓库规则。
+无需为了设计创建平台状态。`OPERATOR_ONLY_REFERENCE_V1`：只引用平台/operator已经返回的真实回执；模型不调用 `forge-delivery` 或手写状态。
 
 ## 2. 可验收业务结果
 
-给每项分配 `AC-<n>`：
+沿用已有要求和验收ID；新条目才分配稳定ID。每项先说明为什么做、做什么，再写可观察结果；量化目标只使用真实来源。
 
 | ID | Actor / precondition | Action | Observable result | Negative result | Evidence |
 |---|---|---|---|---|---|
@@ -31,7 +31,7 @@
 
 ## 3. 跨层合同
 
-只保留适用行，非适用项说明依据：
+只保留本次适用的层，不为非适用项补空表：
 
 | Contract ID | Domain rule | API / DTO | Data / migration | Permission / tenant | UI / H5 | Import/export | Audit | Compatibility |
 |---|---|---|---|---|---|---|---|---|
@@ -54,14 +54,14 @@
 | Work ID | Outcome | Depends on | Owned paths | Owned semantic resources | Allowed actions | Deliverable | Verification | Stop condition |
 |---|---|---|---|---|---|---|---|---|
 
-先完成并冻结共享合同，再并行实现。多个 writer 不得同时拥有同一路径或语义资源；读者/复核者可以重叠，但不能顺手修复。
+只有确有并行交接时才列此表；先明确共享合同及实际依赖。多个writer不得同时修改同一路径或语义资源，不按模板假定任务可任意顺序交付。
 
 ## 6. 验证与回退
 
 | AC / Contract ID | Static check | Unit/contract test | `_test` migration | Permission negative | Browser/API UAT | Required receipt |
 |---|---|---|---|---|---|---|
 
-分别定义代码回退、数据兼容/补偿、运行版本回退和测试数据清理。主库破坏性恢复、基础设施创建和生产数据修复不属于普通实施或发布授权。
+只列本次涉及的检查与恢复办法，不默认全仓审计、全系统回归或浏览器验收。区分预期与真实执行结果，静态检查不能替代功能证据。主库破坏性恢复、基础设施创建和生产数据修复不属于普通实施或发布授权。
 
 ## 7. 设计结论
 
@@ -75,4 +75,4 @@
 
 该结论不等于实现、验证、提交、发布或业务验收已经完成。
 
-设计结论为 `ready_for_implementation` 时，允许把 CLI change 从 `scoped` CAS 转到 `designed`。状态转换只记录设计阶段已被协调者声明完成；设计正文、决定和验收合同仍需单独审查，状态文件不能替代它们。
+不因设计结论创建或变更平台状态，也不据此取得代码、提交或发布授权。未决项只阻塞依赖该决定的动作；已有足够信息且获授权的独立部分继续推进。

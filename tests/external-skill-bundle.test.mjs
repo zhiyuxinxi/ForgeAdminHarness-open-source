@@ -155,6 +155,64 @@ test('external Skill bundle rejects missing, extra, drifted, symlinked, and secr
   }
 });
 
+test('activation and rollback share the pending transaction and a failed owner restores only its own switch', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'forge-skill-concurrent-'));
+  try {
+    const installRoot = path.join(root, 'installed');
+    const options = { installRoot, expectedDshVersion: DSH_VERSION };
+    for (const version of ['2099.02.01.1', '2099.02.01.2']) {
+      const { bundle } = await build(root, version);
+      await installExternalSkillBundle({ ...options, bundleRoot: bundle });
+    }
+    await activateExternalSkillBundle({ ...options, version: '2099.02.01.1' });
+    await assert.rejects(activateExternalSkillBundle({ ...options, version: '2099.02.01.2', failpoint: async () => {
+      const pending = await readFile(path.join(installRoot, 'activation.pending.json'), 'utf8');
+      await assert.rejects(activateExternalSkillBundle({ ...options, version: '2099.02.01.1' }), /owns the pending transaction/u);
+      await assert.rejects(rollbackExternalSkillBundle(options), /owns the pending transaction/u);
+      assert.equal(await readFile(path.join(installRoot, 'activation.pending.json'), 'utf8'), pending);
+      throw new Error('original owner failure');
+    } }), /original owner failure/u);
+    assert.equal((await doctorExternalSkillBundle(options)).version, '2099.02.01.1');
+    await activateExternalSkillBundle({ ...options, version: '2099.02.01.2' });
+    assert.equal((await rollbackExternalSkillBundle(options)).version, '2099.02.01.1');
+  } finally { await cleanupRoot(root); }
+});
+
+test('failed activation preserves foreign pending, active state and current pointers', async t => {
+  for (const replaced of ['pending', 'active', 'current']) await t.test(replaced, async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'forge-skill-foreign-'));
+    try {
+      const installRoot = path.join(root, 'installed');
+      const options = { installRoot, expectedDshVersion: DSH_VERSION };
+      for (const version of ['2099.02.01.1', '2099.02.01.2', '2099.02.01.3']) {
+        const { bundle } = await build(root, version);
+        await installExternalSkillBundle({ ...options, bundleRoot: bundle });
+      }
+      await activateExternalSkillBundle({ ...options, version: '2099.02.01.1' });
+      const pendingFile = path.join(installRoot, 'activation.pending.json');
+      let retainedPending;
+      let retainedActive;
+      let retainedLink;
+      await assert.rejects(activateExternalSkillBundle({ ...options, version: '2099.02.01.2', failpoint: async () => {
+        if (replaced === 'pending') await writeFile(pendingFile, JSON.stringify({ transactionId: crypto.randomUUID() }));
+        if (replaced === 'active') await writeFile(path.join(installRoot, 'active.json'), JSON.stringify({ version: '2099.02.01.3' }));
+        if (replaced === 'current') {
+          await rm(path.join(installRoot, 'current'));
+          await symlink(path.join(installRoot, 'versions', '2099.02.01.3'), path.join(installRoot, 'current'), process.platform === 'win32' ? 'junction' : 'dir');
+        }
+        retainedPending = await readFile(pendingFile, 'utf8');
+        retainedActive = await readFile(path.join(installRoot, 'active.json'), 'utf8');
+        retainedLink = await readlink(path.join(installRoot, 'current'));
+        throw new Error('foreign update observed');
+      } }), /foreign update observed/u);
+      assert.equal(await readFile(pendingFile, 'utf8'), retainedPending);
+      assert.equal(await readFile(path.join(installRoot, 'active.json'), 'utf8'), retainedActive);
+      assert.equal(await readlink(path.join(installRoot, 'current')), retainedLink);
+      await assert.rejects(doctorExternalSkillBundle(options), /incomplete Skill activation/u);
+    } finally { await cleanupRoot(root); }
+  });
+});
+
 test('install is immutable and idempotent; activate failure restores current; doctor and rollback are idempotent', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'forge-external-skills-lifecycle-'));
   try {

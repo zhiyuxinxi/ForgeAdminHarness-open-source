@@ -134,17 +134,21 @@ function deepFreeze(value) {
 }
 
 function validateCapability(value, catalogs, seenIds) {
-  exactKeys(value, CAPABILITY_KEYS, 'quality capability');
+  const keys = Object.hasOwn(value ?? {}, 'supportingSkills') ? [...CAPABILITY_KEYS, 'supportingSkills'] : CAPABILITY_KEYS;
+  exactKeys(value, keys, 'quality capability');
   const capabilityId = requiredString(value.capabilityId, CAPABILITY_ID_PATTERN, 'capabilityId', 128);
   uniqueId(capabilityId, seenIds, 'QUALITY_CAPABILITY_DUPLICATE', 'capabilityId');
   requiredString(value.domain, DOMAIN_PATTERN, `${capabilityId}.domain`, 32);
   requiredString(value.summary, /^.{1,500}$/u, `${capabilityId}.summary`, 500);
   const requiredSkills = uniqueReferences(value.requiredSkills, IDENTIFIER_PATTERN, 16, `${capabilityId}.requiredSkills`, 1);
+  // Available tools support a capability without becoming mandatory routing steps.
+  const supportingSkills = uniqueReferences(Object.hasOwn(value, 'supportingSkills') ? value.supportingSkills : [],
+    IDENTIFIER_PATTERN, 16, `${capabilityId}.supportingSkills`);
   const ruleIds = uniqueReferences(value.ruleIds, RULE_ID_PATTERN, 32, `${capabilityId}.ruleIds`);
   const verificationProfiles = uniqueReferences(
     value.verificationProfiles, IDENTIFIER_PATTERN, 16, `${capabilityId}.verificationProfiles`, 0,
   );
-  for (const skill of requiredSkills) {
+  for (const skill of [...requiredSkills, ...supportingSkills]) {
     if (!catalogs.skillNames.has(skill)) fail('QUALITY_SKILL_REFERENCE_MISSING', `${capabilityId} references missing Skill ${skill}.`);
   }
   for (const ruleId of ruleIds) {
@@ -174,6 +178,7 @@ function validateCapability(value, catalogs, seenIds) {
   }
   return {
     capabilityId, domain: value.domain, summary: value.summary, requiredSkills, ruleIds, verificationProfiles,
+    ...(supportingSkills.length ? { supportingSkills } : {}),
     proofLevel: value.proofLevel, status: value.status, gap: value.gap,
   };
 }
@@ -181,7 +186,7 @@ function validateCapability(value, catalogs, seenIds) {
 function requireReverseCatalogCoverage(capabilities, catalogs) {
   const used = {
     ruleIds: new Set(capabilities.flatMap((capability) => capability.ruleIds)),
-    skillNames: new Set(capabilities.flatMap((capability) => capability.requiredSkills)),
+    skillNames: new Set(capabilities.flatMap((capability) => [...capability.requiredSkills, ...(capability.supportingSkills ?? [])])),
     verificationProfiles: new Set(capabilities.flatMap((capability) => capability.verificationProfiles)),
   };
   for (const [catalogKey, code, label] of [

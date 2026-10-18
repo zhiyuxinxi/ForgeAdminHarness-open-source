@@ -189,7 +189,7 @@ test('storage failure prevents submission rather than losing the refresh lock', 
   f.unmount();
 });
 
-test('the fixed release request ends with its actual result and no second release button', () => {
+test('release actions use current execution state rather than an exact user phrase', () => {
   const jsx = (type, props) => ({ type, props });
   context.react = { Fragment: 'fragment' }; context.react_jsx_runtime = { jsx, jsxs: jsx };
   const nodes = new Map([
@@ -201,8 +201,8 @@ test('the fixed release request ends with its actual result and no second releas
     running: false, connectionReady: true, renderNode: key => 'rendered-' + key });
   const children = output[0].props.children;
   assert(children.includes('rendered-error'), 'the original failure remains visible');
-  assert.equal(children.some(node => node?.type === context.ForgeWorkpodActions), false);
-  assert.equal(context.forgeWorkpodReleaseRequested({ data: { content: [{ type: 'text', text: '页面增加发版按钮' }] } }), false);
+  assert.equal(children.some(node => node?.type === context.ForgeWorkpodActions), true);
+  assert.equal(context.forgeWorkpodReleaseRequested, undefined, 'there is no exact-phrase authority in the UI');
 });
 
 test('an unresponsive release prompt ends visibly but retains unknown-outcome duplicate protection', async () => {

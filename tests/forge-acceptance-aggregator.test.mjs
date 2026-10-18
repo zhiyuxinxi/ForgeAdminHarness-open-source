@@ -6,6 +6,7 @@ import {
   ACCEPTANCE_DOCUMENT_TYPES,
   AcceptanceSchemaError,
   aggregateAcceptance,
+  validateAcceptanceContract,
   canonicalJson,
   canonicalSha256,
   sealAcceptanceDocument,
@@ -355,4 +356,28 @@ test('verdict verification rejects signed documents outside the strict verdict s
   const verdict = aggregateAcceptance(input, input.helpers.protectedContext);
   const expanded = signAcceptanceDocument({ ...verdict, modelClaim: 'accepted' }, input.helpers.protectedContext.verdictSigner);
   assert.equal(verifyAcceptanceVerdict(expanded, input.helpers.protectedContext.trustPolicy), false);
+});
+
+
+test('direct development signed identity contract may omit development obligations only on the configured consumer', () => {
+  const input = fixture();
+  const { integrity, signature, ...payload } = input.contract;
+  const direct = signAcceptanceDocument({ ...payload, developmentMode: 'direct',
+    requiredDimensions: [], requiredObligations: [], requiredProfiles: [] }, signer(input.helpers.keys.platform));
+  const previous = process.env.FORGE_DEVELOPMENT_MODE;
+  delete process.env.FORGE_DEVELOPMENT_MODE;
+  try {
+    assert.throws(() => validateAcceptanceContract(direct, input.helpers.protectedContext.trustPolicy),
+      { code: 'CONTRACT_MODE_INVALID' });
+    process.env.FORGE_DEVELOPMENT_MODE = 'direct';
+    assert.equal(validateAcceptanceContract(direct, input.helpers.protectedContext.trustPolicy), direct);
+    const forged = { ...direct, taskId: 'another-task' };
+    assert.throws(() => validateAcceptanceContract(forged, input.helpers.protectedContext.trustPolicy),
+      { code: 'CONTRACT_INTEGRITY_INVALID' });
+    const governedEmpty = signAcceptanceDocument({ ...payload, requiredDimensions: [], requiredObligations: [], requiredProfiles: [] }, signer(input.helpers.keys.platform));
+    assert.throws(() => validateAcceptanceContract(governedEmpty, input.helpers.protectedContext.trustPolicy));
+  } finally {
+    if (previous === undefined) delete process.env.FORGE_DEVELOPMENT_MODE;
+    else process.env.FORGE_DEVELOPMENT_MODE = previous;
+  }
 });

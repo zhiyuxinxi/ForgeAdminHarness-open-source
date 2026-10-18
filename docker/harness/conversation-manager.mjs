@@ -1,3 +1,7 @@
+import { createConversationIntentResolver } from './forge-conversation-intent.mjs';
+import { loadRuntimeVersions, publicRuntimeVersion, resolveRuntimeVersion, RuntimeVersionError } from './harness-runtime-versions.mjs';
+import { routeRuntimeManagerRequest } from './runtime-manager-routing.mjs';
+import { createManagerConversationIntentInterpreter } from './forge-conversation-intent-model.mjs';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { constants as fsConstants } from 'node:fs';
@@ -526,6 +530,7 @@ function json(response, status, value) {
 }
 
 async function readJson(request, maxBytes = MAX_REQUEST_BYTES) {
+  if (Object.hasOwn(request, 'runtimeParsedBody')) return request.runtimeParsedBody;
   const chunks = [];
   let received = 0;
   for await (const chunk of request) {
@@ -536,7 +541,9 @@ async function readJson(request, maxBytes = MAX_REQUEST_BYTES) {
     chunks.push(chunk);
   }
   try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    request.runtimeParsedBody = value;
+    return value;
   } catch {
     throw new ManagerError('INVALID_JSON', '请求体不是合法 JSON。', 400);
   }
@@ -675,6 +682,7 @@ export function createVerificationSourceObservationClient(socketPath) {
 }
 
 export function compileProtectedAcceptanceSpec(contract) {
+  if (contract.developmentMode === 'direct') return { requiredDimensions: [], requiredObligations: [] };
   const verificationProfiles = contract.requiredVerificationProfiles.filter((profile) => profile !== 'governance');
   const scopedUtility = Object.hasOwn(contract, 'suspendedReviewObligations') && contract.tddRequired === false
     && contract.taskProfiles.includes('frontend-admin')
@@ -725,6 +733,7 @@ function publicMetadata(metadata) {
     createdAt: metadata.createdAt,
     updatedAt: metadata.updatedAt,
     protectedExecutionEligible: taskspaceSupportsProtectedExecution(metadata),
+    ...(metadata.runtimeVersion ? { runtimeVersion: publicRuntimeVersion(metadata.runtimeVersion) } : {}),
   };
 }
 
@@ -798,6 +807,8 @@ async function defaultRunControl(controlScript, projectSlug, args, timeoutMs) {
 }
 
 export function createConversationManager(options) {
+  const developmentMode = options.developmentMode ?? process.env.FORGE_DEVELOPMENT_MODE ?? 'controlled';
+  if (!['controlled', 'direct'].includes(developmentMode)) throw new Error('Invalid development mode.');
   const {
     projectRoot,
     projectSlug,
@@ -806,6 +817,8 @@ export function createConversationManager(options) {
     managerToken,
     auditPath,
     commandTimeoutMs = DEFAULT_COMMAND_TIMEOUT_MS,
+    runtimeChannel = process.env.FORGE_RUNTIME_CHANNEL || null,
+    runtimeVersionId = process.env.FORGE_RUNTIME_VERSION_ID || null,
     runControl = defaultRunControl,
     materialPreprocessor,
     materialAccessMode = 'reviewed',
@@ -920,6 +933,11 @@ export function createConversationManager(options) {
     try { return await execute(args); }
     finally { provisioningTasks.delete(taskId); }
   };
+
+  const semanticIntentEnabled = options.semanticIntentEnabled ?? process.env.FORGE_SEMANTIC_INTENT_ENABLED === 'true';
+  const resolveConversationIntent = options.resolveConversationIntent ?? (semanticIntentEnabled
+    ? createConversationIntentResolver({stateRoot:path.join(projectRoot, 'ops', 'conversation-intent'),
+      interpret:createManagerConversationIntentInterpreter()}) : null);
 
   const metadataPath = (taskId) => {
     validateControlValue(validateTaskId, taskId, 'INVALID_TASK_ID', 'TaskSpace 标识不合法。');
@@ -2132,6 +2150,8 @@ export function createConversationManager(options) {
         if (typeof server.address() !== 'string') {
           throw new ManagerError('EXECUTION_RENEWAL_AUTHORITY_DENIED', '执行续期授权查询仅允许项目内部连接。', 403);
         }
+        if (await routeRuntimeManagerRequest({ request, response, projectRoot, runtimeChannel,
+          runtimeVersionId, readBody: readJson, readMetadata, managerToken })) return;
         const input = await readJson(request);
         if (!isExecutionRenewalAuthorityRequest(input) || input.projectSlug !== projectSlug) {
           throw new ManagerError('EXECUTION_RENEWAL_AUTHORITY_MISMATCH', '执行续期身份与当前项目不匹配。', 409);
@@ -2242,6 +2262,15 @@ export function createConversationManager(options) {
         return;
       }
       authorize(request);
+      if (await routeRuntimeManagerRequest({ request, response, projectRoot, runtimeChannel,
+        runtimeVersionId, readBody: readJson, readMetadata, managerToken })) return;
+
+      if (request.method === 'GET' && parsed.pathname === '/v1/runtime-versions') {
+        const catalog = await loadRuntimeVersions(path.join(projectRoot, 'ops', 'harness-runtime-versions.json'));
+        json(response, 200, { ok: true, defaultChannel: catalog.defaultChannel,
+          versions: catalog.versions.map(publicRuntimeVersion) });
+        return;
+      }
 
       if (request.method === 'GET' && parsed.pathname === '/v1/project-release-status') {
         let status;
@@ -2346,6 +2375,8 @@ export function createConversationManager(options) {
 
       if (request.method === 'POST' && parsed.pathname === '/v1/taskspaces') {
         const body = await readJson(request);
+        const runtime = body.runtimeChannel === undefined ? undefined : request.runtimeResolvedVersion
+          ?? await resolveRuntimeVersion(path.join(projectRoot, 'ops', 'harness-runtime-versions.json'), body.runtimeChannel, body.runtimeVersionId);
         const taskId = validateControlValue(validateTaskId, body.taskId, 'INVALID_TASK_ID', 'TaskSpace 标识不合法。');
         auditAction = 'create';
         auditTaskId = taskId;
@@ -2366,6 +2397,9 @@ export function createConversationManager(options) {
           throw new ManagerError('INVALID_ACCESS_MODE', '自动会话只能使用 conversation 访问模式。', 400);
         }
         const requireMatchingIdentity = (candidate) => {
+          if (runtime && candidate.runtimeVersion?.versionId !== runtime.versionId) {
+            throw new ManagerError('RUNTIME_VERSION_CHANGED', '工作舱的实际运行版本与所选版本不一致。', 409);
+          }
           if (candidate.schemaVersion !== 2) {
             throw new ManagerError(
               'TASKSPACE_IDENTITY_SCHEMA_CONFLICT',
@@ -2411,8 +2445,11 @@ export function createConversationManager(options) {
             '--actor-user-id', actorUserId,
             '--conversation', conversationId,
             '--access-mode', 'conversation',
+            ...(runtime ? ['--runtime-channel', runtime.channel, '--runtime-version-id', runtime.versionId] : []),
           ]);
-          return readMetadata(taskId);
+          const created = await readMetadata(taskId);
+          requireMatchingIdentity(created);
+          return created;
         });
         await appendAudit({ requestId, action: auditAction, taskId, result: 'success' });
         json(response, 200, { ok: true, taskspace: publicMetadata(metadata) });
@@ -2539,7 +2576,7 @@ export function createConversationManager(options) {
         if (Object.hasOwn(body, 'workspaceWriteAuthorized') && typeof body.workspaceWriteAuthorized !== 'boolean') {
           throw new ManagerError('EXECUTION_WRITE_AUTHORIZATION_INVALID', '工作舱写权限必须由可信入口提供。', 422);
         }
-        if (Object.hasOwn(body, 'conversationTaskPreparationSupported')
+        if (Object.hasOwn(body, 'conversationIntent') || Object.hasOwn(body, 'conversationTaskPreparationSupported')
           || Object.hasOwn(body, 'conversationFormatMaintenanceSupported')
           || Object.hasOwn(body, 'conversationContractContinuationSupported')
           || Object.hasOwn(body, 'independentReviewSuspensionSupported')
@@ -2562,13 +2599,14 @@ export function createConversationManager(options) {
           if (Object.keys(actualInput).some((key) => actualInput[key] !== originalPrepareRequest[key])) {
             throw new ManagerError('PHASE_BROWSER_REQUEST_MISMATCH', '当前对话请求与受控记录不一致。', 409);
           }
-          explicitReadOnly = actualInput.classification === 'claimable-text'
+          explicitReadOnly = !semanticIntentEnabled && actualInput.classification === 'claimable-text'
             && hasGlobalReadOnlyIntent(originalPrepareRequest.promptText);
         }
         // Role authority is an upper bound. Only the verified direct user text
         // may lower this turn; generated Controller templates are not inspected.
-        const workspaceWriteAuthorized = explicitReadOnly ? false : roleWorkspaceWriteAuthorized;
-        const authorizedActionCeiling = explicitReadOnly ? undefined : roleActionCeiling;
+        let workspaceWriteAuthorized = explicitReadOnly ? false : roleWorkspaceWriteAuthorized;
+        let authorizedActionCeiling = explicitReadOnly ? undefined : roleActionCeiling;
+        let conversationIntent;
         let prepareRequest = originalPrepareRequest;
         let forwardBody;
         let execution;
@@ -2581,7 +2619,7 @@ export function createConversationManager(options) {
           execution = await enqueueTask(taskId, async () => {
             assertPrepareConnected();
             const taskMetadata = await readMetadata(taskId);
-            if (roleWorkspaceWriteAuthorized === true && (taskMetadata.schemaVersion !== 2
+            if ((roleWorkspaceWriteAuthorized === true || semanticIntentEnabled) && (taskMetadata.schemaVersion !== 2
               || taskMetadata.status !== 'active' || taskMetadata.accessMode !== 'conversation'
               || taskMetadata.actorUserId !== prepareRequest.actorUserId
               || taskMetadata.actorId !== prepareRequest.actorUsername
@@ -2602,6 +2640,22 @@ export function createConversationManager(options) {
               if (session.running || await hasActiveForgeTaskWriter({ projectRoot, projectSlug, taskId })) rejectBusy();
             };
             await checkPromptActivity();
+            if (semanticIntentEnabled && prepareRequest.classification === 'claimable-text') {
+              if (typeof promptBody !== 'string' || developmentMode !== 'direct') {
+                throw new ManagerError('CONVERSATION_INTENT_CONFIG_INVALID', '自然语言入口需要完整用户原文和已启用的精简模式。', 503);
+              }
+              try { conversationIntent = await resolveConversationIntent({projectSlug,taskId,...prepareRequest}); }
+              catch (error) {
+                const code = ['CONVERSATION_INTENT_INVALID','CONVERSATION_INTENT_UNAVAILABLE'].includes(error?.code)
+                  ? error.code : 'CONVERSATION_INTENT_UNAVAILABLE';
+                throw new ManagerError(code, '平台未能判定本轮用户意图，本次请求尚未执行；原任务和已完成结果保留。', 503);
+              }
+              explicitReadOnly = !conversationIntent.resolved.writable;
+              // Account authority remains independent of the semantic decision.
+              workspaceWriteAuthorized = roleWorkspaceWriteAuthorized;
+              authorizedActionCeiling = roleActionCeiling;
+              assertPrepareConnected();
+            }
             let observation = null;
             if (acceptanceControlClient !== null) {
               observation = await sourceObservationClient({ taskId });
@@ -2622,7 +2676,9 @@ export function createConversationManager(options) {
             }
             assertPrepareConnected();
             let phaseDirectory = path.join(taskspacesRoot, '.broker', 'delivery-phases', taskId, 'phase-control');
-            const phaseDirectoryInfo = await lstat(phaseDirectory).catch((error) => {
+            // Direct development preserves historical phase files without routing
+            // new messages through their workflow or manufacturing completion.
+            const phaseDirectoryInfo = developmentMode === 'direct' ? null : await lstat(phaseDirectory).catch((error) => {
               if (error.code === 'ENOENT') return null;
               throw error;
             });
@@ -2851,7 +2907,7 @@ export function createConversationManager(options) {
             let previousCompletion;
             if (executionAuthorityClient !== null && prepareRequest.classification === 'claimable-text') {
               let sourceTransition;
-              if (!explicitReadOnly && isForgeConversationTaskContinuation(originalPrepareRequest.promptText)) {
+              if (!explicitReadOnly && (conversationIntent ? conversationIntent.resolved.continuation : isForgeConversationTaskContinuation(originalPrepareRequest.promptText))) {
                 const candidate = await sourceTransitionReader({ projectRoot, taskId });
                 if (candidate !== null && candidate !== undefined) {
                   let validated;
@@ -2883,6 +2939,7 @@ export function createConversationManager(options) {
                 ...Object.fromEntries(Object.entries(runtimeCapabilities)
                   .filter(([, supported]) => supported === true)),
                 ...(authorizedActionCeiling === undefined ? {} : { authorizedActionCeiling }),
+                ...(conversationIntent === undefined ? {} : { conversationIntent }),
                 source: {
                   head: observation?.source?.head,
                   fingerprint: observation?.source?.fingerprint,
@@ -2920,6 +2977,7 @@ export function createConversationManager(options) {
               projectSlug,
               taskMetadata,
               request: prepareRequest,
+              trustedReleaseCancellation: ['pause', 'cancel'].includes(conversationIntent?.decision?.kind),
               trustedPolicyInput,
               previousCompletion,
               ...(browserPhase === undefined ? {} : { trustedPhase: {
@@ -3053,7 +3111,9 @@ export function createConversationManager(options) {
     } catch (error) {
       const known = error instanceof ManagerError
         ? error
-        : error instanceof ProjectMaterialError || error instanceof PhaseWorkPackageFilesError
+        : error instanceof ProjectMaterialError || error instanceof PhaseWorkPackageFilesError || error instanceof RuntimeVersionError
+          || (/^CONVERSATION_(?:INTENT_(?:INVALID|UNAVAILABLE|BINDING_INVALID|REQUIRED)|ACTIVITY_UNAVAILABLE)$/u.test(error?.code ?? '')
+            && Number.isInteger(error.status) && error.status >= 400 && error.status < 600)
           ? new ManagerError(error.code, error.message, error.status, error.details)
           : new ManagerError('INTERNAL_ERROR', '会话管理服务发生内部错误。', 500);
       try {

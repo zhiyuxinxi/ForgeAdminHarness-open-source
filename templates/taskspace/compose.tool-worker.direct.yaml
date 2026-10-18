@@ -1,0 +1,10 @@
+# Only selected for operator-configured direct TaskSpaces. Install the two
+# versioned profiles with scripts/install-direct-worker-isolation.sh first.
+# The model Harness retains its original Docker policies and credentials.
+# Compose reads seccomp profiles in its client process. The platform tree is
+# available at the same path on the host and in the Manager's read-only mount.
+services:
+  harness-tool-worker:
+    security_opt:
+      - apparmor:forge-direct-worker
+      - seccomp:/opt/forge-delivery-platform/templates/seccomp/forge-direct-worker.json

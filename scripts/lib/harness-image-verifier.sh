@@ -426,7 +426,8 @@ resolve_configured_harness_foundation_image_id() {
     && "${foundation_image_id}" =~ ^sha256:[0-9a-f]{64}$ ]] \
     || die "Configured Harness foundation differs from the persisted baseline receipt."
 
-  if ! verify_registered_incremental_harness_image "${HARNESS_IMAGE}" "${foundation_image_id}"; then
+  if ! verify_registered_compacted_harness_image "${HARNESS_IMAGE}" "${foundation_image_id}" \
+    && ! verify_registered_incremental_harness_image "${HARNESS_IMAGE}" "${foundation_image_id}"; then
     verify_harness_foundation_image "${HARNESS_FOUNDATION_IMAGE}" "${foundation_image_id}" >/dev/null
   fi
   verified_image_id="${FORGE_VERIFIED_HARNESS_FOUNDATION_IMAGE_ID}"
@@ -444,6 +445,25 @@ resolve_configured_harness_foundation_image_id() {
 
 # Optional registration lives in the existing operator-owned baseline. A malformed
 # registration is a hard failure; absent registration keeps the legacy verifier.
+verify_registered_compacted_harness_image() {
+  local target_image="${1:?Harness image is required.}"
+  local foundation_id="${2:?Foundation image ID is required.}"
+  local receipt
+  receipt="$(node "${REPO_ROOT}/scripts/verify-harness-compaction.mjs" \
+    --image "${target_image}" --foundation-id "${foundation_id}" \
+    --receipt-root "${HARNESS_IDENTITY_RECEIPT_ROOT:-${DELIVERY_ROOT}/baselines}/harness-compactions")" \
+    || die "Harness compaction receipt failed verification."
+  [[ "$(harness_json_required_field registered <<<"${receipt}")" == true ]] || return 1
+  FORGE_VERIFIED_HARNESS_IMAGE_ID="$(harness_json_required_field imageId <<<"${receipt}")"
+  FORGE_VERIFIED_HARNESS_BUILD_DIGEST="$(harness_json_required_field buildDigest <<<"${receipt}")"
+  FORGE_VERIFIED_HARNESS_BASE_IMAGE_ID="$(harness_json_required_field baseImageId <<<"${receipt}")"
+  FORGE_VERIFIED_HARNESS_CONFIG_DIGEST="$(harness_json_required_field configDigest <<<"${receipt}")"
+  FORGE_VERIFIED_HARNESS_FOUNDATION_IMAGE_ID="$(harness_json_required_field foundationImageId <<<"${receipt}")"
+  export FORGE_VERIFIED_HARNESS_IMAGE_ID FORGE_VERIFIED_HARNESS_BUILD_DIGEST \
+    FORGE_VERIFIED_HARNESS_BASE_IMAGE_ID FORGE_VERIFIED_HARNESS_CONFIG_DIGEST \
+    FORGE_VERIFIED_HARNESS_FOUNDATION_IMAGE_ID
+}
+
 verify_registered_incremental_harness_image() {
   local image="$1" foundation_id="$2" receipt_file receipt owner_uid group_gid
   receipt_file="${HARNESS_IDENTITY_RECEIPT_ROOT:-${DELIVERY_ROOT}/baselines}/baseline.lock"
@@ -477,7 +497,8 @@ verify_target_harness_image() {
   local target_layers base_layers
 
   for command_name in docker grep node; do require_command "${command_name}"; done
-  if verify_registered_incremental_harness_image "${target_image}" "${expected_base_image_id}"; then
+  if verify_registered_compacted_harness_image "${target_image}" "${expected_base_image_id}" \
+    || verify_registered_incremental_harness_image "${target_image}" "${expected_base_image_id}"; then
     [[ -z "${expected_inherited_id}" || "${expected_inherited_id}" == "${FORGE_VERIFIED_HARNESS_IMAGE_ID}" ]] \
       || die "Verified Harness image identity changed before cutover."
     return 0

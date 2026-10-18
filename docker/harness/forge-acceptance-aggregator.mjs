@@ -267,6 +267,7 @@ export function validateAcceptanceContract(contract, trustPolicy) {
     'schemaVersion', 'signature', 'taskId',
     ...(Object.hasOwn(contract, 'dualReview') ? ['dualReview'] : []),
     ...(Object.hasOwn(contract, 'previousReview') ? ['previousReview'] : []),
+    ...(Object.hasOwn(contract, 'developmentMode') ? ['developmentMode'] : []),
   ], 'contract');
   if (contract.schemaVersion !== ACCEPTANCE_SCHEMA_VERSION || contract.contractType !== CONTRACT_TYPE) schemaError('CONTRACT_TYPE_INVALID', 'The task execution contract type or version is unsupported.');
   requiredString(contract.contractId, SAFE_ID, 'contract.contractId');
@@ -278,9 +279,11 @@ export function validateAcceptanceContract(contract, trustPolicy) {
   requiredString(contract.candidate.diffSha256, SHA256, 'contract.candidate.diffSha256');
   validateSource(contract.candidate.source, 'contract.candidate.source');
   const requiredProfiles = uniqueStrings(contract.requiredProfiles, SAFE_PROFILE, 'contract.requiredProfiles', { allowEmpty: true });
-  const requiredDimensions = uniqueStrings(contract.requiredDimensions, SAFE_ID, 'contract.requiredDimensions');
-  if (requiredDimensions.some((item) => !PROOF_DIMENSIONS.includes(item)) || !requiredDimensions.includes('implemented')) schemaError('SCHEMA_INVALID', 'contract.requiredDimensions must contain implemented and only known proof dimensions.');
-  if (!Array.isArray(contract.requiredObligations) || contract.requiredObligations.length === 0) schemaError('SCHEMA_INVALID', 'contract.requiredObligations must be a non-empty array.');
+  const directDevelopment = process.env.FORGE_DEVELOPMENT_MODE === 'direct' && contract.developmentMode === 'direct';
+  if (Object.hasOwn(contract, 'developmentMode') && !directDevelopment) schemaError('CONTRACT_MODE_INVALID', 'Direct development contracts require the operator-configured direct consumer.');
+  const requiredDimensions = uniqueStrings(contract.requiredDimensions, SAFE_ID, 'contract.requiredDimensions', { allowEmpty: directDevelopment });
+  if (requiredDimensions.some((item) => !PROOF_DIMENSIONS.includes(item)) || (!directDevelopment && !requiredDimensions.includes('implemented'))) schemaError('SCHEMA_INVALID', 'contract.requiredDimensions must contain implemented and only known proof dimensions.');
+  if (!Array.isArray(contract.requiredObligations) || (!directDevelopment && contract.requiredObligations.length === 0)) schemaError('SCHEMA_INVALID', 'contract.requiredObligations must be a non-empty array outside direct development.');
   contract.requiredObligations.forEach((item, index) => validateObligation(item, index, requiredProfiles));
   const dualObligation = contract.requiredObligations.find((item) => item.id === 'spec-and-quality-review');
   if (Boolean(dualObligation) !== Object.hasOwn(contract, 'dualReview')

@@ -117,6 +117,8 @@ services:
     working_dir: /workspace
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     environment:
+      FORGE_DEVELOPMENT_MODE: ${FORGE_DEVELOPMENT_MODE:-controlled}
+      FORGE_SEMANTIC_INTENT_ENABLED: ${FORGE_SEMANTIC_INTENT_ENABLED:-false}
       HOME: /home/node
       DSH_HOME: /home/node/.dsh
       DSH_TELEMETRY_DISABLED: "1"
@@ -227,6 +229,8 @@ services:
     group_add:
       - "${DOCKER_GID:?DOCKER_GID is required for the conversation manager}"
     environment:
+      FORGE_DEVELOPMENT_MODE: ${FORGE_DEVELOPMENT_MODE:-controlled}
+      FORGE_SEMANTIC_INTENT_ENABLED: ${FORGE_SEMANTIC_INTENT_ENABLED:-false}
       CONVERSATION_PROJECT_ROOT: ${PROJECT_ROOT:?PROJECT_ROOT is required}
       CONVERSATION_PROJECT_SLUG: ${PROJECT_SLUG:?PROJECT_SLUG is required}
       CONVERSATION_PHASE_CATALOG_FILE: ${FORGE_SKILL_BUNDLE_ROOT:?FORGE_SKILL_BUNDLE_ROOT is required}/current/skills/forge-task-router/references/phase-profiles.json
@@ -309,6 +313,8 @@ services:
     group_add:
       - "${DOCKER_GID:?DOCKER_GID is required for the controlled release runner}"
     environment:
+      FORGE_DEVELOPMENT_MODE: ${FORGE_DEVELOPMENT_MODE:-controlled}
+      FORGE_SEMANTIC_INTENT_ENABLED: ${FORGE_SEMANTIC_INTENT_ENABLED:-false}
       RELEASE_RUNNER_SOCKET: /run/forge-release/runner.sock
       RELEASE_RUNNER_PROJECT_ROOT: ${PROJECT_ROOT:?PROJECT_ROOT is required}
       RELEASE_RUNNER_CONTRACT: ${PROJECT_ROOT:?PROJECT_ROOT is required}/ops/runtime-contract.json
@@ -351,6 +357,8 @@ services:
     command: ["node", "/usr/local/lib/forge-protected-acceptance-service.mjs"]
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     environment:
+      FORGE_DEVELOPMENT_MODE: ${FORGE_DEVELOPMENT_MODE:-controlled}
+      FORGE_SEMANTIC_INTENT_ENABLED: ${FORGE_SEMANTIC_INTENT_ENABLED:-false}
       ACCEPTANCE_SERVICE_CONFIG: /etc/forge-acceptance/service.json
       ACCEPTANCE_CONTROL_SOCKET: /run/forge-acceptance-control/control.sock
       ACCEPTANCE_ISSUER_SOCKET: /run/forge-acceptance-issuer/issuer.sock
@@ -413,6 +421,8 @@ services:
     group_add:
       - "${DOCKER_GID:?DOCKER_GID is required for the controlled verification runner}"
     environment:
+      FORGE_DEVELOPMENT_MODE: ${FORGE_DEVELOPMENT_MODE:-controlled}
+      FORGE_SEMANTIC_INTENT_ENABLED: ${FORGE_SEMANTIC_INTENT_ENABLED:-false}
       VERIFICATION_PROJECT_SLUG: ${PROJECT_SLUG:?PROJECT_SLUG is required}
       VERIFICATION_TASKSPACES_ROOT: ${PROJECT_ROOT:?PROJECT_ROOT is required}/taskspaces
       VERIFICATION_CONTRACT: ${PROJECT_VERIFY_ROOT:?PROJECT_VERIFY_ROOT is required}/contract.json
@@ -462,6 +472,8 @@ services:
     command: ["/usr/local/bin/node", "/usr/local/lib/taskspace-broker.mjs"]
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     environment:
+      FORGE_DEVELOPMENT_MODE: ${FORGE_DEVELOPMENT_MODE:-controlled}
+      FORGE_SEMANTIC_INTENT_ENABLED: ${FORGE_SEMANTIC_INTENT_ENABLED:-false}
       TASKSPACE_PROJECT_ROOT: ${PROJECT_ROOT:?PROJECT_ROOT is required}
       TASKSPACE_PROJECT_SLUG: ${PROJECT_SLUG:?PROJECT_SLUG is required}
       TASKSPACE_BROKER_ADDRESS: 0.0.0.0
@@ -496,6 +508,14 @@ services:
           create_host_path: false
       - ${PROJECT_ROOT:?PROJECT_ROOT is required}/workspace:${PROJECT_ROOT:?PROJECT_ROOT is required}/workspace
       - ${PROJECT_ROOT:?PROJECT_ROOT is required}/taskspaces:${PROJECT_ROOT:?PROJECT_ROOT is required}/taskspaces
+      # Verify the same platform-owned bytes mounted into Harness, not its
+      # empty workspace placeholder. This grants no governance write access.
+      - type: bind
+        source: ${PROJECT_ROOT:?PROJECT_ROOT is required}/governance/PROJECT_CONTEXT.md
+        target: ${PROJECT_ROOT:?PROJECT_ROOT is required}/governance/PROJECT_CONTEXT.md
+        read_only: true
+        bind:
+          create_host_path: false
       - ${PROJECT_RELEASE_IPC_ROOT:?PROJECT_RELEASE_IPC_ROOT is required}:/run/forge-release:ro
       - ${PROJECT_VERIFY_IPC_ROOT:?PROJECT_VERIFY_IPC_ROOT is required}:/run/forge-verify:ro
       - type: bind

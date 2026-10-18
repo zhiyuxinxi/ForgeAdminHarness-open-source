@@ -67,6 +67,10 @@ compose() {
   if [[ -f "${delivery_env}" ]]; then
     compose_args+=(--env-file "${delivery_env}" --file "${REPO_ROOT}/templates/conversation-control-plane/compose.delivery-center.yaml")
   fi
+  local production_gateway="${control_root}/production-delivery/service-plans/production-gateway.compose.json"
+  if [[ -f "${production_gateway}" ]]; then
+    compose_args+=(--file "${production_gateway}")
+  fi
   docker compose "${compose_args[@]}" "$@"
 }
 

@@ -22,6 +22,34 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || die "Required command is missing: $1"
 }
 
+# Docker bind-mounted secrets retain host ownership. Match the non-root
+# Harness primary group instead of silently leaving DeepSeek unreadable.
+repair_harness_deepseek_secret_access() {
+  [[ -n "${DEEPSEEK_KEY_FILE:-}" ]] || return 0
+  [[ -e "${DEEPSEEK_KEY_FILE}" || -L "${DEEPSEEK_KEY_FILE}" ]] || return 0
+  [[ "${EUID}" -eq 0 ]] || die "DeepSeek secret ownership repair requires the root installation path."
+  require_command python3
+  local harness_gid
+  harness_gid="$(getent group "${DELIVERY_GROUP}" | cut -d: -f3)"
+  [[ "${harness_gid}" =~ ^[0-9]+$ ]] || die "Harness delivery group is unavailable."
+  python3 - "${DELIVERY_ROOT}" "${DEEPSEEK_KEY_FILE}" "${harness_gid}" <<'PY'
+import os,stat,sys
+from pathlib import Path
+root=Path(sys.argv[1])/'secrets';key=Path(sys.argv[2]);gid=int(sys.argv[3])
+if not key.is_absolute() or root.is_symlink() or key.parent.resolve()!=root.resolve():
+    raise SystemExit('DeepSeek secret must be a direct protected file under DELIVERY_ROOT/secrets.')
+fd=os.open(key,os.O_RDONLY|os.O_NOFOLLOW)
+try:
+    metadata=os.fstat(fd)
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink!=1 or metadata.st_uid!=0:
+        raise SystemExit('DeepSeek secret identity is invalid; no ownership changed.')
+    os.fchown(fd,0,gid)
+    os.fchmod(fd,0o640)
+finally:
+    os.close(fd)
+PY
+}
+
 run_as_delivery_owner() {
   local owner_uid configured_owner_uid expected_owner_uid current_uid
   : "${DELIVERY_OWNER:?DELIVERY_OWNER is required}"
