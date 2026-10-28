@@ -29,11 +29,13 @@ export function createProductionDeliveryServer({store}) {
       else if(route==='targets')output=req.method==='GET'?{items:await store.records(project,'targets')}:await store.createTarget(body,actor);
       else if(route==='deployments')output=req.method==='GET'?{items:(await store.records(project,'deployments')).filter(d=>!url.searchParams.get('targetId')||d.targetId===url.searchParams.get('targetId'))}:await store.deployment(body,actor);
       else{
-        const match=/^(releases|jobs)\/([a-z0-9-]+)(?:\/(jobs|acceptance|stop|download))?$/.exec(route);if(!match)fail('PRODUCTION_NOT_FOUND','入口不存在。',404);
+        const match=/^(releases|jobs)\/([a-z0-9-]+)(?:\/(jobs|acceptance|stop|download|handover(?:\/credentials)?))?$/.exec(route);if(!match)fail('PRODUCTION_NOT_FOUND','入口不存在。',404);
         const [,kind,id,action]=match;
         if(kind==='releases'&&!action&&req.method==='GET')output=await store.releaseDetail(project,id);
         else if(kind==='releases'&&action==='jobs'&&req.method==='POST')output=await store.createJob(id,body,actor);
         else if(kind==='jobs'&&!action&&req.method==='GET')output=await store.getJob(project,id);
+        else if(kind==='jobs'&&action==='handover')output=req.method==='GET'?await store.getHandover(project,id):await store.saveHandover(id,body,actor);
+        else if(kind==='jobs'&&action==='handover/credentials'&&req.method==='POST')output=await store.handoverCredentials(id,body,actor);
         else if(kind==='jobs'&&action==='acceptance'&&req.method==='POST')output=await store.accept(id,body,actor);
         else if(kind==='jobs'&&action==='stop'&&req.method==='POST')output=await store.stop(id,body,actor);
         else if(kind==='jobs'&&action==='download'&&req.method==='GET'){

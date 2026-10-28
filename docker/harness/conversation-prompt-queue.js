@@ -2,113 +2,102 @@
   'use strict';
   if (window.__forgePromptQueueInstalled) return;
   window.__forgePromptQueueInstalled = true;
-  const originalFetch = window.fetch.bind(window);
-  const sessions = new Map();
-  const pending = new Map(), listeners = new Map();
+  const fetchQueue = window.fetch.bind(window);
+  const listeners = new Map(), unsettled = new Map(), mutations = new Set();
+  let snapshot = { items: [], pausedSessions: [], loading: true, error: '' };
+  let timer, refreshFlight, revision = 0;
 
-  function notify(sessionId) {
-    const request = pending.get(sessionId)?.values().next().value;
-    const state = request ? { phase: request.phase, seconds: Math.floor((Date.now() - request.started) / 1000),
-      cancel: request.phase === 'waiting' ? () => request.controller.abort(new Error('已取消等待，本条消息尚未发送，正在执行的任务不受影响。')) : null } : null;
-    for (const listener of listeners.get(sessionId) ?? []) listener(state);
+  function notify() {
+    for (const [sessionId, subscribers] of listeners) {
+      const state = { ...snapshot, sessionId, busyIds: [...mutations],
+        refresh, cancel: id => mutate('/cancel', { id }, id),
+        resume: id => mutate('/resume', { sessionId: id }, 'session:' + id) };
+      for (const subscriber of subscribers) subscriber(state);
+    }
+  }
+  async function request(path = '', body, signal) {
+    const controller = new AbortController();
+    const abort = () => controller.abort(signal.reason);
+    if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, { once: true });
+    const timeout = setTimeout(() => controller.abort(new Error('队列服务响应超时，请查看队列状态。')), 15000);
+    try {
+      const response = await fetchQueue('/forge-prompt-queue' + path, {
+        method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
+        ...(body === undefined ? {} : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
+      });
+      const value = await response.json();
+      if (!response.ok || value?.ok !== true) {
+        const message = value?.message ?? value?.error?.message;
+        const error = new Error(typeof message === 'string' ? message : '队列操作未完成，请查看状态后重试。');
+        error.status = response.status;
+        error.rejected = response.status >= 400 && response.status < 500;
+        throw error;
+      }
+      return value;
+    } finally { clearTimeout(timeout); signal?.removeEventListener('abort', abort); }
+  }
+  function schedule() {
+    clearTimeout(timer);
+    if (listeners.size) timer = setTimeout(() => { timer = undefined; void refresh(); }, 2000);
+  }
+  function refresh() {
+    if (refreshFlight) return refreshFlight;
+    const ticket = revision;
+    refreshFlight = request().then(value => {
+      if (!Array.isArray(value.items) || !Array.isArray(value.pausedSessions)) throw new Error('队列状态暂时无法读取，请重试。');
+      if (ticket === revision) snapshot = { ...value, loading: false, error: '', actionError: snapshot.actionError };
+      return value;
+    }).catch(error => {
+      if (ticket === revision) snapshot = { ...snapshot, loading: false, error: error.message };
+      return null;
+    }).finally(() => { refreshFlight = null; notify(); schedule(); });
+    return refreshFlight;
+  }
+  async function mutate(path, body, key) {
+    if (mutations.has(key)) return;
+    mutations.add(key); notify();
+    try { await request(path, body); revision++; snapshot = { ...snapshot, actionError: '' }; }
+    catch (error) { snapshot = { ...snapshot, actionError: error.message }; }
+    finally {
+      mutations.delete(key); notify();
+      // Complete any older read before requesting the post-mutation state.
+      if (refreshFlight) await refreshFlight;
+      await refresh();
+    }
   }
   window.__forgeSubscribePromptQueue = (sessionId, listener) => {
     if (!listeners.has(sessionId)) listeners.set(sessionId, new Set());
-    listeners.get(sessionId).add(listener); notify(sessionId);
-    return () => { const set = listeners.get(sessionId); set?.delete(listener); if (!set?.size) listeners.delete(sessionId); };
+    listeners.get(sessionId).add(listener); notify(); void refresh();
+    return () => {
+      const subscribers = listeners.get(sessionId); subscribers?.delete(listener);
+      if (!subscribers?.size) listeners.delete(sessionId);
+      if (!listeners.size) clearTimeout(timer);
+    };
   };
-
-  async function readSessions(signal) {
-    const controller = new AbortController();
-    const abort = () => controller.abort(signal.reason);
-    signal.addEventListener('abort', abort, { once: true });
-    const timer = setTimeout(() => controller.abort(new Error('查询当前执行状态超时，本条消息尚未发送，请稍后重试。')), 30000);
+  // This returns a platform queue receipt, never a native session.prompt result.
+  // The composer may release its draft only after durable server admission.
+  window.__forgeEnqueuePrompt = async (payload, signal) => {
+    if (signal?.aborted) throw signal.reason ?? new DOMException('Request aborted', 'AbortError');
+    const key = JSON.stringify(payload);
+    const id = unsettled.get(key) ?? crypto.randomUUID();
+    unsettled.set(key, id);
+    let item;
     try {
-      if (signal.aborted) abort();
-      const rpcId = crypto.randomUUID();
-      const response = await originalFetch('/api/session.list', {
-        method: 'POST', credentials: 'same-origin', signal: controller.signal,
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ type: 'client-request', rpcId, method: 'session.list', payload: {} }),
-      });
-      const result = await response.json();
-      if (!response.ok || result.rpcId !== rpcId || result.result?.ok !== true) {
-        throw new Error('无法确认当前对话是否已结束，后续消息尚未发送。');
-      }
-      return result.result.value?.items;
+      const value = await request('', { ...payload, id }, signal);
+      if (value.queued !== true || value.item?.id !== id) throw new Error('入队结果暂未确认。');
+      item = value.item;
     } catch (error) {
-      if (controller.signal.aborted) throw controller.signal.reason;
-      throw error;
-    } finally { clearTimeout(timer); signal.removeEventListener('abort', abort); }
-  }
-
-  function afterPrior(prior, signal) {
-    return new Promise((resolve, reject) => {
-      const abort = () => reject(signal.reason);
-      if (signal.aborted) { abort(); return; }
-      signal.addEventListener('abort', abort, { once: true });
-      prior.catch(() => {}).then(() => { signal.removeEventListener('abort', abort); resolve(); });
-    });
-  }
-
-  function wait(signal) {
-    return new Promise((resolve, reject) => {
-      const abort = () => {
-        clearTimeout(timer);
-        reject(signal.reason ?? new DOMException('Request aborted', 'AbortError'));
-      };
-      const timer = setTimeout(() => {
-        signal?.removeEventListener('abort', abort);
-        resolve();
-      }, 1000);
-      if (signal?.aborted) abort();
-      else signal?.addEventListener('abort', abort, { once: true });
-    });
-  }
-
-  // Called by the pinned native sessions.prompt entry, before callUnary creates
-  // its transport timeout. Waiting inside fetch consumes that timeout instead.
-  window.__forgeQueuePrompt = function (payload, signal, dispatch) {
-    if (payload?.mode !== 'queue' || typeof payload.sessionId !== 'string') return dispatch();
-    const controller = new AbortController();
-    const abort = () => controller.abort(signal.reason ?? new DOMException('Request aborted', 'AbortError'));
-    if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, { once: true });
-    const request = { sessionId: payload.sessionId, controller, signal: controller.signal, phase: 'waiting', started: Date.now() };
-    if (!pending.has(request.sessionId)) pending.set(request.sessionId, new Set());
-    pending.get(request.sessionId).add(request); notify(request.sessionId);
-    const prior = sessions.get(request.sessionId) ?? Promise.resolve();
-    const next = afterPrior(prior, request.signal).then(async () => {
-      // Bind protected authority only when this queued browser message can run.
-      // Preparing it during a preceding edit replaces that edit's execution
-      // identity and captures a source fingerprint that is already obsolete.
-      for (;;) {
-        if (request.signal?.aborted) throw request.signal.reason ?? new DOMException('Request aborted', 'AbortError');
-        const items = await readSessions(request.signal);
-        if (request.signal.aborted) throw request.signal.reason;
-        const session = items?.find(item => item.sessionId === request.sessionId);
-        if (!session || session.running !== true) {
-          request.phase = 'submitting'; notify(request.sessionId);
-          const dispatched = await dispatch();
-          const error = dispatched?.result?.ok === false ? dispatched.result.error : null;
-          // This fixed native reason guarantees the request was not accepted.
-          // A timeout, unknown error, or accepted prompt must never be replayed.
-          if (error?.code !== 'agent-busy'
-            || error.details?.reason !== 'CONVERSATION_EXECUTION_BUSY_NOT_ACCEPTED') return dispatched;
-        }
-        request.phase = 'waiting'; notify(request.sessionId);
-        await wait(request.signal);
-      }
-    });
-    // Cancelling a follower must not let later messages overtake its pending head.
-    const tail = Promise.allSettled([prior, next]);
-    sessions.set(request.sessionId, tail);
-    void next.finally(() => {
-      signal?.removeEventListener('abort', abort);
-      const requests = pending.get(request.sessionId); requests?.delete(request);
-      if (!requests?.size) pending.delete(request.sessionId);
-      notify(request.sessionId);
-    }).catch(() => {});
-    void tail.then(() => { if (sessions.get(request.sessionId) === tail) sessions.delete(request.sessionId); });
-    return next;
+      if (error.rejected) { unsettled.delete(key); throw error; }
+      // A lost response is not a safe reason to resend under a new identity.
+      // Reconcile once; a user retry of the same draft retains this id.
+      const value = await refresh();
+      item = value?.items.find(entry => entry.id === id);
+      if (!item) throw new Error('暂未确认消息是否入队，输入已保留。请先查看队列；再次发送同一条消息会核对原请求，不会重复入队。');
+    }
+    unsettled.delete(key); revision++;
+    snapshot = { ...snapshot, loading: false, error: '', items: [...snapshot.items.filter(entry => entry.id !== id), item].sort((a, b) => a.sequence - b.sequence) };
+    notify(); schedule();
+    return item;
   };
+  window.addEventListener?.('focus', () => { if (listeners.size) void refresh(); });
 })();

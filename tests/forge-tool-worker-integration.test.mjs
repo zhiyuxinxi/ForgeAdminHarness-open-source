@@ -35,6 +35,8 @@ test('TODO-047 production tool-worker composition exposes public files without c
   const compose = yaml.parse(await readFile(new URL('../templates/taskspace/compose.tool-worker.yaml', import.meta.url), 'utf8'));
   const worker = compose.services['harness-tool-worker'];
   assert.equal(worker.image, '${HARNESS_IMAGE:?HARNESS_IMAGE is required}');
+  assert.equal(worker.init, true, 'the container init must reap orphaned sandbox descendants');
+  assert.equal(worker.pids_limit, 1024, 'reaping must preserve the existing PID quota');
   assert.equal(worker.read_only, true);
   assert.deepEqual(worker.cap_drop, ['ALL']);
   assert.deepEqual(worker.security_opt, ['no-new-privileges:true']);
@@ -43,7 +45,8 @@ test('TODO-047 production tool-worker composition exposes public files without c
   assert.deepEqual(targets.sort(), ['/workspace', '/workspace/PROJECT_CONTEXT.md', '/integration', '/opt/forge-skill-bundles',
     '/project-inputs', '/project-ftp-inputs', '/project-shared-inputs', '/workspace/.forge-cache/m2',
     '/workspace/.forge-cache/npm', '/workspace/.forge-cache/pnpm', '/workspace/.forge-cache/general', '/run/forge-tool-worker'].sort());
-  assert.deepEqual(Object.keys(worker.environment).sort(), ['HOME', 'DSH_PERMISSION_MODE', 'DSH_BUNDLED_SKILL_DIR', 'MAVEN_CONFIG', 'MAVEN_OPTS',
+  assert.deepEqual(Object.keys(worker.environment).sort(), ['FORGE_DEVELOPMENT_MODE', 'FORGE_SEMANTIC_INTENT_ENABLED',
+    'HOME', 'DSH_PERMISSION_MODE', 'DSH_BUNDLED_SKILL_DIR', 'MAVEN_CONFIG', 'MAVEN_OPTS',
     'NPM_CONFIG_CACHE', 'XDG_CACHE_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME', 'PNPM_HOME', 'DSH_TELEMETRY_DISABLED', 'TZ'].sort());
   assert.equal(compose.services.harness.volumes[0].read_only, true);
   assert.equal(compose.services.harness.depends_on['harness-tool-worker'].condition, 'service_healthy');

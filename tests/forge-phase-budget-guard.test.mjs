@@ -571,10 +571,13 @@ test('old release sessions receive the current recoverable integrate discovery c
   assert.match(notice, /refresh status after actual edits, checkpoint, integrate, or a tool reports changed or stale state/u);
   assert.match(notice, /--expected-head = preflight\.taskspace\.head/u);
   assert.match(notice, /--expected-fingerprint = preflight\.taskspace\.workspaceFingerprint/u);
-  assert.match(notice, /--canonical-head = preflight\.taskspace\.canonicalHead/u);
+  assert.match(notice, /For start, --canonical-head = preflight\.taskspace\.canonicalHead/u);
+  assert.match(notice, /For continue, --canonical-head = preflight\.integration\.canonicalHead/u);
+  assert.match(notice, /never use historical preflight\.integration\.to\.head or preflight\.integration\.to\.fingerprint/u);
   assert.match(notice, /zero --path flags when that list is empty/u);
   assert.match(notice, /integrate --mode start --expected-head <preflight\.taskspace\.head> --expected-fingerprint <preflight\.taskspace\.workspaceFingerprint> --canonical-head <preflight\.taskspace\.canonicalHead>/u);
-  assert.match(notice, /integrate --mode continue --operation-id <operationId> --expected-head/u);
+  assert.match(notice, /integrate --mode continue --operation-id <operationId> --expected-head <preflight\.taskspace\.head> --expected-fingerprint <preflight\.taskspace\.workspaceFingerprint> --canonical-head <preflight\.integration\.canonicalHead>/u);
+  assert.doesNotMatch(notice, /integrate --mode continue --operation-id <operationId> --expected-head <[^>]+> --expected-fingerprint <[^>]+> --canonical-head <preflight\.taskspace\.canonicalHead>/u);
   assert.match(notice, /current preflight\.integration\.conflictPaths/u);
   assert.match(notice, /never pass the complete automatically merged dirty set/u);
   assert.match(notice, /recoveryOnly=true/u);
@@ -591,7 +594,8 @@ test('invalid bare integrate points to read-only discovery and the strict recove
   assert.match(denial, /Load or reload Skills forge-controlled-release and forge-taskspace-collaboration/u);
   assert.match(denial, /--expected-head = preflight\.taskspace\.head/u);
   assert.match(denial, /--expected-fingerprint = preflight\.taskspace\.workspaceFingerprint/u);
-  assert.match(denial, /--canonical-head = preflight\.taskspace\.canonicalHead/u);
+  assert.match(denial, /For start, --canonical-head = preflight\.taskspace\.canonicalHead/u);
+  assert.match(denial, /For continue, --canonical-head = preflight\.integration\.canonicalHead/u);
   assert.match(denial, /repeat --path once for every item/u);
   assert.match(denial, /zero --path flags/u);
   assert.match(denial, /--mode continue --operation-id <operationId>/u);
@@ -610,15 +614,17 @@ test('invalid bare integrate points to read-only discovery and the strict recove
 
 test('release consumer Skills publish the same exact start, continue, and conflict contracts', async () => {
   const skillPaths = [
-    'docker/harness/skills/forge-controlled-release/SKILL.md',
-    'docker/harness/skills/forge-taskspace-collaboration/SKILL.md',
+    'docker/harness/skills/forge-controlled-release/CONTROLLED.md',
+    'docker/harness/skills/forge-taskspace-collaboration/CONTROLLED.md',
   ];
   for (const skillPath of skillPaths) {
     const skill = await readFile(path.resolve(skillPath), 'utf8');
     assert.match(skill, /发布前读取一次 `forge-release status`/u);
     assert.match(skill, /不再紧接着调用 `forge-release preflight`/u);
     assert.match(skill, /--expected-head <preflight\.taskspace\.head> --expected-fingerprint <preflight\.taskspace\.workspaceFingerprint> --canonical-head <preflight\.taskspace\.canonicalHead>/u);
-    assert.match(skill, /--mode continue --operation-id <current-preflight\.integration\.operationId-or-conflict-result\.operationId>/u);
+    assert.match(skill, /--mode continue --operation-id <current-preflight\.integration\.operationId-or-conflict-result\.operationId> --expected-head <preflight\.taskspace\.head> --expected-fingerprint <preflight\.taskspace\.workspaceFingerprint> --canonical-head <preflight\.integration\.canonicalHead>/u);
+    assert.doesNotMatch(skill, /integrate --mode continue[^\n]*--canonical-head <preflight\.taskspace\.canonicalHead>/u);
+    assert.match(skill, /不能取历史 `preflight\.integration\.to\.head` 或 `preflight\.integration\.to\.fingerprint`/u);
     assert.match(skill, /完整 `preflight\.taskspace\.dirtyPaths`/u);
     assert.match(skill, /continue 的.*`--path`.*`preflight\.integration\.conflictPaths`/u);
     assert.match(skill, /不得传.*`preflight\.taskspace\.dirtyPaths`/u);
@@ -630,6 +636,16 @@ test('release consumer Skills publish the same exact start, continue, and confli
     assert.match(skill, /不证明所有会话均已同步/u);
     assert.match(skill, /不得隐藏或自动接受 fresh\/new HEAD/u);
   }
+});
+
+test('direct collaboration Skill binds current source and the pending integration target', async () => {
+  const skill = await readFile(path.resolve('docker/harness/skills/forge-taskspace-collaboration/SKILL.md'), 'utf8');
+  assert.match(skill, /integrate --mode start --expected-head <taskspace\.head> --expected-fingerprint <taskspace\.workspaceFingerprint> --canonical-head <taskspace\.canonicalHead>/u);
+  assert.match(skill, /integrate --mode continue --operation-id <integration\.operationId> --expected-head <taskspace\.head> --expected-fingerprint <taskspace\.workspaceFingerprint> --canonical-head <integration\.canonicalHead>/u);
+  assert.doesNotMatch(skill, /integrate --mode continue[^\n]*--canonical-head <taskspace\.canonicalHead>/u);
+  assert.match(skill, /不能取历史 integration\.to\.head 或 integration\.to\.fingerprint/u);
+  assert.match(skill, /项目 canonical 已前进也不替换它/u);
+  assert.match(skill, /continue 的路径只来自当前 integration\.conflictPaths/u);
 });
 
 test('delivery CLI is callable only under matching current task authority and never proves execution', () => {
@@ -3295,6 +3311,110 @@ test('direct tool renewal failure keeps expired authority denied', async (t) => 
   assert.equal(executed, false);
 });
 
+test('valid direct source reads do not wait for in-flight write binding renewal', async (t) => {
+  let release, entered;
+  const barrier = new Promise((resolve) => { release = resolve; });
+  const started = new Promise((resolve) => { entered = resolve; });
+  t.after(() => release());
+  const value = await checkpointGuardFixture(t, { direct: true, resolveBarrier: async (calls) => {
+    if (calls === 2) { entered(); await barrier; }
+  } });
+  value.setContext(new Error('EXECUTION_CONTEXT_TIMEOUT: private-token-must-not-appear'));
+  const transition = value.handlers.get('tools/result')(value.checkpoint, ok(JSON.stringify(value.result)));
+  await started;
+  let reads = 0;
+  const pendingReads = Promise.all(['read', 'grep', 'glob', 'ls', 'find'].map((name) =>
+    value.handlers.get('tools/pre-execute')(exec(name, { path: 'forge-admin-ui/src' }, value.agent),
+      async () => { reads += 1; return { kind: 'allow' }; })));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(reads, 5, 'source reads must finish while the renewal response is still held');
+  assert.ok((await pendingReads).every((decision) => decision.kind === 'allow'));
+  let written = false;
+  const write = value.handlers.get('tools/pre-execute')(exec('write', {
+    path: 'forge-admin-ui/src/example.ts', content: 'changed',
+  }, value.agent), async () => { written = true; return { kind: 'allow' }; });
+  assert.equal(value.calls(), 2, 'the concurrent writer shares the existing renewal');
+  release();
+  await transition;
+  const denied = await write;
+  assert.equal(denied.kind, 'deny');
+  assert.match(denied.reason, /EXECUTION_CONTEXT_TIMEOUT/u);
+  assert.doesNotMatch(denied.reason, /private-token/u);
+  assert.equal(written, false);
+});
+
+test('failed direct transition renewal is reused within one step and recovers at the next', async (t) => {
+  const value = await checkpointGuardFixture(t, { direct: true });
+  value.setContext(Object.assign(new Error('private response body'), { code: 'RUNTIME_VERSION_MISMATCH' }));
+  await value.handlers.get('tools/result')(value.checkpoint, ok(JSON.stringify(value.result)));
+  const state = value.controller.states.get(value.agent);
+  assert.equal(value.calls(), 2);
+  assert.equal(state.executionContextFailureCode, 'RUNTIME_VERSION_MISMATCH');
+  const read = await value.handlers.get('tools/pre-execute')(exec('read', {
+    path: 'forge-admin-ui/src/example.ts',
+  }, value.agent), async () => ({ kind: 'allow' }));
+  assert.equal(read.kind, 'allow');
+  const write = () => value.handlers.get('tools/pre-execute')(exec('write', {
+    path: 'forge-admin-ui/src/example.ts', content: 'changed',
+  }, value.agent), async () => ({ kind: 'allow' }));
+  assert.equal((await write()).kind, 'deny');
+  state.sequence += 1;
+  assert.equal((await write()).kind, 'deny');
+  assert.equal(value.calls(), 2, 'ordinary sequence changes cannot trigger another lookup');
+  value.setContext(value.nextContext);
+  await value.step(2);
+  assert.equal(value.calls(), 3);
+  assert.equal(value.controller.states.get(value.agent).executionContextFailureCode, undefined);
+  assert.equal(value.controller.states.get(value.agent).pendingSourceTransition, undefined);
+  assert.equal((await write()).kind, 'allow');
+});
+
+test('failed direct pre-step renewal is reused by tools until the next model step', async (t) => {
+  const value = await checkpointGuardFixture(t, { direct: true });
+  const state = value.controller.states.get(value.agent);
+  state.executionContextExpiresAt = new Date(Date.now() - 1).toISOString();
+  value.setContext(new Error('EXECUTION_CONTEXT_TIMEOUT: private-response-body'));
+  await value.step(2);
+  for (const name of ['read', 'job_list', 'skill']) {
+    const denied = await value.handlers.get('tools/pre-execute')(exec(name, {
+      path: 'forge-admin-ui/src/example.ts', name: 'forge-testing-observability',
+    }, value.agent), async () => ({ kind: 'allow' }));
+    assert.equal(denied.kind, 'deny');
+    assert.match(denied.reason, /EXECUTION_CONTEXT_TIMEOUT/u);
+    assert.doesNotMatch(denied.reason, /private-response-body/u);
+  }
+  assert.equal(value.calls(), 2);
+  value.setContext(value.context);
+  await value.step(3);
+  assert.equal(value.calls(), 3);
+  assert.equal(state.executionContextFailureCode, undefined);
+});
+
+test('concurrent direct tools share one renewal and changed expiry permits another renewal', async (t) => {
+  let release, entered;
+  const barrier = new Promise((resolve) => { release = resolve; });
+  const started = new Promise((resolve) => { entered = resolve; });
+  t.after(() => release());
+  const value = await checkpointGuardFixture(t, { direct: true, resolveBarrier: async (calls) => {
+    if (calls === 2) { entered(); await barrier; }
+  } });
+  const state = value.controller.states.get(value.agent);
+  state.executionContextExpiresAt = new Date(Date.now() - 1).toISOString();
+  const call = (name) => value.handlers.get('tools/pre-execute')(exec(name, {
+    name: 'forge-testing-observability',
+  }, value.agent), async () => ({ kind: 'allow' }));
+  const first = call('job_list');
+  await started;
+  const second = call('skill');
+  assert.equal(value.calls(), 2);
+  release();
+  assert.ok((await Promise.all([first, second])).every((decision) => decision.kind === 'allow'));
+  assert.equal(value.calls(), 2);
+  state.executionContextExpiresAt = new Date(Date.now() - 10_000).toISOString();
+  assert.equal((await call('job_list')).kind, 'allow');
+  assert.equal(value.calls(), 3, 'a changed lease binding must not reuse an earlier attempt');
+});
+
 test('scoped checkpoint refreshes protected source authority while reporting unrelated dirty candidates honestly', async (t) => {
   const value = await checkpointGuardFixture(t);
   value.result.result.workspaceClean = false;
@@ -3504,6 +3624,26 @@ test('review-base-only integration refreshes Host admission in the same protecte
   await value.step(3);
   assert.equal(value.calls(), 2, 're-reading the completed job must not repeat refresh');
   assert.equal(value.admissions(), 2);
+});
+
+test('a new review-base operation does not reuse another operation renewal failure', async (t) => {
+  const value = await checkpointGuardFixture(t);
+  const canonical = 'b'.repeat(40);
+  const call = () => exec('bash', { command: `forge-release integrate --mode start --expected-head ${value.context.sourceCommit} --expected-fingerprint ${value.context.workspaceFingerprint} --canonical-head ${canonical}` }, value.agent);
+  const result = (operationId) => ok(JSON.stringify({ ok: true, result: {
+    operation: 'integrate', status: 'integrated', operationId,
+    head: value.context.sourceCommit, workspaceFingerprint: value.context.workspaceFingerprint,
+    canonicalHead: canonical, workspaceClean: true, sourceTransition: null,
+    reviewBaseTransition: { from: 'f'.repeat(40), to: canonical, appliedAt: new Date().toISOString() },
+  } }));
+  value.setContext(new Error('EXECUTION_CONTEXT_TIMEOUT: failed renewal'));
+  await value.handlers.get('tools/result')(call(), result('review-base-first'));
+  assert.equal(value.calls(), 2);
+  assert.equal(value.controller.states.get(value.agent).pendingSourceTransition.digest, undefined);
+  value.setContext(value.context);
+  await value.handlers.get('tools/result')(call(), result('review-base-second'));
+  assert.equal(value.calls(), 3, 'the changed operation must refresh even in the same step');
+  assert.equal(value.controller.states.get(value.agent).executionContextStatus, 'ready');
 });
 
 test('review-base refresh rejects unrelated failed or changed-source integration results', async (t) => {

@@ -102,9 +102,13 @@ test('semantic Manager binds the original RPC and rejects client-supplied intent
   const intakeRoot = path.join(root, 'intake'); await mkdir(intakeRoot);
   const controlScript = path.join(root, 'taskspacectl.sh'); await writeFile(controlScript, '# fixture\n');
   const token = 'm'.repeat(64), sourceCommit = 'a'.repeat(40), fingerprint = 'b'.repeat(64);
-  let acceptanceSpec; let intentCalls=0; let intentKind='execute';
+  let acceptanceSpec; let intentCalls=0; let intentKind='execute'; let nativeReadOnly=false;
   let expectedPrompt='能不能修复页面并发布一个版本？';
   const server = createConversationManager({ developmentMode: 'direct', semanticIntentEnabled:true,
+    promptSessionReader:async input => {
+      assert.deepEqual(input,{projectSlug,taskId:metadata.taskId,dshSessionId:'session-direct'});
+      return {running:false,readOnly:nativeReadOnly};
+    },
     resolveConversationIntent:async input => { intentCalls++; assert.equal(input.actorUserId,metadata.actorUserId); assert.equal(input.promptText,expectedPrompt); return {resolved:{writable:intentKind==='execute',continuation:false,actionCeiling:intentKind==='execute'?'release':'read-only'},decision:{kind:intentKind}}; }, projectRoot: root, projectSlug,
     intakeRoot, controlScript, managerToken: token, auditPath: path.join(root, 'ops', 'audit.jsonl'),
     runControl: async () => { throw new Error('No lifecycle operation.'); }, sourceTransitionReader: async () => null,
@@ -112,6 +116,11 @@ test('semantic Manager binds the original RPC and rejects client-supplied intent
       projectSlug, taskId, source: { head: sourceCommit, fingerprint, snapshotSha256: fingerprint } }),
     executionAuthorityClient: async body => {
       assert.equal(body.controllerPhase, undefined); assert.equal(body.conversationIntent.decision.kind,intentKind);
+      if (nativeReadOnly) {
+        assert.equal(body.workspaceWriteAuthorized,false);
+        assert.equal(body.authorizedActionCeiling,undefined);
+        return {authority:null,trustedPolicyInput:null};
+      }
       if (intentKind!=='execute') return {authority:null,trustedPolicyInput:null};
       const taskAuthority = { actionCeiling: 'release', ownedPaths: ['.'], taskProfiles: ['project-files'] };
       const contract = compileForgeTaskExecutionContract({ prompt: body.promptText, ...taskAuthority }, { developmentMode: 'direct' });
@@ -148,6 +157,19 @@ test('semantic Manager binds the original RPC and rejects client-supplied intent
   const admitted=JSON.parse(await readFile(executionFile,'utf8')).current;
   const checkRelease=taskMetadata => assertAdmittedProductionRelease({projectRoot:root,taskMetadata,context:admitted});
   await checkRelease(metadata);
+  nativeReadOnly=true;
+  for (const mode of ['queue','steer']) {
+    const nativeBody=JSON.stringify({type:'client-request',rpcId:crypto.randomUUID(),method:'session.prompt',
+      payload:{sessionId:'session-direct',mode,content:[{type:'text',text:expectedPrompt}]}});
+    const nativeInput=classifyPinnedDshPromptBody(Buffer.from(nativeBody),'session.prompt');
+    const readonly=await request(port,'POST',`/v1/taskspaces/${metadata.taskId}/executions/prepare`,token,
+      {...nativeInput,promptBody:nativeBody,projectSlug,taskId:metadata.taskId,actorUserId:metadata.actorUserId,
+        actorUsername:metadata.actorId,conversationId:metadata.conversationId,requestId:crypto.randomUUID(),
+        workspaceWriteAuthorized:true,authorizedActionCeiling:'release'});
+    assert.equal(readonly.status,200,JSON.stringify(readonly.value));
+    assert.equal(readonly.value.execution.actionCeiling,'read-only',`${mode} must retain native read-only despite semantic execute`);
+  }
+  nativeReadOnly=false;
   const nextTurn=async (kind,text) => {
     intentKind=kind; expectedPrompt=text;
     const body=JSON.stringify({type:'client-request',rpcId:crypto.randomUUID(),method:'session.prompt',

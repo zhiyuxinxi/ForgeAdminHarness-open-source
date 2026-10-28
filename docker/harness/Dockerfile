@@ -231,6 +231,7 @@ COPY --chmod=0644 docker/harness/harness-directory-scope.mjs /usr/local/lib/harn
 COPY --chmod=0644 docker/harness/harness-directory-scope.js /usr/local/lib/harness-directory-scope.js
 COPY --chmod=0644 docker/harness/conversation-output.js /usr/local/lib/conversation-output.js
 COPY --chmod=0644 docker/harness/conversation-prompt-queue.js /usr/local/lib/conversation-prompt-queue.js
+COPY --chmod=0644 docker/harness/conversation-message-queue.mjs docker/harness/conversation-message-queue-runtime.mjs /usr/local/lib/
 COPY --chmod=0644 docker/harness/conversation-output-store.mjs /usr/local/lib/conversation-output-store.mjs
 COPY --chmod=0644 docker/harness/output-file-presentation.mjs /usr/local/lib/output-file-presentation.mjs
 COPY --chmod=0644 docker/harness/phase-work-package-files.mjs /usr/local/lib/phase-work-package-files.mjs

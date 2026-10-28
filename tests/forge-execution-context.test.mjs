@@ -2721,8 +2721,11 @@ test('source renewal never treats unfinished merge, checkpoint content drift or 
     (transition) => { transition.to.fingerprint = '7'.repeat(64); },
     (transition) => { transition.task.conversationId = 'different-conversation'; },
     (transition) => { transition.from.head = '7'.repeat(40); },
+    (transition) => { transition.sourceAuthority.executionId = crypto.randomUUID(); },
     (transition) => { transition.sourceAuthority.generation += 1; },
     (transition) => { transition.sourceAuthority.controllerGrantDigest = '7'.repeat(64); },
+    (transition) => { transition.sourceAuthority.issuedAt = new Date(Date.parse(transition.sourceAuthority.issuedAt) + 1).toISOString(); },
+    (transition) => { transition.sourceAuthority.expiresAt = new Date(Date.parse(transition.sourceAuthority.expiresAt) + 1).toISOString(); },
   ]) {
     const changed = structuredClone(value.sourceTransition); mutation(changed);
     const result = await readProtectedExecutionContext({ ...value.options, sourceTransition: value.seal(changed),

@@ -48,3 +48,4 @@ application-prod.yml
 *.pem
 *.key
 private-audit/
+*账号密码*.zip

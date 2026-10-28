@@ -270,28 +270,89 @@ function ForgeWorkpodActions({ sessionId, group, running, connectionReady }) {
     (state.message || saved.message) && react_jsx_runtime.jsx('span', { role: 'status', 'aria-live': 'polite', children: state.message || saved.message })
   ] });
 }
-function ForgePromptQueueStatus({ sessionId }) {
+async function forgeSubmitQueuedSession(session, content, signal) {
+  await globalThis.__forgeEnqueuePrompt({ sessionId: session.sessionId, content,
+    clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }, signal);
+  // Queue admission engages the composer only. It does not create native
+  // user/turn events, set running, or claim that session.prompt was accepted.
+  const wasBlank = session.blankBit;
+  session.promptAttempted = true;
+  session.promptError = null;
+  session.handleBlank(false);
+  if (wasBlank) session.options.onEngaged?.(session);
+  session.notifier.markDirty();
+}
+function ForgeConversationQueueLayout({ sessionId, useSessions, openSession, children }) {
+  const [expanded, setExpanded] = react.useState(false);
+  return react_jsx_runtime.jsx('div', { className: 'forge-conversation-layout', children:
+    react_jsx_runtime.jsxs('div', { className: 'forge-conversation-columns', children: [
+      react_jsx_runtime.jsx('div', { className: 'forge-conversation-main', children }),
+      react_jsx_runtime.jsxs('aside', { className: 'forge-queue-sidebar', 'aria-label': '工作舱队列面板', 'data-expanded': expanded, children: [
+        react_jsx_runtime.jsx('button', { type: 'button', className: 'forge-queue-toggle', 'aria-expanded': expanded,
+          'aria-controls': 'forge-queue-sidebar-body', onClick: () => setExpanded(value => !value), children: expanded ? '收起消息队列' : '展开消息队列' }),
+        react_jsx_runtime.jsx('div', { id: 'forge-queue-sidebar-body', className: 'forge-queue-sidebar-body', children:
+          react_jsx_runtime.jsx(ForgePromptQueueStatus, { sessionId, useSessions,
+            openSession: id => { openSession(id); setExpanded(false); } }) })
+      ] })
+    ] }) });
+}
+function ForgePromptQueueStatus({ sessionId, useSessions, openSession }) {
   const [state, setState] = react.useState(null);
+  const sessionsById = useSessions(s => s.byId);
   react.useEffect(() => {
     setState(null);
     return globalThis.__forgeSubscribePromptQueue?.(sessionId, setState);
   }, [sessionId]);
   if (!state) return null;
-  return react_jsx_runtime.jsxs('section', { className: 'forge-workpod-actions', 'aria-label': '消息提交状态', children: [
-    react_jsx_runtime.jsx('span', { role: 'status', 'aria-live': 'polite', children: state.phase === 'waiting'
-      ? `本条消息尚未发送，正在等待当前对话可执行（${state.seconds} 秒）。`
-      : '正在提交消息，等待接纳结果，请勿重复操作…' }),
-    state.cancel && react_jsx_runtime.jsx('button', { type: 'button', onClick: state.cancel, children: '取消等待' })
+  const active = state.items.filter(item => !['completed', 'cancelled'].includes(item.status));
+  const rows = active.sort((a, b) => a.sequence - b.sequence);
+  const sessionLabel = id => {
+    const title = sessionsById[id]?.displayTitle || sessionsById[id]?.title || `对话 ${id.replace(/^session-/, '').slice(0, 8)}`;
+    return id === sessionId ? `${title}（当前对话）` : title;
+  };
+  const labels = { queued: '已排队', preparing: '正在准备执行', running: '正在执行', completed: '已完成', failed: '执行失败', cancelled: '已取消', uncertain: '接收结果待确认', paused: '已暂停' };
+  return react_jsx_runtime.jsxs('section', { className: 'forge-prompt-queue', 'aria-label': '工作舱消息队列', children: [
+    react_jsx_runtime.jsxs('div', { className: 'forge-prompt-queue-heading', children: [
+      react_jsx_runtime.jsx('strong', { children: '工作舱消息队列' }),
+      react_jsx_runtime.jsx('span', { role: 'status', 'aria-live': 'polite', children: state.loading ? '正在读取…' : `${active.length} 条待处理` }),
+      react_jsx_runtime.jsx('button', { type: 'button', onClick: () => state.refresh(), children: '刷新队列' })
+    ] }),
+    react_jsx_runtime.jsx('p', { className: 'forge-prompt-queue-help', children: '可以继续发送多条消息，AI 按消息入队顺序逐条处理。已完成或已取消的消息自动退出队列，回复保留在所属对话，较早的问题可用“历史提问”查看。取消排队不会停止当前执行。' }),
+    state.error && react_jsx_runtime.jsx('p', { role: 'alert', children: state.error }),
+    state.actionError && react_jsx_runtime.jsx('p', { role: 'alert', children: state.actionError }),
+    state.waitingForAuthorization && react_jsx_runtime.jsx('p', { role: 'status', children: '队列已保存，正在重新核对执行权限。' }),
+    ...state.pausedSessions.map(id => react_jsx_runtime.jsxs('div', { className: 'forge-prompt-queue-paused', children: [
+      react_jsx_runtime.jsx('span', { children: `${sessionLabel(id)}的后续消息已暂停。请查看失败或待确认的结果，再恢复后续消息。` }),
+      react_jsx_runtime.jsx('button', { type: 'button', disabled: state.busyIds.includes('session:' + id), onClick: () => state.resume(id), children: '恢复后续消息' })
+    ] }, id)),
+    !state.loading && !rows.length && react_jsx_runtime.jsx('p', { children: '当前没有排队消息。' }),
+    rows.length > 0 && react_jsx_runtime.jsx('ol', { className: 'forge-prompt-queue-list', children: rows.map(item => {
+      const paused = item.status === 'queued' && state.pausedSessions.includes(item.sessionId);
+      const cancellable = ['queued', 'paused'].includes(item.status);
+      const currentWaiting = item.sessionId === sessionId && ['queued', 'preparing'].includes(item.status);
+      return react_jsx_runtime.jsxs('li', { 'data-forge-queue-id': item.id, 'data-forge-queue-status': paused ? 'paused' : item.status, children: [
+        react_jsx_runtime.jsxs('div', { className: 'forge-prompt-queue-row-heading', children: [
+          react_jsx_runtime.jsx('span', { children: `消息序号 ${item.sequence}` }),
+          react_jsx_runtime.jsx('button', { type: 'button', className: 'forge-queue-conversation', disabled: !sessionsById[item.sessionId], onClick: () => openSession(item.sessionId), 'aria-label': `查看对话：${sessionLabel(item.sessionId)}`, children: sessionLabel(item.sessionId) }),
+          react_jsx_runtime.jsx('strong', { children: paused ? '已暂停' : currentWaiting ? '已发送，等待 AI 处理' : labels[item.status] ?? '状态待确认' }),
+          item.status === 'queued' && !paused && Number.isInteger(item.position) && react_jsx_runtime.jsx('span', { children: `前面还有 ${Math.max(0, item.position - 1)} 条` }),
+          cancellable && react_jsx_runtime.jsx('button', { type: 'button', disabled: state.busyIds.includes(item.id), onClick: () => state.cancel(item.id), 'aria-label': `取消第 ${item.sequence} 条排队消息`, children: '取消排队' })
+        ] }),
+        react_jsx_runtime.jsx('p', { className: 'forge-prompt-queue-preview', children: item.preview || '图片或附件消息' }),
+        item.message && react_jsx_runtime.jsx('p', { className: 'forge-prompt-queue-help', children: item.message }),
+        item.status === 'uncertain' && react_jsx_runtime.jsx('p', { className: 'forge-prompt-queue-help', children: '系统未自动重发本条消息，请先核对所属对话中的实际结果。' })
+      ] }, item.id);
+    }) })
   ] });
 }
-function ForgeQuestionRows({ order, nodeStore, renderNode, loadQuestionHistory, sessionId, running, connectionReady }) {
+function ForgeQuestionRows({ order, nodeStore, renderNode, loadQuestionHistory, sessionId, useSessions, openSession, running, connectionReady }) {
   const groups = forgeWorkpodGroups(order, nodeStore);
-  return [...groups.map((group, index) => group.standalone ? renderNode(group.standalone) : react_jsx_runtime.jsxs(react.Fragment, { children: [
+  return groups.map((group, index) => group.standalone ? renderNode(group.standalone) : react_jsx_runtime.jsxs(react.Fragment, { children: [
     renderNode(group.question.key),
     react_jsx_runtime.jsx(ForgeQuestionProcess, { ...group, renderNode, loadQuestionHistory }),
     ...group.visible.map(renderNode),
     index === groups.length - 1 && group.tail && react_jsx_runtime.jsx(ForgeWorkpodActions, { sessionId, group, running, connectionReady }, `${sessionId}:${group.question.data.seq}:${group.tail.data.seq}`)
-  ] }, group.question.key)), react_jsx_runtime.jsx(ForgePromptQueueStatus, { sessionId }, 'forge-prompt-queue-status')];
+  ] }, group.question.key));
 }
 if (!document.querySelector('style[data-forge-question-history]')) {
   const style = document.createElement('style'); style.dataset.forgeQuestionHistory = 'v1';
@@ -304,6 +365,9 @@ if (!document.querySelector('style[data-forge-question-history]')) {
   .forge-question-history-panel{position:absolute;right:0;top:calc(100% + 8px);z-index:4;width:min(420px,calc(100vw - 48px));border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-base);box-shadow:0 8px 28px #0002;text-align:left}.forge-question-history-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px;border-bottom:1px solid var(--dsw-alias-border-l1)}.forge-question-history-heading strong{font-weight:600}.forge-question-history-list{max-height:min(55vh,480px);overflow:auto;overscroll-behavior:contain;padding:8px}
   .forge-question-history-list .forge-question-history-item{display:flex;align-items:baseline;gap:10px;width:100%;border:0;text-align:left;padding:10px 8px}.forge-question-history-number{flex:none;min-width:2ch;text-align:right;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}.forge-question-history-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.forge-question-history-status{padding:10px 8px;color:var(--dsw-alias-label-secondary);font-size:12px}.forge-question-history-more{width:100%}
   .forge-workpod-actions{display:flex;align-items:center;gap:12px;margin:12px 0}.forge-workpod-actions button{font:inherit;padding:8px 18px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-l1);color:inherit;cursor:pointer}.forge-workpod-actions button:disabled{opacity:.5;cursor:default}.forge-workpod-actions button:focus-visible{outline:2px solid var(--dsw-alias-label-primary);outline-offset:2px}.forge-workpod-actions span{color:var(--dsw-alias-label-secondary);font-size:13px}
+  .forge-prompt-queue{margin:12px 0;padding:12px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base);font-size:13px}.forge-prompt-queue p{margin:6px 0}.forge-prompt-queue-heading,.forge-prompt-queue-row-heading,.forge-prompt-queue-paused{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.forge-prompt-queue-heading>button,.forge-prompt-queue-row-heading>button{margin-left:auto}.forge-prompt-queue-help{color:var(--dsw-alias-label-secondary)}.forge-prompt-queue-list{list-style:none;margin:10px 0 0;padding:0;max-height:320px;overflow:auto;scrollbar-gutter:stable}.forge-prompt-queue-list>li{padding:10px 0;border-top:1px solid var(--dsw-alias-border-l1)}.forge-prompt-queue-preview{white-space:pre-wrap;overflow-wrap:anywhere}.forge-prompt-queue button{font:inherit;color:inherit;cursor:pointer;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:6px 10px;background:var(--dsw-alias-bg-l1)}.forge-prompt-queue button:hover:not(:disabled){background:var(--dsw-alias-bg-l2,var(--dsw-alias-bg-l1))}.forge-prompt-queue button:active:not(:disabled){opacity:.8}.forge-prompt-queue button:focus-visible{outline:2px solid var(--dsw-alias-label-primary);outline-offset:2px}.forge-prompt-queue button:disabled{opacity:.5;cursor:default}.forge-prompt-queue-paused{margin-top:10px;padding:8px;border-left:3px solid var(--dsw-alias-state-warn-primary,var(--dsw-alias-border-l1))}
+  .forge-conversation-layout{container-type:inline-size;flex:1;min-width:0;min-height:0;height:100%;width:100%}.forge-conversation-columns{display:grid;grid-template-columns:minmax(0,1fr) 320px;height:100%;min-height:0;min-width:0}.forge-conversation-main{min-width:0;min-height:0;height:100%;overflow:hidden}.forge-queue-sidebar{display:flex;flex-direction:column;min-height:0;min-width:0;border-left:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-base)}.forge-queue-sidebar-body{min-height:0;flex:1;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}.forge-queue-sidebar .forge-prompt-queue{margin:0;padding:14px;border:0;border-radius:0}.forge-queue-sidebar .forge-prompt-queue-list{max-height:none;overflow:visible}.forge-queue-sidebar .forge-prompt-queue-row-heading>button{margin-left:0}.forge-prompt-queue button.forge-queue-conversation{flex-basis:100%;border:0;background:transparent;padding:0;text-align:left;color:var(--dsw-alias-label-primary);font-weight:600;white-space:normal;overflow-wrap:anywhere}.forge-prompt-queue button.forge-queue-conversation:hover:not(:disabled){text-decoration:underline;background:transparent}.forge-queue-toggle{display:none;font:inherit;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base);border:0;padding:10px 16px;text-align:left;cursor:pointer}.forge-queue-toggle:focus-visible{outline:2px solid var(--dsw-alias-label-primary);outline-offset:-3px}@container (max-width:800px){.forge-conversation-columns{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto}.forge-queue-sidebar{border-left:0;border-top:1px solid var(--dsw-alias-border-l1)}.forge-queue-toggle{display:block}.forge-queue-sidebar-body{display:none;max-height:min(40vh,320px)}.forge-queue-sidebar[data-expanded=true] .forge-queue-sidebar-body{display:block}}
   [data-forge-question-seq]{scroll-margin-top:80px}.forge-question-highlight{outline:2px solid var(--dsw-alias-border-l1);outline-offset:6px;border-radius:6px}@media(max-width:600px){.forge-question-search{padding:8px}.forge-question-search label{width:100%}.forge-question-search input{min-width:0;width:100%}}`;
+  style.textContent += '.forge-queue-sidebar .forge-prompt-queue-preview{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden}';
   document.head.append(style);
 }

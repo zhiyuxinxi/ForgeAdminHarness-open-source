@@ -28,10 +28,10 @@ forge-release integrate --mode start --expected-head <taskspace.head> --expected
 已有 `conflict-open` 时，读取明确的 conflictPaths，只解决这些文件，保留双方业务含义，不全选 ours/theirs、不增加无关修改。不要求另发一轮用户请求或先跑固定 governance profile。编辑后需要当前源码状态时读取一次 status，继续原操作：
 
 ```text
-forge-release integrate --mode continue --operation-id <integration.operationId> --expected-head <taskspace.head> --expected-fingerprint <taskspace.workspaceFingerprint> --canonical-head <taskspace.canonicalHead> --path <conflictPath> ...
+forge-release integrate --mode continue --operation-id <integration.operationId> --expected-head <taskspace.head> --expected-fingerprint <taskspace.workspaceFingerprint> --canonical-head <integration.canonicalHead> --path <conflictPath> ...
 ```
 
-continue 的路径只来自当前 integration.conflictPaths，不能使用所有 dirtyPaths。`source-saved-error` 的恢复按该 operation 的实际恢复动作执行；若 `recoveryOnly=true`，只是恢复冲突基线，按返回路径继续解决，不宣称已合并。业务语义无法确定时说明具体文件和双方差异。
+两种模式的 expected-head、expected-fingerprint 都取当前 status 的 taskspace.head、taskspace.workspaceFingerprint，不能取历史 integration.to.head 或 integration.to.fingerprint。start 的 canonical-head 取 taskspace.canonicalHead；continue 取 integration.canonicalHead，即该待续操作的固定目标，项目 canonical 已前进也不替换它。continue 的路径只来自当前 integration.conflictPaths，不能使用所有 dirtyPaths。`source-saved-error` 的恢复按该 operation 的实际恢复动作执行；若 `recoveryOnly=true`，只是恢复冲突基线，按返回路径继续解决，不宣称已合并。业务语义无法确定时说明具体文件和双方差异。
 
 成功后使用返回的新来源和状态，同一请求继续已授权工作。真实合并或内容变化做必要的相关检查；同内容保存或未发生 sourceTransition 时复用现有结果，不重复 admission、回执验收或 Skill 加载。源码绑定由运行时刷新；真实刷新失败保留已保存内容并处理准确错误，不重复保存。
 

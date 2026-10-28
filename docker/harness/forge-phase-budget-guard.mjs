@@ -309,7 +309,7 @@ function isPlainControlledIntegrateReference(command) {
 }
 
 function controlledIntegrateDiscoveryContract() {
-  return 'Load or reload Skills forge-controlled-release and forge-taskspace-collaboration for the current supported integration flow, even when invokedSkills contains historical names. Read forge-release status once; it already includes fresh preflight taskspace, integration, sourceTransition and runner fields plus service status. The preflight references below mean this result; do not immediately call forge-release preflight again. Reuse this result within the same turn while candidate, canonical and integration state are unchanged; refresh status after actual edits, checkpoint, integrate, or a tool reports changed or stale state. Select the mode from current preflight.integration before considering whether canonical is included: conflict-open uses continue; source-saved-error with error.code TASKSPACE_INTEGRATION_DIRTY_LIMIT uses one recovery continue before any conflict edit, with a fresh release context already bound to the current saved HEAD and fingerprint; any other source-saved-error remains blocked. Use start only when no pending integration exists. Common field mapping: --expected-head = preflight.taskspace.head; --expected-fingerprint = preflight.taskspace.workspaceFingerprint; --canonical-head = preflight.taskspace.canonicalHead. For start only, repeat --path once for every item in the complete preflight.taskspace.dirtyPaths list, or use zero --path flags when that list is empty. Exact start argv: forge-release integrate --mode start --expected-head <preflight.taskspace.head> --expected-fingerprint <preflight.taskspace.workspaceFingerprint> --canonical-head <preflight.taskspace.canonicalHead> [--path <dirtyPath-1> --path <dirtyPath-2> ...]. For continue only, repeat --path once for every item in current preflight.integration.conflictPaths; never pass the complete automatically merged dirty set. Exact continue argv: forge-release integrate --mode continue --operation-id <operationId> --expected-head <preflight.taskspace.head> --expected-fingerprint <preflight.taskspace.workspaceFingerprint> --canonical-head <preflight.taskspace.canonicalHead> --path <conflictPath-1> [--path <conflictPath-2> ...]. For continue, operationId must come from the current preflight.integration.operationId (the pending conflict integration) or the conflict-open result.operationId; never invent it. A continue result with recoveryOnly=true only restores the verified conflict-open baseline without editing or committing source and without a sourceTransition; resolve only its conflictPaths, run the required Host profile on the resulting fingerprint, then issue the ordinary continue from a fresh bound context.';
+  return 'Load or reload Skills forge-controlled-release and forge-taskspace-collaboration for the current supported integration flow, even when invokedSkills contains historical names. Read forge-release status once; it already includes fresh preflight taskspace, integration, sourceTransition and runner fields plus service status. The preflight references below mean this result; do not immediately call forge-release preflight again. Reuse this result within the same turn while candidate, canonical and integration state are unchanged; refresh status after actual edits, checkpoint, integrate, or a tool reports changed or stale state. Select the mode from current preflight.integration before considering whether canonical is included: conflict-open uses continue; source-saved-error with error.code TASKSPACE_INTEGRATION_DIRTY_LIMIT uses one recovery continue before any conflict edit, with a fresh release context already bound to the current saved HEAD and fingerprint; any other source-saved-error remains blocked. Use start only when no pending integration exists. Current source mapping for both modes: --expected-head = preflight.taskspace.head; --expected-fingerprint = preflight.taskspace.workspaceFingerprint; never use historical preflight.integration.to.head or preflight.integration.to.fingerprint. For start, --canonical-head = preflight.taskspace.canonicalHead. For continue, --canonical-head = preflight.integration.canonicalHead; retain this fixed pending target even if the project canonical has advanced. For start only, repeat --path once for every item in the complete preflight.taskspace.dirtyPaths list, or use zero --path flags when that list is empty. Exact start argv: forge-release integrate --mode start --expected-head <preflight.taskspace.head> --expected-fingerprint <preflight.taskspace.workspaceFingerprint> --canonical-head <preflight.taskspace.canonicalHead> [--path <dirtyPath-1> --path <dirtyPath-2> ...]. For continue only, repeat --path once for every item in current preflight.integration.conflictPaths; never pass the complete automatically merged dirty set. Exact continue argv: forge-release integrate --mode continue --operation-id <operationId> --expected-head <preflight.taskspace.head> --expected-fingerprint <preflight.taskspace.workspaceFingerprint> --canonical-head <preflight.integration.canonicalHead> --path <conflictPath-1> [--path <conflictPath-2> ...]. For continue, operationId must come from the current preflight.integration.operationId (the pending conflict integration) or the conflict-open result.operationId; never invent it. A continue result with recoveryOnly=true only restores the verified conflict-open baseline without editing or committing source and without a sourceTransition; resolve only its conflictPaths, run the required Host profile on the resulting fingerprint, then issue the ordinary continue from a fresh bound context.';
 }
 
 function normalizeProtectedExecutionContext(value, now = Date.now()) {
@@ -1907,7 +1907,7 @@ function toolDenialReason(state, exec) {
       || !['production-task-writer', 'production-read-only'].includes(state.executionAuthorityClass) || state.executionTestOnly !== false
       || !state.executionIdentity || !Number.isFinite(Date.parse(state.executionContextExpiresAt))
       || Date.parse(state.executionContextExpiresAt) <= Date.now()) {
-      return `${marker}: direct development requires the current unexpired authenticated TaskSpace context`;
+      return `${marker}: direct development requires the current unexpired authenticated TaskSpace context${state.executionContextFailureCode ? ` (${state.executionContextFailureCode})` : ''}`;
     }
     if (controlledReleaseInspection || controlledVerificationInspection || controlledGovernanceInspection) return undefined;
     const ordinaryShell = exec?.name === 'bash' && !controlledReleaseMutation && !controlledReleasePreparation
@@ -2847,6 +2847,7 @@ function installPhaseBudgetGuard(ctx, createUserMessage, {
     };
   });
   const sourceTransitionResults = new WeakMap();
+  const contextRefreshAttempts = new WeakMap();
   const executionStates = new Map();
   const configuredMaxSteps = boundedStepBudget(maxSteps);
   const testShadowCandidateWriteRequested = testShadowCandidateWriteMode
@@ -2903,7 +2904,7 @@ function installPhaseBudgetGuard(ctx, createUserMessage, {
     return state;
   };
 
-  const refreshCurrentContext = async (agent, completedTransition = null) => {
+  const refreshCurrentContext = async (agent, completedTransition = null, boundary = null) => {
     const current = agent ? states.get(agent) : undefined;
     const checkpoint = completedTransition ?? current?.pendingSourceTransition ?? null;
     const integrated = checkpoint?.phase === 'integrated';
@@ -2917,6 +2918,20 @@ function installPhaseBudgetGuard(ctx, createUserMessage, {
       || (!['ready', 'expired'].includes(current.executionContextStatus) && checkpoint === null)
       || (checkpoint === null && Date.parse(current.executionContextExpiresAt) > Date.now() + 30_000)
       || typeof resolveExecutionContext !== 'function') return current;
+    const turn = boundary?.turn ?? current.turn;
+    const step = boundary?.step ?? current.lastObservedTurnStep;
+    const key = JSON.stringify([current.executionIdentity, current.executionContextGeneration,
+      current.executionRpcId, current.executionDshSessionId, current.executionSourceCommit,
+      current.executionWorkspaceFingerprint, current.executionContextExpiresAt,
+      checkpoint?.phase, checkpoint?.operationId, checkpoint?.to?.head, checkpoint?.to?.fingerprint, checkpoint?.digest]);
+    const previous = contextRefreshAttempts.get(agent);
+    if (previous?.key === key && (!previous.settled || (previous.turn === turn
+      && previous.step === step
+      && (!previous.succeeded || Date.parse(current.executionContextExpiresAt) > Date.now())))) return previous.promise;
+    // Coalesce unchanged lookups within this model step. The next existing
+    // step remains a recovery boundary after a transient failure.
+    const attempt = { key, turn, step, settled: false, succeeded: false, promise: null };
+    contextRefreshAttempts.set(agent, attempt);
     if (checkpoint !== null) {
       // Resume this completed source transition at an existing boundary after
       // a transport failure; never replay the checkpoint or integration.
@@ -2927,7 +2942,7 @@ function installPhaseBudgetGuard(ctx, createUserMessage, {
       current.completionVerificationSequence = current.verificationSequence - 1;
       current.lastReminderKey = '';
     }
-    try {
+    attempt.promise = (async () => { try {
       const renewed = normalizeProtectedExecutionContext(await resolveExecutionContext({
         agent, turn: current.turn, step: current.currentStep, decision: { kind: 'enter', messages: [] },
         sourceTransition: checkpoint,
@@ -2954,8 +2969,13 @@ function installPhaseBudgetGuard(ctx, createUserMessage, {
           || !['git-checkpoint', 'release'].includes(renewed.contract.actionCeiling)
           || renewed.contract.actionCeiling !== current.actionCeiling))
         || (checkpoint !== null && (renewed.sourceCommit !== checkpoint.to.head
-          || renewed.workspaceFingerprint !== checkpoint.to.fingerprint))) return current;
+          || renewed.workspaceFingerprint !== checkpoint.to.fingerprint))) {
+        current.executionContextFailureCode = 'EXECUTION_CONTEXT_IDENTITY_MISMATCH';
+        return current;
+      }
       const refreshed = stateFor(agent, current.turn, renewed);
+      refreshed.executionContextFailureCode = undefined;
+      attempt.succeeded = true;
       if (integrated) {
         refreshed.prompt = current.prompt;
         refreshed.promptReadOnlyConstraint = current.promptReadOnlyConstraint;
@@ -2966,7 +2986,12 @@ function installPhaseBudgetGuard(ctx, createUserMessage, {
         refreshed.lastReviewBaseTransitionOperationId = checkpoint.operationId;
       }
       return refreshed;
-    } catch { return current; }
+    } catch (error) {
+      current.executionContextFailureCode = /^[A-Z][A-Z0-9_]{1,79}$/u.test(error?.code ?? '') ? error.code
+        : /^([A-Z][A-Z0-9_]{1,79}):/u.exec(error?.message ?? '')?.[1] ?? 'EXECUTION_CONTEXT_RENEWAL_FAILED';
+      return current;
+    } finally { attempt.settled = true; } })();
+    return attempt.promise;
   };
 
   const prepareTask = async (args, exec) => {
@@ -3074,7 +3099,7 @@ function installPhaseBudgetGuard(ctx, createUserMessage, {
         executionContext = undefined;
       }
     }
-    if (!directPromptRequiresContext) await refreshCurrentContext(agent);
+    if (!directPromptRequiresContext) await refreshCurrentContext(agent, null, { turn, step });
     const state = stateFor(agent, turn, executionContext, directPromptRequiresContext);
     await reconcileBrowserAuthority(agent, directBrowserAuthority(state));
     if (directPromptRequiresContext) state.executionContextFailureCode = executionContext
@@ -3173,12 +3198,11 @@ function installPhaseBudgetGuard(ctx, createUserMessage, {
   ctx.on('tools/pre-execute', async (exec, next) => {
     let state;
     try { state = exec.agent ? states.get(exec.agent) : undefined; } catch { state = undefined; }
-    // A long model step can outlive the lease checked at pre-step. Direct
-    // reads and verification commands require that same current authority.
-    // Reuse the signed renewal path before applying the unchanged denial rules.
+    const sourceReadAlreadyAllowed = ['read', 'grep', 'glob', 'ls', 'find'].includes(exec.name)
+      && directDevelopmentEnabled(state?.taskContract) && toolDenialReason(state, exec) === undefined;
     const directAuthorityTool = directDevelopmentEnabled(state?.taskContract)
       && (READ_TOOLS.has(exec.name) || exec.name === 'bash' || exec.name === 'browser' || exec.name === 'skill');
-    if (state && (directAuthorityTool || isMutationExecution(exec) || isBusinessDataMutationExecution(exec)
+    if (state && !sourceReadAlreadyAllowed && (directAuthorityTool || isMutationExecution(exec) || isBusinessDataMutationExecution(exec)
       || (exec.name === 'bash' && parseControlledReleaseMutationCommand(commandOf(exec)) !== null))) {
       state = await refreshCurrentContext(exec.agent);
     }

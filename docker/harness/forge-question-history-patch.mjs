@@ -5,6 +5,9 @@ import { pathToFileURL } from 'node:url';
 const MARKER = 'forge-question-history-v2';
 const LEGACY_MARKER = 'forge-question-history-v1';
 const WORKPOD_UI_MARKER = 'forge-workpod-flow-v1';
+const PROMPT_QUEUE_UI_MARKER = 'forge-prompt-queue-composer-v1';
+const PROMPT_QUEUE_NAVIGATION_MARKER = 'forge-prompt-queue-navigation-v1';
+const PROMPT_QUEUE_SIDEBAR_MARKER = 'forge-prompt-queue-sidebar-v1';
 const clientHelpers = readFileSync(new URL('./forge-question-history-client.js', import.meta.url), 'utf8');
 const historySearchProps = "sessionId, loadQuestionHistory, jump, historyRevision: order.reduce((latest, key) => { const node = nodeStore.get(key); return ['user', 'steering'].includes(node?.kind) ? node.data.seq : latest; }, null)";
 function replaceOnce(source, before, after) {
@@ -152,11 +155,55 @@ export function patchHistoryUi(source) {
   source = replaceOnce(source, '"chat.loadOlder": "加载更早",', '"chat.loadOlder": "上一个问题",');
   return installActions(source);
 }
+export function patchPromptQueueUi(source) {
+  if (!source.includes(`// ${PROMPT_QUEUE_UI_MARKER}`)) {
+  source = replaceOnce(source, 'async send(text) {\n\t\t\t\tconst result = await this.scopedSession("send").prompt([{', `async send(text) {
+        const session = this.scopedSession("send");
+        if (session.address === void 0 && globalThis.__forgeEnqueuePrompt) {
+          await forgeSubmitQueuedSession(session, [{ type: 'text', text }]);
+          return;
+        }
+        const result = await session.prompt([{`);
+  source = replaceOnce(source, 'if (!(await session.prompt(content, mode, signal)).ok) return { kind: "error" };', `if (mode === 'queue' && session.address === void 0 && globalThis.__forgeEnqueuePrompt) {
+          await forgeSubmitQueuedSession(session, content, signal);
+        } else if (!(await session.prompt(content, mode, signal)).ok) return { kind: "error" };`);
+  source = replaceOnce(source, 'if (blank && composerPhase === "blank") return null;',
+    'if (blank && composerPhase === "blank") return sessionId ? react_jsx_runtime.jsx(ForgePromptQueueStatus, { sessionId, blank: true }) : null;');
+    source = `// ${PROMPT_QUEUE_UI_MARKER}\n` + source;
+  }
+  if (!source.includes(`// ${PROMPT_QUEUE_NAVIGATION_MARKER}`)) {
+  source = replaceOnce(source, 'function ChatView({ loadQuestionHistory,', 'function ChatView({ openSession, loadQuestionHistory,');
+  source = replaceOnce(source, 'ForgeQuestionRows, { order, nodeStore, loadQuestionHistory, sessionId, running, connectionReady, renderNode:',
+    'ForgeQuestionRows, { order, nodeStore, loadQuestionHistory, sessionId, useSessions, openSession, running, connectionReady, renderNode:');
+  source = replaceOnce(source, 'jumpQuestion: seq => sessions.binding(sessionId).session.forgeJumpQuestion(seq),',
+    'jumpQuestion: seq => sessions.binding(sessionId).session.forgeJumpQuestion(seq),\n            openSession: id => sessions.open(id),');
+  source = replaceOnce(source, 'function ConversationSession({ sessionId, useSession,', 'function ConversationSession({ sessionId, useSessions, openSession, useSession,');
+  source = replaceOnce(source, 'views,\n\t\t\t\t\t\treleaseSessionImages: (id) => {',
+    'views,\n            openSession: id => sessions.open(id),\n\t\t\t\t\t\treleaseSessionImages: (id) => {');
+  source = replaceOnce(source, 'ForgePromptQueueStatus, { sessionId, blank: true }', 'ForgePromptQueueStatus, { sessionId, useSessions, openSession, blank: true }');
+    source = `// ${PROMPT_QUEUE_NAVIGATION_MARKER}\n` + source;
+  }
+  if (source.includes(`// ${PROMPT_QUEUE_SIDEBAR_MARKER}`)) return source;
+  source = replaceOnce(source, 'function ConversationRoot({ sessionId, useSession,', 'function ConversationRoot({ sessionId, openSession, useSession,');
+  source = replaceOnce(source, 'inject: (sessionId) => ({\n\t\t\t\t\thooks: { composerBlock:',
+    'inject: (sessionId) => ({\n          openSession: id => sessions.open(id),\n\t\t\t\t\thooks: { composerBlock:');
+  source = replaceOnce(source, 'return (0, react_jsx_runtime.jsxs)("div", {\n\t\t\t\tclassName: ConversationRoot_module_css_default.root,',
+    'return react_jsx_runtime.jsx(ForgeConversationQueueLayout, { sessionId, useSessions, openSession, children: (0, react_jsx_runtime.jsxs)("div", {\n\t\t\t\tclassName: ConversationRoot_module_css_default.root,');
+  source = replaceOnce(source, 'children: [renderSlot("conversation.session", {}), composerSeat]\n\t\t\t\t})]\n\t\t\t});',
+    'children: [renderSlot("conversation.session", {}), composerSeat]\n\t\t\t\t})]\n\t\t\t}) });');
+  source = replaceOnce(source, 'if (blank && composerPhase === "blank") return sessionId ? react_jsx_runtime.jsx(ForgePromptQueueStatus, { sessionId, useSessions, openSession, blank: true }) : null;',
+    'if (blank && composerPhase === "blank") return null;');
+  source = replaceOnce(source, 'const primaryStops = running && subagent === null;\n\t\t\tconst interruptible = running && continuable;',
+    'const forgeQueueComposer = subagent === null && typeof globalThis.__forgeEnqueuePrompt === "function";\n      const primaryStops = running && subagent === null && !forgeQueueComposer;\n      const interruptible = running && (continuable || forgeQueueComposer);');
+  source = replaceOnce(source, 'const primaryLabel = primaryStops ? t("input.stop") : t("input.send");',
+    'const primaryLabel = forgeQueueComposer && running ? "发送并排队" : primaryStops ? t("input.stop") : t("input.send");');
+  return `// ${PROMPT_QUEUE_SIDEBAR_MARKER}\n` + source;
+}
 export function applyQuestionHistoryPatch(root) {
   const changes = [];
   for (const [pkg, filename, transform] of [
     ['dsh-host-apiproxy', 'index.js', patchHistoryHost], ['dsh-client-connection', 'client.js', patchHistoryConnection],
-    ['dsh-client-runtime', 'client.js', patchHistoryRuntime], ['dsh-client-ui-conversation', 'client.js', patchHistoryUi],
+    ['dsh-client-runtime', 'client.js', patchHistoryRuntime], ['dsh-client-ui-conversation', 'client.js', source => patchPromptQueueUi(patchHistoryUi(source))],
   ]) {
     const dir = resolve(root, '@deepseek-ai', pkg);
     const version = JSON.parse(readFileSync(resolve(dir, 'package.json'), 'utf8')).version;

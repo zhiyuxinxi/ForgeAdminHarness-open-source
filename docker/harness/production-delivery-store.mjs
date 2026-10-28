@@ -43,6 +43,32 @@ function baselineAvailable(job) {
       &&Number.isSafeInteger(file.size)&&file.size>=0&&/^[a-f0-9]{64}$/.test(file.sha256??'')));
 }
 function occupiesEnvironment(job) {return ACTIVE.has(job.status)||Boolean(job.port&&!job.environmentStoppedAt&&job.environment?.status!=='stopped');}
+const HANDOVER_DOCUMENTS = ['operation-guide','deployment-guide'];
+function handoverSummary(job) {
+  const value=job.handover;
+  return value ? {revision:value.revision,status:value.status,missingItems:value.missingItems,sha256:value.sha256,updatedAt:value.updatedAt}
+    : {revision:0,status:'incomplete',missingItems:['尚未补齐验收交接清单'],sha256:null,updatedAt:null};
+}
+function handoverText(value, name, max=4000) {return label(typeof value==='string'&&value.trim()===''?'':value??'',name,max,true);}
+function handoverLines(value, name) {
+  if(!Array.isArray(value)||value.length>50)fail('PRODUCTION_INVALID_INPUT',`${name}须为最多50项的列表。`);
+  return value.map(item=>handoverText(item,name)).filter(Boolean);
+}
+function handoverMissing(item) {
+  const missing=[];
+  if(!item.accounts.length)missing.push('至少填写一个验收账号');
+  for(const [index,account]of item.accounts.entries()) {
+    for(const [field,name]of [['username','账号'],['role','角色'],['tenant','租户'],['organization','组织'],['loginNotes','登录说明']])if(!account[field])missing.push(`账号${index+1}：请填写${name}`);
+    if(account.credentialMode==='password'&&!account.hasPassword)missing.push(`账号${index+1}：尚未保存密码`);
+    if(account.credentialMode==='external'&&!account.credentialInstructions)missing.push(`账号${index+1}：请填写凭据领取说明`);
+  }
+  if(!item.prerequisites.length)missing.push('请填写验收前置条件');
+  if(!item.checks.length)missing.push('至少填写一项操作步骤及预期结果');
+  for(const [index,check]of item.checks.entries())if(!check.action||!check.expected)missing.push(`步骤${index+1}：请填写操作与预期结果`);
+  if(!item.limitations.length)missing.push('请填写已知限制；没有限制请明确填写无已知限制');
+  for(const key of HANDOVER_DOCUMENTS)if(!item.documents.some(document=>document.key===key&&document.available))missing.push(key==='operation-guide'?'缺少操作手册':'缺少部署手册');
+  return missing;
+}
 function publicRelease({source,...release}) {return release;}
 async function jsonFile(file, fallback) {
   try { return JSON.parse(await readFile(file,'utf8')); }
@@ -65,6 +91,7 @@ async function boundedFile(root, relative) {
 function publicJob(job) {
   const {id,project,releaseId,baseJobId,mode,architecture,status,createdAt,updatedAt,environment,stages,manifestSha256,validation,acceptance,error,artifacts,environmentStoppedAt}=job;
   return {id,project,releaseId,baseJobId,mode,architecture,status,createdAt,updatedAt,environment,stages,manifestSha256,validation,acceptance,error,environmentStoppedAt,
+    handover:handoverSummary(job),
     createdBy:job.createdBy??null,delivery:job.delivery??null,sourceArtifact:job.sourceArtifact??null,sourceCandidateId:job.sourceCandidateId??null,baselineAvailable:baselineAvailable(job),environmentSlotOccupied:occupiesEnvironment(job),
     artifacts:(artifacts??[]).map(({key,name,size,sha256})=>({key,name,size,sha256})),retention:'permanent'};
 }
@@ -246,6 +273,8 @@ export class ProductionDeliveryStore {
     // Copy every completed file, including private baseline, to the permanent backup.
     await this.backupTree(project,id,root);
     Object.assign(job,{status:'awaiting-acceptance',updatedAt:this.clock(),artifacts:result.artifacts,manifestSha256:result.manifestSha256,environment:result.environment,validation:result.validation,baseline:result.baseline,error:null});
+    const handover=await this.emptyHandover(job);handover.revision=1;handover.createdAt=handover.updatedAt=this.clock();
+    await this.persistHandover(job,handover,{});
     await immutable(path.join(this.config.backupRoot,project,'jobs',id,'validation-completed.json'),job);
     await this.event(project,'jobs',id,'validation-passed',null,{manifestSha256:job.manifestSha256});
     // Publish the accept-able state only after all permanent completion writes succeed.
@@ -265,14 +294,114 @@ export class ProductionDeliveryStore {
     if(progress){job.stages=progress.stages??job.stages;if(ACTIVE.has(job.status)&&ACTIVE.has(progress.status))job.status=progress.status;if(progress.environment&&!job.environmentStoppedAt)job.environment={...job.environment,...progress.environment};}
     return {item:publicJob(job)};
   }
+  async emptyHandover(job) {
+    const release=await this.record(job.project,'releases',job.releaseId);
+    const documents=HANDOVER_DOCUMENTS.map(key=>{
+      const artifact=(job.artifacts??[]).find(item=>item.key===key),available=Boolean(artifact&&job.manifestSha256&&['awaiting-acceptance','ready','rejected'].includes(job.status));
+      return {key,name:artifact?.name??(key==='operation-guide'?'操作手册':'部署手册'),sha256:artifact?.sha256??null,size:artifact?.size??null,available,
+        href:available?`/forge-gateway/api/production/jobs/${job.id}/download?${new URLSearchParams({project:job.project,file:key})}`:null};
+    });
+    const item={schemaVersion:1,project:job.project,jobId:job.id,manifestSha256:job.manifestSha256??null,revision:0,status:'incomplete',missingItems:[],
+      environment:job.environment?{id:job.environment.id??job.id,url:job.environment.url??null,status:job.environment.status??null}:null,
+      release:{id:release.id,title:release.title??null,version:release.version??null,commit:release.commit??null},accounts:[],prerequisites:[],checks:[],limitations:[],documents,
+      createdAt:null,updatedAt:null,updatedBy:null};
+    item.missingItems=handoverMissing(item);return item;
+  }
+  async readHandover(job) {
+    if(!job.handover)return this.emptyHandover(job);
+    const {file}=await boundedFile(path.dirname(this.recordPath(job.project,'jobs',job.id)),job.handover.relativePath);
+    if(await fileDigest(file)!==job.handover.sha256)fail('PRODUCTION_HANDOVER_CHANGED','验收交接清单校验失败，请联系维护人员。',409);
+    const item=await jsonFile(file);
+    if(item.project!==job.project||item.jobId!==job.id||item.manifestSha256!==job.manifestSha256||item.revision!==job.handover.revision)fail('PRODUCTION_HANDOVER_CHANGED','验收交接清单与当前发布包不一致。',409);
+    return item;
+  }
+  async getHandover(project,id) {return{item:await this.readHandover(await this.record(project,'jobs',id))};}
+  handoverPrivatePath(job,snapshotId,backup=false) {
+    identity(snapshotId);return path.join(backup?this.config.backupRoot:this.config.archiveRoot,job.project,'handover-private',job.id,snapshotId+'.json');
+  }
+  async handoverSecrets(job) {
+    if(!job.handover)return{};
+    const filename=this.handoverPrivatePath(job,job.handover.snapshotId);
+    if(await fileDigest(filename)!==job.handover.privateSha256)fail('PRODUCTION_HANDOVER_CHANGED','受保护验收凭据校验失败，请联系维护人员。',409);
+    const value=await jsonFile(filename);
+    if(value.project!==job.project||value.jobId!==job.id||value.manifestSha256!==job.manifestSha256||value.revision!==job.handover.revision)fail('PRODUCTION_HANDOVER_CHANGED','验收凭据与清单修订不一致。',409);
+    return value.accounts;
+  }
+  async persistHandover(job,item,secrets) {
+    const snapshotId=unique('handover'),relativePath=`handover/${snapshotId}.json`,bytes=JSON.stringify(item,null,2)+'\n';
+    const privateRecord={project:job.project,jobId:job.id,manifestSha256:job.manifestSha256,revision:item.revision,accounts:secrets};
+    // Credentials are outside the job material tree, all download allowlists and idempotency receipts.
+    await immutable(this.handoverPrivatePath(job,snapshotId),privateRecord);
+    await immutable(this.handoverPrivatePath(job,snapshotId,true),privateRecord);
+    await immutable(path.join(path.dirname(this.recordPath(job.project,'jobs',job.id)),relativePath),item);
+    await immutable(path.join(this.config.backupRoot,job.project,'jobs',job.id,relativePath),item);
+    job.handover={snapshotId,relativePath,revision:item.revision,status:item.status,missingItems:item.missingItems,sha256:digest(bytes),privateSha256:digest(JSON.stringify(privateRecord,null,2)+'\n'),updatedAt:item.updatedAt};
+  }
+  handoverBinding(job,body,item) {
+    if(!job.manifestSha256||body.expectedManifestSha256!==job.manifestSha256||!Number.isSafeInteger(body.expectedRevision)||body.expectedRevision!==item.revision)
+      fail('PRODUCTION_HANDOVER_CONFLICT','发布包或交接清单已变化，请刷新后重试。',409);
+  }
+  async saveHandover(id,body,actor) {
+    allowedFields(body,['project','expectedManifestSha256','expectedRevision','accounts','prerequisites','checks','limitations']);const updatedBy=trustedActor(actor);
+    return this.locked(async()=>{
+      const job=await this.record(body.project,'jobs',id);
+      if(job.status!=='awaiting-acceptance')fail('PRODUCTION_HANDOVER_READONLY','仅待人工验收的生产包可补录交接清单，历史结果保持不变。',409);
+      const previous=await this.readHandover(job);this.handoverBinding(job,body,previous);const oldSecrets=await this.handoverSecrets(job),secrets={};
+      if(!Array.isArray(body.accounts)||body.accounts.length>30||!Array.isArray(body.checks)||body.checks.length>100)fail('PRODUCTION_INVALID_INPUT','账号或验收步骤列表无效。');
+      const seen=new Set();
+      const accounts=body.accounts.map(value=>{
+        allowedFields(value,['id','username','role','tenant','organization','loginNotes','credentialMode','credentialInstructions','password']);
+        const account={id:value.id?identity(value.id):unique('account')};
+        if(seen.has(account.id))fail('PRODUCTION_INVALID_INPUT','验收账号编号重复。');seen.add(account.id);
+        for(const field of ['username','role','tenant','organization','loginNotes','credentialInstructions'])account[field]=handoverText(value[field],'账号说明',field==='username'?191:2000);
+        if(!['password','external'].includes(value.credentialMode))fail('PRODUCTION_INVALID_INPUT','请选择密码或外部凭据方式。');account.credentialMode=value.credentialMode;
+        if(value.password!==undefined&&(typeof value.password!=='string'||value.password.length>4096||/[\u0000\r\n]/u.test(value.password)))fail('PRODUCTION_INVALID_INPUT','密码格式无效。');
+        const old=oldSecrets[account.id],previousAccount=previous.accounts.find(entry=>entry.id===account.id);
+        const sameIdentity=previousAccount&&['username','tenant','organization'].every(field=>previousAccount[field]===account[field]);
+        const password=account.credentialMode==='password'?(value.password!==undefined?value.password:sameIdentity?old?.password:undefined):undefined;
+        account.hasPassword=typeof password==='string'&&password.trim().length>0;
+        if(account.hasPassword)secrets[account.id]={username:account.username,password};return account;
+      });
+      const checks=body.checks.map(value=>{allowedFields(value,['action','expected']);return{action:handoverText(value.action,'验收操作'),expected:handoverText(value.expected,'预期结果')};});
+      const item={...await this.emptyHandover(job),revision:previous.revision+1,accounts,checks,prerequisites:handoverLines(body.prerequisites,'前置条件'),limitations:handoverLines(body.limitations,'已知限制'),
+        createdAt:previous.createdAt??this.clock(),updatedAt:this.clock(),updatedBy};
+      item.missingItems=handoverMissing(item);item.status=item.missingItems.length?'incomplete':'ready';
+      await this.persistHandover(job,item,secrets);
+      await this.event(body.project,'jobs',id,'handover-updated',updatedBy,{revision:item.revision,sha256:job.handover.sha256});
+      await atomic(this.recordPath(body.project,'jobs',id),job);return{item};
+    });
+  }
+  async handoverCredentials(id,body,actor) {
+    allowedFields(body,['project','expectedManifestSha256','expectedRevision','accountId']);const requestedBy=trustedActor(actor);
+    return this.locked(async()=>{
+      const job=await this.record(body.project,'jobs',id),item=await this.readHandover(job);this.handoverBinding(job,body,item);
+      const account=item.accounts.find(entry=>entry.id===body.accountId);
+      if(!account||account.credentialMode!=='password'||!account.hasPassword)fail('PRODUCTION_CREDENTIAL_NOT_FOUND','该账号尚无已保存的密码，请核对交接清单。',404);
+      const secret=(await this.handoverSecrets(job))[account.id];
+      if(!secret||secret.username!==account.username||!secret.password)fail('PRODUCTION_HANDOVER_CHANGED','验收凭据与清单账号不一致。',409);
+      await this.event(body.project,'jobs',id,'handover-credential-read',requestedBy,{accountId:account.id,revision:item.revision});
+      return{item:{accountId:account.id,username:account.username,password:secret.password,revision:item.revision}};
+    });
+  }
   async accept(id,body,actor) {
-    allowedFields(body,['project','decision','notes','expectedManifestSha256']);label(body.notes,'验收意见',4000);
+    allowedFields(body,['project','decision','notes','expectedManifestSha256','expectedHandoverRevision']);label(body.notes,'验收意见',4000);
     if(!['accepted','rejected'].includes(body.decision))fail('PRODUCTION_INVALID_INPUT','验收结论无效。');
     return this.locked(async()=>{const job=await this.record(body.project,'jobs',id);
-      if(job.status!=='awaiting-acceptance'||job.environmentStoppedAt||job.manifestSha256!==body.expectedManifestSha256)fail('PRODUCTION_ACCEPTANCE_CONFLICT','验证尚未完成、环境已停止或材料已变化，请重新查看任务。',409);
+      if(job.environmentStoppedAt)fail('PRODUCTION_ENVIRONMENT_STOPPED','验证环境已停止，本次任务不能再提交人工验收；如需验收，请创建新的验证任务。',409);
+      if(job.status!=='awaiting-acceptance'||job.manifestSha256!==body.expectedManifestSha256)fail('PRODUCTION_ACCEPTANCE_CONFLICT','验证尚未完成或材料已变化，请重新查看任务。',409);
+      let handover=null;
+      if(body.decision==='accepted') {
+        handover=await this.readHandover(job);
+        if(handover.status!=='ready'||handoverMissing(handover).length)fail('PRODUCTION_HANDOVER_INCOMPLETE','验收交接清单尚未补齐，不能确认验收通过。',409);
+        if(body.expectedHandoverRevision!==handover.revision)fail('PRODUCTION_HANDOVER_CONFLICT','验收交接清单已变化，请刷新核对后再验收。',409);
+        const secrets=await this.handoverSecrets(job);
+        if(handover.accounts.some(account=>account.credentialMode==='password'&&(!secrets[account.id]?.password||secrets[account.id].username!==account.username)))
+          fail('PRODUCTION_HANDOVER_INCOMPLETE','验收账号的受保护凭据尚未齐备，不能确认验收通过。',409);
+      }
       for(const artifact of job.artifacts){const {file}=await boundedFile(path.dirname(this.recordPath(body.project,'jobs',id)),artifact.relativePath);if(await fileDigest(file)!==artifact.sha256)fail('PRODUCTION_MATERIAL_CHANGED','材料已发生变化，不能沿用原验收。',409);}
       if(body.decision==='accepted'&&!await this.probe(job))fail('PRODUCTION_ENVIRONMENT_UNAVAILABLE','验证环境当前不可访问，不能确认验收通过；请先恢复环境或登记验收不通过。',409);
       job.acceptance={decision:body.decision,notes:body.notes,actor,at:this.clock(),manifestSha256:job.manifestSha256};job.status=body.decision==='accepted'?'ready':'rejected';job.updatedAt=this.clock();
+      if(handover)Object.assign(job.acceptance,{handoverRevision:handover.revision,handoverSha256:job.handover.sha256});
       await immutable(path.join(path.dirname(this.recordPath(body.project,'jobs',id)),'acceptance.json'),job.acceptance);await immutable(path.join(this.config.backupRoot,body.project,'jobs',id,'acceptance.json'),job.acceptance);
       await atomic(this.recordPath(body.project,'jobs',id),job);await this.event(body.project,'jobs',id,'human-acceptance',actor,job.acceptance);return{item:publicJob(job)};
     });
@@ -286,7 +415,7 @@ export class ProductionDeliveryStore {
   async stop(id,body,actor) {
     allowedFields(body,['project']);
     return this.locked(async()=>{
-      const job=await this.record(body.project,'jobs',id);if(ACTIVE.has(job.status)||job.status==='awaiting-acceptance')fail('PRODUCTION_ENVIRONMENT_IN_USE','执行或人工验收期间不能停止验证环境。',409);
+      const job=await this.record(body.project,'jobs',id);if(ACTIVE.has(job.status))fail('PRODUCTION_ENVIRONMENT_IN_USE','生成、恢复、升级或验证执行期间不能停止验证环境。',409);
       if(job.environmentStoppedAt)return{item:publicJob(job)};
       const root=path.dirname(this.recordPath(body.project,'jobs',id)),request=await jsonFile(path.join(root,'request.json'));
       const stopAttemptId=unique('stop'),stopRequest={...request,action:'stop',stopAttemptId};
@@ -309,7 +438,14 @@ export class ProductionDeliveryStore {
     });
   }
   async download(project,id,key) {
-    const job=await this.record(project,'jobs',id);if(job.status!=='ready')fail('PRODUCTION_NOT_ACCEPTED','该包尚未完成人工验收，不能作为正式生产包下载。',409);
+    const job=await this.record(project,'jobs',id);
+    if(key==='handover') {
+      const item=await this.readHandover(job);
+      if(!job.handover||item.status!=='ready')fail('PRODUCTION_HANDOVER_INCOMPLETE','验收交接清单尚未补齐，暂不能下载。',409);
+      const file=await boundedFile(path.dirname(this.recordPath(project,'jobs',id)),job.handover.relativePath);
+      return{...file,key,name:`acceptance-handover-r${item.revision}.json`,sha256:job.handover.sha256};
+    }
+    if(job.status!=='ready'&&!(HANDOVER_DOCUMENTS.includes(key)&&['awaiting-acceptance','rejected'].includes(job.status)))fail('PRODUCTION_NOT_ACCEPTED','该包尚未完成人工验收，不能作为正式生产包下载。',409);
     const artifact=job.artifacts.find(a=>a.key===key);if(!artifact)fail('PRODUCTION_NOT_FOUND','文件不存在。',404);
     const file=await boundedFile(path.dirname(this.recordPath(project,'jobs',id)),artifact.relativePath);
     if(file.size!==artifact.size||await fileDigest(file.file)!==artifact.sha256)fail('PRODUCTION_MATERIAL_CHANGED','归档文件异常，请联系维护人员。',503);

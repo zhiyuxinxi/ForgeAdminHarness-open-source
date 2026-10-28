@@ -6,186 +6,131 @@ import vm from 'node:vm';
 
 const source = await readFile(new URL('../docker/harness/conversation-prompt-queue.js', import.meta.url), 'utf8');
 const tick = () => new Promise(resolve => setImmediate(resolve));
+const payload = (sessionId, text) => ({ sessionId, content: [{ type: 'text', text }], clientTimeZone: 'Asia/Shanghai' });
 
-function fixture() {
-  const calls = [];
-  const timers = new Map();
-  let id = 0;
-  let transportStarts = 0;
-  const value = { running: true, source: 'initial', fail: false };
-  const window = { fetch: async (input, init) => {
-    const body = JSON.parse(init?.body ?? '{}');
-    if (input === '/api/session.list') {
-      if (value.listHang) return new Promise((resolve, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true }));
-      return { ok: !value.fail, json: async () => ({ rpcId: body.rpcId, result: {
-        ok: !value.fail, value: { items: [{ sessionId: 'same-session', running: value.running }] },
-      } }) };
+function fixture(shared = { items: [], pausedSessions: [] }) {
+  const calls = [], timers = new Map(), states = [];
+  let timerId = 0;
+  const controls = {};
+  const window = { fetch: async (path, init) => {
+    const body = init.body ? JSON.parse(init.body) : undefined;
+    calls.push({ path, body });
+    if (init.signal.aborted) throw init.signal.reason;
+    if (controls.reject) return { ok: false, status: 403, json: async () => ({ ok: false, message: '当前账号无权操作此工作舱。' }) };
+    if (controls.hang) return new Promise((resolve, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true }));
+    if (path.endsWith('/cancel')) {
+      if (controls.cancelFail) return { ok: false, status: 409, json: async () => ({ ok: false, message: '消息已开始执行，不能取消排队。' }) };
+      shared.items.find(item => item.id === body.id).status = 'cancelled';
+    } else if (path.endsWith('/resume')) {
+      shared.pausedSessions = shared.pausedSessions.filter(id => id !== body.sessionId);
+    } else if (body) {
+      let item = shared.items.find(item => item.id === body.id);
+      if (!item) { item = { id: body.id, sessionId: body.sessionId, sequence: shared.items.length + 1, status: 'queued', preview: body.content[0].text }; shared.items.push(item); }
+      if (controls.loseResponse) throw new Error('connection lost after save');
+      return { ok: true, status: 202, json: async () => ({ ok: true, queued: true, item: structuredClone(item) }) };
     }
-    calls.push({ input, body, source: value.source });
-    if (value.promptDeferred) return value.promptDeferred;
-    if (value.promptError) throw value.promptError;
-    return value.promptReply ?? { status: 200 };
+    if (!body && controls.listFail) throw new Error('队列查询暂时不可用');
+    return { ok: true, status: 200, json: async () => ({ ok: true, ...structuredClone(shared) }) };
   } };
-  vm.runInNewContext(source, {
-    window, URL, DOMException, AbortController, crypto: { randomUUID }, location: new URL('http://harness.test/'),
-    setTimeout: fn => { timers.set(++id, fn); return id; }, clearTimeout: key => timers.delete(key),
-  });
-  return { value, calls, timers, window, get transportStarts() { return transportStarts; },
-    advance() { for (const [key, fn] of [...timers]) { timers.delete(key); fn(); } },
-    send(text, signal) { const payload = { mode: 'queue', sessionId: 'same-session', content: [{ type: 'text', text }] };
-      return window.__forgeQueuePrompt(payload, signal, () => {
-      transportStarts++;
-      return window.fetch(new URL('http://harness.test/api/session.prompt'), { method: 'POST', signal,
-      body: JSON.stringify({ type: 'client-request', rpcId: randomUUID(), method: 'session.prompt',
-        payload }),
-    }); }); },
+  vm.runInNewContext(source, { window, DOMException, AbortController, crypto: { randomUUID },
+    setTimeout: (fn, ms) => { timers.set(++timerId, { fn, ms }); return timerId; }, clearTimeout: id => timers.delete(id) });
+  return { window, shared, controls, calls, timers, states,
+    send: (id, text, signal) => window.__forgeEnqueuePrompt(payload(id, text), signal),
+    subscribe(id = 'A') { return window.__forgeSubscribePromptQueue(id, state => states.push(state)); },
+    advance(ms) { for (const [id, timer] of [...timers]) if (timer.ms === ms) { timers.delete(id); timer.fn(); } },
   };
 }
 
-test('browser feedback waits for the running edit and binds the source only on dispatch', async () => {
+test('A can submit A1 to A4 and B can submit multiple messages without waiting for execution', async () => {
   const f = fixture();
-  const first = f.send('补充当前候选的验收反馈');
-  const second = f.send('同一候选的第二条反馈');
-  await tick();
-  assert.equal(f.calls.length, 0, 'no protected prompt prepares or replaces the active execution');
-  for (let second = 0; second < 35; second++) { f.advance(); await tick(); }
-  assert.equal(f.transportStarts, 0, 'the native transport timeout has not started during queue waiting');
-  f.value.source = 'completed-edit';
-  f.value.running = false;
-  f.advance();
-  await Promise.all([first, second]);
-  assert.equal(f.transportStarts, 2);
-  assert.deepEqual(f.calls.map(call => call.body.payload.content[0].text), ['补充当前候选的验收反馈', '同一候选的第二条反馈']);
-  assert.deepEqual(f.calls.map(call => call.source), ['completed-edit', 'completed-edit']);
+  const receipts = [];
+  for (const [id, text] of [['A','A1'], ['A','A2'], ['B','B1'], ['A','A3'], ['A','A4'], ['B','B2']]) receipts.push(await f.send(id, text));
+  assert.deepEqual(receipts.map(x => x.sequence), [1, 2, 3, 4, 5, 6]);
+  assert.deepEqual(f.shared.items.map(x => x.preview), ['A1', 'A2', 'B1', 'A3', 'A4', 'B2']);
+  assert(f.shared.items.every(x => x.status === 'queued'), 'no model completion is required for another submission');
+  assert(f.calls.every(x => x.path === '/forge-prompt-queue'), 'no native prompt, prepare, or session.list is dispatched by the browser');
+  assert(receipts.every(x => !('accepted' in x) && !('result' in x)), 'queue admission never fabricates native accepted results');
 });
 
-test('cancelled or unobservable queued feedback never reaches protected execution', async () => {
-  const f = fixture();
-  const controller = new AbortController();
-  const pending = f.send('反馈', controller.signal);
+test('a recreated browser reads the server queue and cancellation does not call session.stop', async () => {
+  const first = fixture();
+  const item = await first.send('A', '保留到刷新以后');
+  const reopened = fixture(first.shared);
+  const unsubscribe = reopened.subscribe();
   await tick();
-  controller.abort();
-  await assert.rejects(pending, { name: 'AbortError' });
-  f.value.fail = true;
-  await assert.rejects(f.send('反馈'), /尚未发送/);
-  assert.equal(f.calls.length, 0);
-  assert.equal(f.timers.size, 0);
-});
-
-test('idle prompts and unrelated requests are forwarded without changing their bodies', async () => {
-  const f = fixture();
-  f.value.running = false;
-  await f.send('继续当前任务');
-  await f.window.fetch('/api/session.stop', { method: 'POST', body: '{}' });
-  assert.equal(f.calls.length, 2);
-  assert.equal(f.calls[0].body.payload.content[0].text, '继续当前任务');
-  assert.equal(f.calls[1].input, '/api/session.stop');
-});
-
-test('the existing queue waits again when only the prior task tools remain active', async () => {
-  const f = fixture();
-  f.value.running = false;
-  // The pinned native schema retains agent-busy.reason and strips other fields.
-  f.value.promptReply = { result: { ok: false, error: { code: 'agent-busy',
-    details: { reason: 'CONVERSATION_EXECUTION_BUSY_NOT_ACCEPTED' } } } };
-  const first = f.send('继续当前任务');
-  const second = f.send('再检查刚才的结果');
-  await tick();
-  assert.equal(f.transportStarts, 1);
-  assert.equal(f.timers.size, 1);
-  assert.equal(f.calls[0].body.payload.content[0].text, '继续当前任务');
-  f.value.source = 'prior-tools-finished';
-  f.value.promptReply = { result: { ok: true, value: { accepted: true } } };
-  f.advance();
-  await Promise.all([first, second]);
-  assert.equal(f.transportStarts, 3, 'only the explicitly unaccepted attempt is retried');
-  assert.deepEqual(f.calls.slice(1).map(call => call.body.payload.content[0].text), ['继续当前任务', '再检查刚才的结果']);
-  assert.deepEqual(f.calls.slice(1).map(call => call.source), ['prior-tools-finished', 'prior-tools-finished']);
-  assert.equal(f.timers.size, 0);
-});
-
-test('queued prompts never retry unknown outcomes and can be cancelled while tools finish', async () => {
-  const f = fixture();
-  f.value.running = false;
-  f.value.promptReply = { result: { ok: false, error: { code: 'agent-busy', details: { reason: 'another-reason' } } } };
-  assert.equal(await f.send('反馈'), f.value.promptReply);
-  assert.equal(f.calls.length, 1);
-  assert.equal(f.timers.size, 0);
-  f.value.promptError = new Error('transport timeout: acceptance unknown');
-  await assert.rejects(f.send('反馈'), /acceptance unknown/);
-  assert.equal(f.calls.length, 2);
-  assert.equal(f.timers.size, 0);
-  f.value.promptError = null;
-  f.value.promptReply.result.error.details.reason = 'CONVERSATION_EXECUTION_BUSY_NOT_ACCEPTED';
-  const controller = new AbortController();
-  const pending = f.send('反馈', controller.signal);
-  await tick();
-  controller.abort();
-  await assert.rejects(pending, { name: 'AbortError' });
-  assert.equal(f.calls.length, 3);
-  assert.equal(f.timers.size, 0);
-});
-
-test('visible waiting can be cancelled without interrupting or submitting the active task', async () => {
-  const f = fixture(), states = [];
-  const unsubscribe = f.window.__forgeSubscribePromptQueue('same-session', state => states.push(state));
-  const pending = f.send('请检查当前结果');
-  await tick();
-  assert.equal(states.at(-1).phase, 'waiting');
-  states.at(-1).cancel();
-  await assert.rejects(pending, /已取消等待.*尚未发送/);
-  assert.equal(states.at(-1), null);
-  assert.equal(f.transportStarts, 0);
-  assert.equal(f.value.running, true);
-  f.value.running = false;
-  await f.send('恢复后的命令');
-  assert.equal(f.calls.length, 1);
+  assert.equal(reopened.states.at(-1).items[0].id, item.id);
+  await reopened.states.at(-1).cancel(item.id);
+  assert.equal(reopened.states.at(-1).items[0].status, 'cancelled');
+  assert(!reopened.calls.some(x => x.path.includes('session.stop')));
   unsubscribe();
-  assert.equal(f.timers.size, 0);
+  assert.equal(reopened.timers.size, 0);
 });
 
-test('dispatch removes cancellation and a cancelled follower cannot let another prompt overtake', async () => {
-  const f = fixture(), states = [];
-  f.value.running = false;
-  let finish;
-  f.value.promptDeferred = new Promise(resolve => { finish = resolve; });
-  f.window.__forgeSubscribePromptQueue('same-session', state => states.push(state));
-  const first = f.send('第一条');
+test('lost admission response reconciles the same request without resubmitting', async () => {
+  const f = fixture();
+  f.controls.loseResponse = true;
+  const item = await f.send('A', '只保存一次');
+  assert.equal(item.status, 'queued');
+  assert.equal(f.shared.items.length, 1);
+  assert.equal(f.calls.filter(x => x.body).length, 1);
+});
+
+test('unknown admission keeps a stable identity for the same draft retry', async () => {
+  const f = fixture();
+  f.controls.loseResponse = true; f.controls.listFail = true;
+  await assert.rejects(f.send('A', '结果未知的原消息'), /暂未确认.*输入已保留/);
+  f.controls.loseResponse = false; f.controls.listFail = false;
+  await f.send('A', '结果未知的原消息');
+  const posts = f.calls.filter(x => x.body);
+  assert.equal(posts.length, 2);
+  assert.equal(posts[0].body.id, posts[1].body.id);
+  assert.equal(f.shared.items.length, 1);
+});
+
+test('explicit refusal keeps input available and does not fall through to native prompt', async () => {
+  const f = fixture(); f.controls.reject = true;
+  await assert.rejects(f.send('A', '无权限的请求'), /无权/);
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.shared.items.length, 0);
+  f.controls.reject = false;
+  await f.send('A', '无权限的请求');
+  assert.notEqual(f.calls[0].body.id, f.calls[1].body.id, 'a definite refusal can start a fresh request');
+});
+
+test('paused messages remain visible until explicit resume and mutation failure stays visible', async () => {
+  const f = fixture();
+  const item = await f.send('A', '后续消息');
+  f.shared.pausedSessions.push('A');
+  const unsubscribe = f.subscribe();
   await tick();
-  assert.equal(states.at(-1).phase, 'submitting');
-  assert.equal(states.at(-1).cancel, null);
-  const controller = new AbortController();
-  const second = f.send('取消第二条', controller.signal);
-  controller.abort();
-  await assert.rejects(second, { name: 'AbortError' });
-  const third = f.send('第三条');
-  await tick();
-  assert.equal(f.calls.length, 1);
-  f.value.promptDeferred = null;
-  finish({ result: { ok: true, value: { accepted: true } } });
-  await Promise.all([first, third]);
-  assert.deepEqual(f.calls.map(call => call.body.payload.content[0].text), ['第一条', '第三条']);
-  assert.equal(states.at(-1), null);
+  assert.deepEqual([...f.states.at(-1).pausedSessions], ['A']);
+  f.controls.cancelFail = true;
+  await f.states.at(-1).cancel(item.id);
+  assert.match(f.states.at(-1).actionError, /不能取消/);
+  await f.states.at(-1).resume('A');
+  assert.deepEqual([...f.states.at(-1).pausedSessions], []);
+  assert.equal(f.states.at(-1).items.length, 1);
+  unsubscribe();
 });
 
-test('an unresponsive session status read ends without dispatch and releases the queue', async () => {
-  const f = fixture(); f.value.listHang = true;
-  const pending = f.send('检查当前状态');
-  await tick(); f.advance();
-  await assert.rejects(pending, /查询当前执行状态超时.*尚未发送/);
-  assert.equal(f.calls.length, 0);
-  assert.equal(f.timers.size, 0);
-  f.value.listHang = false; f.value.running = false;
-  await f.send('恢复后的命令');
-  assert.equal(f.calls.length, 1);
+test('a failed refresh retains the saved queue and recovers on the next successful read', async () => {
+  const f = fixture(); await f.send('A', '不会因查询失败消失');
+  const unsubscribe = f.subscribe(); await tick();
+  f.controls.listFail = true;
+  f.advance(2000); await tick();
+  assert.equal(f.states.at(-1).items.length, 1);
+  assert.match(f.states.at(-1).error, /暂时不可用/);
+  f.controls.listFail = false;
+  await f.states.at(-1).refresh();
+  assert.equal(f.states.at(-1).error, '');
+  unsubscribe();
 });
 
-test('explicit preparation rejection settles immediately and never follows busy retry', async () => {
-  const f = fixture(); f.value.running = false;
-  f.value.promptReply = { result: { ok: false, error: { code: 'internal-error', details: {
-    reason: 'CONVERSATION_PREPARATION_UNAVAILABLE', requestAccepted: false, retryable: true,
-  } } } };
-  assert.equal(await f.send('继续'), f.value.promptReply);
+test('an unresponsive queue read is bounded and never dispatches model work', async () => {
+  const f = fixture(); f.controls.hang = true;
+  const unsubscribe = f.subscribe(); await tick(); f.advance(15000); await tick();
+  assert.match(f.states.at(-1).error, /超时/);
   assert.equal(f.calls.length, 1);
-  assert.equal(f.timers.size, 0);
+  assert.equal(f.calls[0].body, undefined);
+  unsubscribe();
 });

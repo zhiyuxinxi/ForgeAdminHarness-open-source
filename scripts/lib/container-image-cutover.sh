@@ -590,7 +590,7 @@ forge_cutover_prepare() {
           ExtraHosts: $container.HostConfig.ExtraHosts, GroupAdd: $container.HostConfig.GroupAdd,
           IpcMode: $container.HostConfig.IpcMode, Cgroup: $container.HostConfig.Cgroup,
           Links: $container.HostConfig.Links, OomScoreAdj: $container.HostConfig.OomScoreAdj,
-          PidMode: $container.HostConfig.PidMode, Privileged: $container.HostConfig.Privileged,
+          PidMode: $container.HostConfig.PidMode, Init: $container.HostConfig.Init, Privileged: $container.HostConfig.Privileged,
           PublishAllPorts: $container.HostConfig.PublishAllPorts,
           ReadonlyRootfs: $container.HostConfig.ReadonlyRootfs,
           SecurityOpt: $container.HostConfig.SecurityOpt, StorageOpt: $container.HostConfig.StorageOpt,

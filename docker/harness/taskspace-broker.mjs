@@ -2974,8 +2974,26 @@ export class TaskspaceBroker {
         }
         acceptance = validateReleaseProjection(projection, context, inventory);
       } else {
-        // Direct development retains release authority and exact source identity,
-        // without treating optional development checks as a publication contract.
+        // Recheck the AS-owned current request before candidate preparation.
+        // A legacy release ceiling alone is not publication authorization.
+        try {
+          projection = await this.protectedCompletionClient({ taskId: task.metadata.taskId });
+        } catch {
+          throw taskspaceError('TASKSPACE_RELEASE_INTENT_UNAVAILABLE', '无法核对当前需求的发布授权，请保留当前修改后重试。');
+        }
+        const { statusDigest, ...payload } = projection ?? {};
+        const authorization = projection?.releaseAuthorization;
+        if (projection?.projectionType !== 'forge-direct-development-status/v1'
+          || projection.developmentMode !== 'direct' || projection.status !== 'not_required'
+          || projection.projectSlug !== context.projectSlug || projection.taskId !== context.taskId
+          || projection.taskContractId !== context.contractId
+          || projection.source?.head !== inventory.head || projection.source?.fingerprint !== inventory.workspaceFingerprint
+          || normalizedSha256(statusDigest) !== sha256Text(canonicalJson(payload)) || authorization?.authorized !== true
+          || !['actorUserId', 'actorUsername', 'conversationId', 'dshSessionId', 'rpcId']
+            .every(key => authorization[key] === context[key])
+          || authorization.promptTextDigest !== context.textDigest) {
+          throw taskspaceError('TASKSPACE_RELEASE_NOT_AUTHORIZED', '当前需求未授权发布；修改和保存可继续，发布须由用户明确要求。');
+        }
         acceptance = { developmentMode: 'direct' };
       }
       const runnerRequest = {

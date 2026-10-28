@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { stripGatewayCookies } from './conversation-policy.mjs';
 import { createConversationOutputService } from './conversation-output-service.mjs';
 import { readHarnessDirectoryScope } from './harness-directory-scope.mjs';
+import { createWorkpodPromptQueue } from './conversation-message-queue-runtime.mjs';
 import {
   MAX_CLAIMABLE_PROMPT_BYTES,
   classifyPinnedDshPromptBody,
@@ -482,9 +483,9 @@ function pipeUpstreamResponse(request, response, upstreamResponse) {
     upstreamResponse.on('data', chunk => chunks.push(chunk));
     upstreamResponse.on('end', () => {
       const source = Buffer.concat(chunks).toString('utf8');
-      const nativePrompt = 'prompt: (payload, signal) => this.callUnary("session.prompt", payload, signal)';
-      const body = source.replace(nativePrompt,
-        'prompt: (payload, signal) => globalThis.__forgeQueuePrompt ? globalThis.__forgeQueuePrompt(payload, signal, () => this.callUnary("session.prompt", payload, signal)) : this.callUnary("session.prompt", payload, signal)');
+      // Queue admission belongs to the composer, not a fabricated native RPC.
+      // Native callers retain the real session.prompt response and semantics.
+      const body = source;
       const headers = { ...upstreamResponse.headers, 'cache-control': 'no-store' };
       delete headers['content-encoding'];
       delete headers['transfer-encoding'];
@@ -984,11 +985,35 @@ export function createHarnessProxy(options) {
     accessAuthorizer,
     maintenanceFencePath,
     directoryScopeReader = readHarnessDirectoryScope,
+    promptQueueStatePath,
+    promptQueuePollMs = 1000,
   } = options;
   // One proxy owns one TaskSpace's protected execution context. This covers
   // only ingress handoff; the existing client queue and Manager activity checks
   // continue to own waiting for model/tool completion.
   let promptIngress = null;
+  const promptQueue = promptQueueStatePath === undefined ? null : createWorkpodPromptQueue({
+    statePath: promptQueueStatePath, targetHost, targetPort, pollMs: promptQueuePollMs,
+    classify: classifyPinnedDshPromptBody,
+    authorize: request => authorizeHarnessRequest(request, accessToken, accessAuthorizer),
+    prepare: (request, classified, body) => prepareConversationExecution(request, accessAuthorizer, classified, body),
+    isOpen: async (ignoreIngress = false) => (ignoreIngress || promptIngress === null)
+      && (await readHarnessMaintenanceFence(maintenanceFencePath)).open,
+    acquire(entry) {
+      if (promptIngress !== null) return null;
+      const admission = { rpcId: entry.id, sessionId: entry.sessionId, state: 'inflight' };
+      promptIngress = admission;
+      return outcome => {
+        if (promptIngress !== admission) return;
+        if (outcome === 'unconfirmed') admission.state = 'unconfirmed';
+        else promptIngress = null;
+      };
+    },
+    confirmed(entry) { if (promptIngress?.rpcId === entry.id) promptIngress = null; },
+  });
+  // A corrupt/unavailable state file is reported by the authenticated endpoint;
+  // it must never reset the queue or produce an unhandled startup rejection.
+  void promptQueue?.ready.catch(() => {});
 
   const canonicalTrustedAuthority = parseAuthority(trustedAuthority);
   if (canonicalTrustedAuthority === undefined || canonicalTrustedAuthority !== trustedAuthority) {
@@ -1170,6 +1195,59 @@ export function createHarnessProxy(options) {
       rejectHttp(response, authorization.status, authorization.loginUrl, request);
       return;
     }
+    if (parsedUrl.pathname === '/forge-prompt-queue' || parsedUrl.pathname.startsWith('/forge-prompt-queue/')) {
+      const jsonQueue = (status, value) => {
+        if (response.destroyed || response.writableEnded) return;
+        const body = Buffer.from(JSON.stringify(value));
+        response.writeHead(status, { 'content-type': 'application/json; charset=utf-8',
+          'cache-control': 'no-store', 'content-length': body.length }).end(body);
+      };
+      if (!promptQueue) {
+        request.resume(); jsonQueue(503, { ok: false, message: '当前工作舱的消息队列尚未启用。' }); return;
+      }
+      try {
+        await promptQueue.ready;
+        promptQueue.attach(request);
+        if (request.method === 'GET' && parsedUrl.pathname === '/forge-prompt-queue') {
+          request.resume(); jsonQueue(200, { ok: true, ...(await promptQueue.snapshot()) }); return;
+        }
+        if (request.method !== 'POST' || !['/forge-prompt-queue', '/forge-prompt-queue/cancel', '/forge-prompt-queue/resume'].includes(parsedUrl.pathname)) {
+          request.resume(); jsonQueue(405, { ok: false, message: '不支持的队列操作。' }); return;
+        }
+        const input = await new Promise((resolve, reject) => {
+          const chunks = []; let bytes = 0;
+          request.on('data', chunk => {
+            bytes += chunk.length;
+            if (bytes > MAX_CLAIMABLE_PROMPT_BYTES) {
+              reject(Object.assign(new Error('消息过大，尚未入队。'), { statusCode: 413 }));
+            } else chunks.push(chunk);
+          });
+          request.once('aborted', () => reject(new Error('queue request aborted')));
+          request.once('error', reject);
+          request.once('end', () => {
+            try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
+            catch { reject(Object.assign(new Error('消息格式无效。'), { statusCode: 400 })); }
+          });
+          request.resume();
+        });
+        if (parsedUrl.pathname === '/forge-prompt-queue') {
+          const item = await promptQueue.enqueueInput(input);
+          jsonQueue(202, { ok: true, queued: true, item });
+        } else if (parsedUrl.pathname.endsWith('/cancel')) {
+          const item = await promptQueue.cancel(input.id);
+          jsonQueue(200, { ok: true, item });
+        } else {
+          await promptQueue.resume(input.sessionId);
+          jsonQueue(200, { ok: true, ...(await promptQueue.snapshot()) });
+        }
+      } catch (error) {
+        request.resume();
+        const status = [400, 404, 409, 413].includes(error.statusCode) ? error.statusCode : 503;
+        jsonQueue(status, { ok: false, code: error.code ?? 'PROMPT_QUEUE_UNAVAILABLE',
+          message: status === 503 ? '队列操作暂未完成，已保存消息保留；请查看队列状态。' : error.message });
+      }
+      return;
+    }
     if (parsedUrl.pathname === '/forge-directories') {
       request.resume();
       if (request.method !== 'GET') {
@@ -1339,6 +1417,13 @@ export function createHarnessProxy(options) {
           const promptBody = body.toString('utf8');
           if (!Buffer.from(promptBody, 'utf8').equals(body)) throw new Error('prompt body is not valid UTF-8');
           const action = workpodActionBinding(request, classified);
+          if (promptQueue && classified.route === 'session.prompt') {
+            const snapshot = await promptQueue.list();
+            const outstanding = snapshot.items.some(item => !['completed', 'failed', 'cancelled'].includes(item.status));
+            if (outstanding && (classified.mode === 'queue' || snapshot.blocked?.status === 'uncertain')) {
+              throw new ConversationContinuationError('CONVERSATION_EXECUTION_BUSY', 409, nativeRpcId);
+            }
+          }
           if (promptIngress !== null) {
             const code = promptIngress.state === 'unconfirmed'
               ? 'CONVERSATION_DISPATCH_UNCONFIRMED' : 'CONVERSATION_EXECUTION_BUSY';
@@ -1464,6 +1549,7 @@ export function createHarnessProxy(options) {
 
   // Harness uses WebSocket upgrades for live session events. Validate the
   // public authority before preserving the original byte-stream behavior.
+  server.on('close', () => { void promptQueue?.close(); });
   server.on('upgrade', (request, clientSocket, head) => {
     upgradeSockets.add(clientSocket);
     clientSocket.once('close', () => upgradeSockets.delete(clientSocket));
@@ -1624,6 +1710,9 @@ function startFromCommandLine() {
       accessToken,
       accessAuthorizer,
       maintenanceFencePath: process.env.HARNESS_MAINTENANCE_FENCE_FILE,
+      ...(accessMode === 'conversation' ? {
+        promptQueueStatePath: path.join(process.env.DSH_HOME ?? '/home/node/.dsh', 'forge-message-queue', 'state.json'),
+      } : {}),
     });
   } catch (error) {
     console.error(`Harness HTTP compatibility proxy configuration failed: ${error.message}`);

@@ -20,6 +20,8 @@ services:
   harness-tool-worker:
     image: ${HARNESS_IMAGE:?HARNESS_IMAGE is required}
     restart: unless-stopped
+    # Reap orphaned sandbox descendants before they consume the worker PID quota.
+    init: true
     entrypoint: ["/usr/local/bin/node", "/usr/local/lib/forge-tool-worker-start.mjs"]
     command: ["--config", "/usr/local/share/forge-tool-worker.json"]
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"

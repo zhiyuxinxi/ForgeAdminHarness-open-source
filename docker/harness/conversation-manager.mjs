@@ -287,7 +287,7 @@ export async function readForgeCrossLayerPreparationTerminal({ execution, call }
   invalid();
 }
 
-function capturePromptSessionActivity({ projectSlug, taskId }) {
+function capturePromptSessionActivity({ projectSlug, taskId, dshSessionId }) {
   // The task has its own native server. Read that server, never a project-wide
   // busy flag; a different task's conversation cannot block this prompt.
   const script = `import { callPinnedDsh } from '/usr/local/lib/forge-recover-headless-execution.mjs';
@@ -296,7 +296,12 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('port')
 const result = await callPinnedDsh({ port, method: 'session.list', payload: {} });
 const items = result.value?.items;
 if (!Array.isArray(items) || items.some(item => typeof item?.running !== 'boolean')) throw new Error('sessions');
-process.stdout.write(JSON.stringify({ running: items.some(item => item.running) }));`;
+const sessionId = ${JSON.stringify(dshSessionId ?? null)};
+const current = sessionId === null ? null : items.find(item => item.sessionId === sessionId);
+if (sessionId !== null && !current) throw new Error('session missing');
+const permission = current?.projections?.values?.permissions?.currentValue;
+if (current && !['read-only','workspace-write','danger-full-access'].includes(permission)) throw new Error('session permissions unavailable');
+process.stdout.write(JSON.stringify({ running: items.some(item => item.running), readOnly: permission === 'read-only' }));`;
   return new Promise((resolve, reject) => {
     const child = spawn('docker', ['exec', `forge-${projectSlug}-task-${taskId}-harness-1`,
       'node', '--input-type=module', '-e', script], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
@@ -2602,10 +2607,11 @@ export function createConversationManager(options) {
           explicitReadOnly = !semanticIntentEnabled && actualInput.classification === 'claimable-text'
             && hasGlobalReadOnlyIntent(originalPrepareRequest.promptText);
         }
-        // Role authority is an upper bound. Only the verified direct user text
-        // may lower this turn; generated Controller templates are not inspected.
+        // Role and native session permissions are upper bounds. Verified user
+        // intent may lower them; generated Controller templates are not inspected.
         let workspaceWriteAuthorized = explicitReadOnly ? false : roleWorkspaceWriteAuthorized;
         let authorizedActionCeiling = explicitReadOnly ? undefined : roleActionCeiling;
+        let nativeReadOnly = false;
         let conversationIntent;
         let prepareRequest = originalPrepareRequest;
         let forwardBody;
@@ -2619,7 +2625,7 @@ export function createConversationManager(options) {
           execution = await enqueueTask(taskId, async () => {
             assertPrepareConnected();
             const taskMetadata = await readMetadata(taskId);
-            if ((roleWorkspaceWriteAuthorized === true || semanticIntentEnabled) && (taskMetadata.schemaVersion !== 2
+            if ((roleWorkspaceWriteAuthorized === true || semanticIntentEnabled || developmentMode === 'direct') && (taskMetadata.schemaVersion !== 2
               || taskMetadata.status !== 'active' || taskMetadata.accessMode !== 'conversation'
               || taskMetadata.actorUserId !== prepareRequest.actorUserId
               || taskMetadata.actorId !== prepareRequest.actorUsername
@@ -2632,12 +2638,19 @@ export function createConversationManager(options) {
                 { retryable: true, requestAccepted: false });
             };
             const checkPromptActivity = async () => {
-              if (!queuedPrompt) return;
-              const session = await promptSessionReader({ projectSlug, taskId });
+              if (!queuedPrompt && developmentMode !== 'direct') return;
+              const session = await promptSessionReader({ projectSlug, taskId,
+                ...(developmentMode === 'direct' ? { dshSessionId: prepareRequest.dshSessionId } : {}) });
               if (typeof session?.running !== 'boolean') {
                 throw new ManagerError('CONVERSATION_ACTIVITY_UNAVAILABLE', '暂时无法确认上一轮执行状态，本次请求尚未进入模型。', 503);
               }
-              if (session.running || await hasActiveForgeTaskWriter({ projectRoot, projectSlug, taskId })) rejectBusy();
+              if (developmentMode === 'direct' && session.readOnly === true) {
+                nativeReadOnly = true;
+                explicitReadOnly = true;
+                workspaceWriteAuthorized = false;
+                authorizedActionCeiling = undefined;
+              }
+              if (queuedPrompt && (session.running || await hasActiveForgeTaskWriter({ projectRoot, projectSlug, taskId }))) rejectBusy();
             };
             await checkPromptActivity();
             if (semanticIntentEnabled && prepareRequest.classification === 'claimable-text') {
@@ -2650,10 +2663,10 @@ export function createConversationManager(options) {
                   ? error.code : 'CONVERSATION_INTENT_UNAVAILABLE';
                 throw new ManagerError(code, '平台未能判定本轮用户意图，本次请求尚未执行；原任务和已完成结果保留。', 503);
               }
-              explicitReadOnly = !conversationIntent.resolved.writable;
-              // Account authority remains independent of the semantic decision.
-              workspaceWriteAuthorized = roleWorkspaceWriteAuthorized;
-              authorizedActionCeiling = roleActionCeiling;
+              explicitReadOnly = nativeReadOnly || !conversationIntent.resolved.writable;
+              // A semantic execute decision cannot raise native session permissions.
+              workspaceWriteAuthorized = nativeReadOnly ? false : roleWorkspaceWriteAuthorized;
+              authorizedActionCeiling = nativeReadOnly ? undefined : roleActionCeiling;
               assertPrepareConnected();
             }
             let observation = null;

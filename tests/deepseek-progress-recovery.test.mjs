@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import { once } from 'node:events';
 import { readFileSync } from 'node:fs';
+import http from 'node:http';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -26,6 +28,7 @@ const { DeepSeekAdapter, resolveAdapterOptions } = await sourceModule(patched);
 const { Context } = await nativeModule('@deepseek-ai/cordis');
 const { LlmRuntime, createAssistantMessage, createToolResultMessage, createUserMessage } = await nativeModule('@deepseek-ai/dsh-llm');
 const { Session } = await nativeModule('@deepseek-ai/dsh-session');
+const { Inbox } = await nativeModule('@deepseek-ai/dsh-agent');
 const { apply: applyRetry } = await nativeModule('@deepseek-ai/dsh-llm-retry');
 // ReactLoopAgent is private upstream. Export it only from this test-loaded copy;
 // its step, turn, kick and terminal-error implementation remain byte-for-byte native.
@@ -49,9 +52,10 @@ function seedCompletedTool(session) {
   return JSON.stringify(session.events);
 }
 
-function fixture() {
+function fixture({ baseURL = 'https://deepseek.invalid', streamProgressTimeoutMs = 30, streamIdleTimeoutMs = 1000 } = {}) {
   const connection = resolveAdapterOptions({
-    baseURL: 'https://deepseek.invalid', streamIdleTimeoutMs: 1000, streamProgressTimeoutMs: 30,
+    baseURL, ...(streamIdleTimeoutMs === null ? {} : { streamIdleTimeoutMs }),
+    ...(streamProgressTimeoutMs === null ? {} : { streamProgressTimeoutMs }),
     // Retain the real normal-mode default count and codes, shortening only waits.
     retryPolicy: { mode: 'normal', backoff: { initialDelayMs: 1, maxDelayMs: 1, jitterRatio: 0 } },
   });
@@ -136,6 +140,69 @@ test('native no-progress failure ends the turn without normal retries and retain
     assert.ok(f.emitted.some((event) => event.name === 'agent/error' && event.payload.error.code === 'DEEPSEEK_NO_PROGRESS'));
     assertRetainedTool(f);
   } finally { globalThis.fetch = previousFetch; await f.dispose(); }
+});
+
+test('same native Session accepts a fresh dialogue after heartbeat timeout without replaying completed tools', { timeout: 150000 }, async t => {
+  // The real adapter talks over HTTP to a controlled SSE peer. This is not an
+  // upstream-model or original-owner dialogue; no production session is used.
+  const requests = [];
+  const server = http.createServer(async (request, response) => {
+    const bytes = [];
+    for await (const chunk of request) bytes.push(chunk);
+    requests.push(JSON.parse(Buffer.concat(bytes).toString()));
+    response.writeHead(200, { 'content-type': 'text/event-stream' });
+    response.flushHeaders();
+    if (requests.length === 1) {
+      const heartbeat = setInterval(() => response.write(': keepalive\n\n'), 50);
+      response.on('close', () => clearInterval(heartbeat));
+    } else {
+      response.write(`data: ${JSON.stringify({ choices: [{ delta: { content: 'The retained result is available; this is the recovery reply.' } }] })}\n\n`);
+      response.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`);
+      response.end('data: [DONE]\n\n');
+    }
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const productionTimeout = process.env.FORGE_TEST_REAL_PROGRESS_TIMEOUT === '1';
+  const f = fixture({ baseURL: `http://127.0.0.1:${server.address().port}`, streamProgressTimeoutMs: productionTimeout ? null : 180, streamIdleTimeoutMs: productionTimeout ? null : 1000 });
+  // Use the provider's resolved default in the production-duration case.
+  if (productionTimeout) {
+    assert.equal(f.connection.streamProgressTimeoutMs, 120000);
+    assert.equal(f.connection.streamIdleTimeoutMs, 300000);
+  }
+  f.agent.inbox = new Inbox(f.session, { inserted() {}, discarded() {}, claimed() {} });
+  f.agent.loopCtx.agents.withInitiator = async (_agent, run) => run();
+  f.agent.preStep = async (target, position) => ({ kind: 'enter', assembly: { sections: [], variables: {}, tools: [] }, messages: f.agent.inbox.claim(target, position.turn) });
+  f.agent.setPhase({ kind: 'idle', lastTurn: 1 });
+  const begin = performance.now();
+  try {
+    f.agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Please report the retained result.' }] }));
+    await f.agent.whenIdle();
+    const elapsedMs = Math.round(performance.now() - begin);
+    const failed = f.session.events.findLast(event => event.type === 'turn/end');
+    assert.equal(failed.data.reason.kind, 'error');
+    assert.equal(failed.data.reason.error.code, 'DEEPSEEK_NO_PROGRESS');
+    assert.equal(f.agent.status, 'idle');
+    assert.equal(requests.length, 1);
+    assert.equal(f.session.events.filter(event => event.type === 'llm/retry').length, 0);
+    if (productionTimeout) assert.ok(elapsedMs >= 119000 && elapsedMs < 135000, `actual default timeout was ${elapsedMs}ms`);
+    const retained = JSON.stringify(f.session.events);
+    f.agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Continue from the retained result; do not repeat completed work.' }] }));
+    await f.agent.whenIdle();
+    const recovered = f.session.events.findLast(event => event.type === 'turn/end');
+    assert.equal(recovered.data.reason.kind, 'completed');
+    assert.equal(recovered.data.turn, failed.data.turn + 1);
+    assert.equal(f.agent.status, 'idle');
+    assert.equal(requests.length, 2);
+    assert.equal(JSON.stringify(f.session.events.slice(0, JSON.parse(retained).length)), retained);
+    assert.ok(JSON.stringify(requests[1]).includes('Release already succeeded; receipt retained.'));
+    assertRetainedTool(f);
+    t.diagnostic(JSON.stringify({ evidenceKind: 'isolated-native-session-controlled-http-sse', timeoutMs: f.connection.streamProgressTimeoutMs, elapsedMs, requests: requests.length, retries: 0, failedTurn: failed.data.turn, recoveredTurn: recovered.data.turn, terminal: recovered.data.reason.kind, historicalToolExecutions: f.toolExecutions() }));
+  } finally {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    await f.dispose();
+  }
 });
 
 test('native TRANSPORT recovery exhausts its existing normal budget within the same step', async () => {

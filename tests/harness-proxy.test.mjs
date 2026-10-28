@@ -1262,22 +1262,19 @@ test('session history is capped to five message boundaries and compressed for VP
   }
 });
 
-test('native prompt queue runs before the transport deadline starts', async () => {
+test('native prompt transport keeps real RPC semantics while composer owns durable queue admission', async () => {
   const fixture = await createFixture('trusted-host');
   try {
     const response = await get(fixture.proxyPort, '/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=pinned', { host: '192.0.2.12:13080', 'if-none-match': 'native-client' });
     assert.equal(response.status, 200);
-    let pending;
     let starts = 0;
     const original = { content: [{ type: 'text', text: '当前候选反馈' }] };
     const signal = new AbortController().signal;
     const api = vm.runInNewContext(response.body, {
       callUnary(method, payload, externalSignal) { starts++; assert.equal(method, 'session.prompt'); assert.equal(payload, original); assert.equal(externalSignal, signal); return 'sent'; },
-      __forgeQueuePrompt(payload, externalSignal, dispatch) { assert.equal(payload, original); assert.equal(externalSignal, signal); pending = dispatch; return 'queued'; },
+      __forgeQueuePrompt() { assert.fail('Legacy browser waiting must not wrap native RPC'); },
     });
-    assert.equal(api.prompt(original, signal), 'queued');
-    assert.equal(starts, 0);
-    assert.equal(pending(), 'sent');
+    assert.equal(api.prompt(original, signal), 'sent');
     assert.equal(starts, 1);
     assert.equal(response.headers['cache-control'], 'no-store');
     assert.equal(response.headers.etag, undefined);

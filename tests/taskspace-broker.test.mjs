@@ -862,7 +862,18 @@ async function authorizeProductionAction(fixture, task, {
     outcome: 'READY', maximumTerminalOutcome: 'COMPLETE', cannotClaim: [], blockers: [],
     ledgerSummary, attestation: 'local-integrity-only; upstream-authentication-is-ed25519',
   };
-  const projection = { ...projectionPayload, gateDigest: canonicalSha256(projectionPayload) };
+  const directPayload = {
+    schemaVersion: 1, projectionType: 'forge-direct-development-status/v1', developmentMode: 'direct', status: 'not_required',
+    projectSlug: context.projectSlug, taskId: context.taskId, taskContractId: context.contractId,
+    source: { head: sourceCommit, fingerprint: source.workspaceFingerprint }, evaluatedAt: new Date(now + 2).toISOString(),
+    verification: 'not_claimed', release: 'not_claimed', releaseAuthorization: {
+      authorized: true,
+      ...Object.fromEntries(['actorUserId', 'actorUsername', 'conversationId', 'dshSessionId', 'rpcId'].map(key => [key, context[key]])),
+      promptTextDigest: context.textDigest,
+    },
+  };
+  const projection = developmentMode === 'direct' ? { ...directPayload, statusDigest: canonicalSha256(directPayload) }
+    : { ...projectionPayload, gateDigest: canonicalSha256(projectionPayload) };
   return {
     context, source, projection,
     protectedCompletionClient: async ({ taskId }) => {
@@ -4297,7 +4308,7 @@ test('admitted direct release survives status turns while cancellation and sourc
             conversationId: original.conversationId, requestId: `request:observation:${offset}` },
           now: Date.now() + offset, policyPath: path.resolve('docker/harness/forge-execution-policy.json') });
       };
-      const broker = directBroker(fixture, { releaseClient: async request => {
+      const broker = directBroker(fixture, { protectedCompletionClient: authorization.protectedCompletionClient, releaseClient: async request => {
         releases.push(request);
         if (request.action === 'prepare') {
           if (condition === 'stop-then-status') await readOnlyTurn('停止执行。', 1);
@@ -4329,19 +4340,32 @@ test('admitted direct release survives status turns while cancellation and sourc
 });
 
 test('direct development release bypasses development completion but preserves candidate preparation and authorization', async t => {
-  for (const condition of ['authorized', 'no-release-authority', 'prepare-failed', 'source-drift', 'compatibility']) {
+  const deniedProjections = ['legacy-unrequested-release', 'wrong-request', 'wrong-actor', 'wrong-contract',
+    'wrong-source', 'wrong-prompt', 'bad-digest'];
+  for (const condition of ['authorized', ...deniedProjections, 'resolver-unavailable', 'no-release-authority', 'prepare-failed', 'source-drift', 'compatibility']) {
     await t.test(condition, async () => {
       const fixture = await createFixture();
       const task = fixture.tasks.get('task-a');
       await writeFile(path.join(task.workspace, 'shared.txt'), 'direct release\n');
       const candidate = await commit(task.workspace, 'direct release candidate');
-      await authorizeProductionAction(fixture, task, { actionCeiling: condition === 'no-release-authority' ? 'workspace-write' : 'release',
+      const authorization = await authorizeProductionAction(fixture, task, { actionCeiling: condition === 'no-release-authority' ? 'workspace-write' : 'release',
         ownedPaths: ['.'], developmentMode: 'direct' });
       const releases = [];
       let completionCalls = 0;
       const broker = directBroker(fixture, {
         ...(condition === 'compatibility' ? { developmentMode: 'governed' } : {}),
-        protectedCompletionClient: async () => { completionCalls += 1; throw new Error('Development obligations absent'); },
+        protectedCompletionClient: async () => {
+          completionCalls += 1;
+          if (['compatibility', 'resolver-unavailable'].includes(condition)) throw new Error('Protected projection unavailable');
+          const { statusDigest, ...projection } = structuredClone(authorization.projection);
+          if (condition === 'legacy-unrequested-release') projection.releaseAuthorization.authorized = false;
+          if (condition === 'wrong-request') projection.releaseAuthorization.rpcId = 'previous-explicit-release-rpc';
+          if (condition === 'wrong-actor') projection.releaseAuthorization.actorUserId = 'another-user';
+          if (condition === 'wrong-contract') projection.taskContractId = 'f'.repeat(64);
+          if (condition === 'wrong-source') projection.source.fingerprint = 'f'.repeat(64);
+          if (condition === 'wrong-prompt') projection.releaseAuthorization.promptTextDigest = 'f'.repeat(64);
+          return { ...projection, statusDigest: condition === 'bad-digest' ? 'f'.repeat(64) : canonicalSha256(projection) };
+        },
         releaseClient: async request => {
           releases.push(request);
           if (request.action === 'prepare') {
@@ -4361,13 +4385,17 @@ test('direct development release bypasses development completion but preserves c
         assert.equal(await git(fixture.workspaceRoot, 'rev-parse', 'HEAD'), candidate);
       } else {
         await assert.rejects(operation, condition === 'no-release-authority' ? { code: 'TASKSPACE_ACTION_CEILING_DENIED' }
+          : deniedProjections.includes(condition) ? { code: 'TASKSPACE_RELEASE_NOT_AUTHORIZED' }
+          : condition === 'resolver-unavailable' ? { code: 'TASKSPACE_RELEASE_INTENT_UNAVAILABLE' }
           : condition === 'prepare-failed' ? /Real candidate startup failed/u
           : condition === 'source-drift' ? { code: 'TASKSPACE_RELEASE_SOURCE_CHANGED' }
           : { code: 'TASKSPACE_ACCEPTANCE_NOT_READY' });
         assert.equal(releases.some(item => item.action === 'release'), false);
         assert.equal(await git(fixture.workspaceRoot, 'rev-parse', 'HEAD'), fixture.baseCommit);
       }
-      assert.equal(completionCalls, condition === 'compatibility' ? 1 : 0);
+      assert.equal(completionCalls, condition === 'no-release-authority' ? 0 : 1);
+      if (deniedProjections.includes(condition) || condition === 'resolver-unavailable') assert.deepEqual(releases, [],
+        'invalid current authorization cannot start candidate preparation or publication');
     });
   }
 });

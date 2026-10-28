@@ -40,6 +40,31 @@ async function fixture(client) {
     close: async () => { await new Promise(resolve => gateway.publicServer.close(resolve)); await rm(root, { recursive: true, force: true }); } };
 }
 
+test('acceptance credentials require a current project member and CSRF and are never cacheable', async () => {
+  const calls = [];
+  const f = await fixture({ request: async value => {
+    calls.push(value);
+    return { item: { accountId: 'review-admin', username: 'reviewer', password: 'fixture-only-secret', revision: 2 } };
+  } });
+  const url = '/forge-gateway/api/production/jobs/job-1/handover/credentials';
+  const body = { project: 'project-alpha', accountId: 'review-admin', expectedRevision: 2, expectedManifestSha256: 'a'.repeat(64) };
+  try {
+    assert.equal((await request(f.port, 'POST', url, { body })).status, 401);
+    assert.equal((await request(f.port, 'POST', url, { cookie: f.cookie, body })).status, 403);
+    await f.store.mutate(state => { state.users[0].role = 'member'; state.memberships.push({ userId: f.user.id, projectSlug: 'project-alpha', access: 'member' }); });
+    assert.equal((await request(f.port, 'POST', url, { cookie: f.cookie, csrf: f.csrf, body: { ...body, project: 'project-beta' } })).status, 403);
+    assert.equal(calls.length, 0);
+    const response = await request(f.port, 'POST', url, { cookie: f.cookie, csrf: f.csrf, body });
+    assert.equal(response.status, 200);
+    assert.match(response.headers['cache-control'], /no-store/);
+    assert.equal(response.value.item.password, 'fixture-only-secret');
+    assert.equal(calls[0].actor.id, f.user.id);
+    await f.store.mutate(state => { state.memberships = []; });
+    assert.equal((await request(f.port, 'POST', url, { cookie: f.cookie, csrf: f.csrf, body })).status, 403);
+    assert.equal(calls.length, 1);
+  } finally { await f.close(); }
+});
+
 test('production gateway authenticates, checks membership and CSRF, and only injects the signed-in actor', async () => {
   const calls = []; const f = await fixture({ request: async value => { calls.push(value); return { items: [] }; } });
   const url = '/forge-gateway/api/production/releases';

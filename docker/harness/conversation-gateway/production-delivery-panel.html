@@ -48,7 +48,7 @@
       <p id="production-export-source" class="production-notice"></p>
       <details class="production-source-details"><summary>查看来源技术信息</summary><p id="production-export-technical" class="production-hash"></p></details>
       <div class="production-dialog-grid">
-      <div class="production-field"><label for="production-architecture">生产服务器架构</label><select id="production-architecture" name="architecture" required><option value="">正在读取可用架构…</option></select></div>
+      <div class="production-field"><label for="production-architecture">生产服务器架构</label><select id="production-architecture" name="architecture" required disabled aria-describedby="production-create-message"><option value="">正在读取可用架构…</option></select></div>
       <div class="production-field"><label for="production-mode">交付方式</label><select id="production-mode" name="mode"><option value="initial">全量包（首次安装）</option><option id="production-upgrade-option" value="upgrade" disabled>增量包（从历史全量包升级）</option></select><small id="production-base-help" class="field-help"></small></div>
       <div id="production-base-field" class="production-field production-wide" hidden><label for="production-base">历史全量基线</label><select id="production-base" name="baseJobId"><option value="">请选择历史全量包</option></select><small class="field-help">可选择任意历史版本中同架构、已验收且恢复材料完整的全量包。</small></div>
       <div class="production-field"><label for="production-recipient">交付给谁</label><input id="production-recipient" name="recipient" required maxlength="120" placeholder="客户、单位或接收团队"></div>

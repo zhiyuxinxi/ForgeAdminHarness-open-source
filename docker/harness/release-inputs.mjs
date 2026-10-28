@@ -28,24 +28,27 @@ export function publicReleasePlan(plan) {
 // Definitions belong to the protected project contract, never a model request.
 // Service names and business directories carry no semantics in this resolver.
 export function validateReleaseInputs(model, services) {
-  if (!model || model.schemaVersion !== 1 || !model.services || Array.isArray(model.services)
+  const object = value => value && typeof value === 'object' && !Array.isArray(value);
+  const paths = value => Array.isArray(value) && value.length <= 256
+    && value.every(scoped) && new Set(value).size === value.length;
+  if (!object(model) || model.schemaVersion !== 1 || !object(model.services)
     || Object.keys(model).some(key => !['schemaVersion', 'services'].includes(key))
     || JSON.stringify(Object.keys(model.services).sort()) !== JSON.stringify([...services].sort())) fail('Input definitions must cover the registered services exactly.');
   for (const [name, unit] of Object.entries(model.services)) {
-    if (!unit || !['tree', 'maven'].includes(unit.kind)
+    if (!object(unit) || !['tree', 'maven'].includes(unit.kind)
       || Object.keys(unit).some(key => !['kind', 'roots', 'inputs', 'optionalInputs', 'migrations', 'mavenRoot', 'module', 'imageVariable', 'dockerfile', 'checks'].includes(key))
       || !/^[A-Z][A-Z0-9_]*_IMAGE$/.test(unit.imageVariable ?? '')) fail(`Invalid input definition for ${name}.`);
     for (const key of ['roots', 'inputs', 'migrations']) {
-      if (!Array.isArray(unit[key]) || unit[key].length > 256 || unit[key].some(item => !scoped(item))
-        || new Set(unit[key]).size !== unit[key].length) fail(`Invalid ${key} for ${name}.`);
+      if (!paths(unit[key])) fail(`Invalid ${key} for ${name}.`);
     }
     if (unit.kind === 'tree' && !unit.roots.length) fail(`Missing source roots for ${name}.`);
-    if (unit.optionalInputs !== undefined && (!Array.isArray(unit.optionalInputs) || unit.optionalInputs.some(item => !scoped(item)))) fail('Invalid optional build inputs.');
+    if (unit.optionalInputs !== undefined && !paths(unit.optionalInputs)) fail('Invalid optional build inputs.');
     if (unit.kind === 'maven' && (!scoped(unit.mavenRoot) || !scoped(unit.module))) fail(`Missing Maven entry for ${name}.`);
     if (unit.dockerfile !== undefined && (!scoped(unit.dockerfile) || !unit.inputs.includes(unit.dockerfile))) fail('Build recipe must be a declared protected input.');
-    if (!Array.isArray(unit.checks) || unit.checks.some(check => !check || typeof check.profile !== 'string'
-      || !check.selectors || Array.isArray(check.selectors) || Object.keys(check).some(k => !['profile', 'selectors', 'inputRoots'].includes(k))
-      || check.inputRoots !== undefined && (!Array.isArray(check.inputRoots) || !check.inputRoots.length || check.inputRoots.some(root => !scoped(root))))) fail('Invalid verification definition.');
+    if (!Array.isArray(unit.checks) || unit.checks.length > 256 || unit.checks.some(check => !object(check)
+      || typeof check.profile !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(check.profile) || !object(check.selectors)
+      || Object.keys(check).some(k => !['profile', 'selectors', 'inputRoots'].includes(k))
+      || check.inputRoots !== undefined && (!paths(check.inputRoots) || !check.inputRoots.length))) fail('Invalid verification definition.');
   }
   if (new Set(Object.values(model.services).map(unit => unit.imageVariable)).size !== services.length) fail('Services must have independent image variables.');
   return model;

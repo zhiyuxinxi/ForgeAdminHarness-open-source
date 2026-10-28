@@ -55,3 +55,4 @@ docs/30-a3/public-distribution/** -text whitespace=cr-at-eol,-blank-at-eol
 docs/long-tasks/project-archive-32148-20261015/*.tap -text -whitespace
 # Preserve transported runtime originals and their recorded SHA-256 values.
 docs/long-tasks/project-archive-32148-20261015/runtime-evidence/** -text -whitespace
+tests/fixtures/env-3212-checkpoint-request.txt text eol=lf

@@ -662,85 +662,225 @@ async function directEditedCheckpointFixture(t, phase = 'checkpointed') {
     setClock: next => { clock = next; }, now: () => clock };
 }
 
-test('direct checkpoint renews after editing an already Host-bound candidate without another admission', async t => {
+test('direct same-RPC source transitions continue edited checkpoints without rebinding Host candidates', async t => {
   directDevelopmentEnvironment(t);
-  let clockMs = NOW.getTime();
-  const value = await fixture({ developmentMode: 'direct',
-    clock: () => new Date(clockMs += 19) });
-  t.after(() => rm(value.root, { recursive: true, force: true }));
-  const input = writerAuthorityRequest(writerGrantSpec({ promptText: '修改页面并保存，本轮不发布。' }), {
-    workspaceWriteAuthorized: true, authorizedActionCeiling: 'git-checkpoint' });
-  const issued = await value.service.issueExecutionAuthority(input);
-  const grant = await value.service.readProductionTaskGrant(input.taskId);
-  const bound = candidateBinding(issued, grant, { actionCeiling: 'git-checkpoint' });
-  const admittedFingerprint = 'c'.repeat(64);
-  const editedFingerprint = 'f'.repeat(64);
-  await value.service.bindCandidate({ taskId: input.taskId, contractId: grant.taskContract.contractId,
-    candidateBinding: bound, admissionReceipt: hostAdmissionReceipt({
-      fingerprint: admittedFingerprint, issuedAt: new Date(clockMs),
-    }) });
-  const before = await value.service.readRecord(input.taskId);
-  assert.equal(grant.workspaceFingerprint, SOURCE);
-  assert.equal(before.acceptanceContract.candidate.source.fingerprint, admittedFingerprint);
-  assert.equal(before.sourceAuthorityBinding.authorityWorkspaceFingerprint, SOURCE);
-  assert.notEqual(grant.claim.claimedAt, grant.issuedAt, 'claim signing follows grant creation');
-  const payload = { schemaVersion: 1, operationId: randomUUID(),
-    task: Object.fromEntries(['projectSlug', 'taskId', 'actorUserId', 'actorUsername', 'conversationId', 'dshSessionId']
-      .map(key => [key, input[key]])),
-    from: { head: HEAD, fingerprint: editedFingerprint },
-    to: { head: 'd'.repeat(40), fingerprint: editedFingerprint },
-    canonicalHead: HEAD, phase: 'checkpointed', sourceAuthority: {
-      ...Object.fromEntries(['executionId', 'generation', 'contractId', 'productionAuthorityDigest',
-        'controllerGrantDigest', 'actionCeiling'].map(key => [key, bound[key]])),
-      issuedAt: grant.claim.claimedAt, expiresAt: grant.expiresAt,
-    }, digestAlgorithm: 'sha256', digestEncoding: 'canonical-json-v1' };
-  const requestFor = candidate => ({
-    ...Object.fromEntries(['projectSlug', 'taskId', 'actorUserId', 'actorUsername', 'conversationId',
-      'dshSessionId', 'rpcId', 'promptTextDigest'].map(key => [key, input[key]])),
-    contractId: grant.taskContract.contractId, source: candidate.to,
-    sourceTransition: { ...candidate, digest: sourceTransitionCanonicalDigest(candidate) },
+  for (const [scenario, firstPhase, firstFingerprint] of [
+    ['dirty integrate', 'integrated', '9'.repeat(64)],
+    ['dirty integrate with merged content', 'integrated', '8'.repeat(64)],
+    ['dirty checkpoint', 'checkpointed', '9'.repeat(64)],
+  ]) await t.test(scenario, async sub => {
+    let clockMs = NOW.getTime();
+    const value = await fixture({ developmentMode: 'direct', conversationTaskPreparation: true,
+      conversationWriterScopes: [{ taskProfile: 'project-files', scopeRoot: 'current-project', ownedPaths: [] }],
+      clock: () => new Date(clockMs += 19) });
+    sub.after(() => rm(value.root, { recursive: true, force: true }));
+    const input = writerAuthorityRequest(writerGrantSpec({ promptText: '修改页面并发布。' }), {
+      workspaceWriteAuthorized: true, authorizedActionCeiling: 'release' });
+    let issued = await value.service.issueExecutionAuthority(input);
+    let grant = await value.service.readProductionTaskGrant(input.taskId);
+    const originalContractId = grant.taskContract.contractId;
+    const initialRecord = await value.service.readRecord(input.taskId);
+    assert.equal(initialRecord.sourceAuthorityBinding, null, 'a new direct request has no Host admission');
+    assert.deepEqual(initialRecord.acceptanceContract.candidate.source, input.source);
+    const taskMetadata = { schemaVersion: 2, projectSlug: input.projectSlug, taskId: input.taskId,
+      actorUserId: input.actorUserId, actorId: input.actorUsername, conversationId: input.conversationId,
+      status: 'active', accessMode: 'conversation' };
+    const classified = classifyPinnedDshPromptBody(Buffer.from(JSON.stringify({
+      type: 'client-request', rpcId: input.rpcId, method: 'session.prompt',
+      payload: { sessionId: input.dshSessionId, mode: 'queue', content: [{ type: 'text', text: input.promptText }] },
+    })), 'session.prompt');
+    const runtimeNow = NOW.getTime() + 1000;
+    await prepareProtectedExecutionContext({ projectRoot: value.root, projectSlug: input.projectSlug,
+      taskMetadata, request: { ...classified, actorUserId: input.actorUserId,
+        actorUsername: input.actorUsername, conversationId: input.conversationId, requestId: 'request:direct-source-transition' },
+      now: runtimeNow, policyPath: path.resolve('docker/harness/forge-execution-policy.json'),
+      trustedPolicyInput: issued.trustedPolicyInput });
+    const contextInput = { projectRoot: value.root, taskMetadata, now: runtimeNow,
+      lookup: { ...Object.fromEntries(['projectSlug', 'taskId', 'actorUserId', 'conversationId', 'dshSessionId', 'rpcId']
+        .map(key => [key, input[key]])), textDigest: input.promptTextDigest } };
+    let authority = await readProtectedExecutionContext(contextInput);
+    assert.notEqual(authority.issuedAt, grant.claim.claimedAt, 'runtime issuance has its own real clock');
+    assert.notEqual(authority.expiresAt, grant.expiresAt, 'runtime expiry is not the AS grant expiry');
+    let checks = 0;
+    value.service.currentExecutionAuthority = async request => ({ ...request,
+      authorizedActionCeiling: (++checks, 'release'), checkedAt: new Date(clockMs).toISOString() });
+    let previousRenewal;
+    for (const [index, [phase, head, fingerprint]] of [
+      [firstPhase, 'd'.repeat(40), firstFingerprint],
+      ['checkpointed', 'e'.repeat(40), 'a'.repeat(64)],
+      ['checkpointed', 'f'.repeat(40), 'b'.repeat(64)],
+    ].entries()) {
+      assert.equal((await value.service.readRecord(input.taskId)).sourceAuthorityBinding, null);
+      assert.notEqual(fingerprint, grant.workspaceFingerprint, 'each transition saves a new legitimate edit');
+      const payload = { schemaVersion: 1, operationId: randomUUID(),
+        task: Object.fromEntries(['projectSlug', 'taskId', 'actorUserId', 'actorUsername', 'conversationId', 'dshSessionId']
+          .map(key => [key, input[key]])),
+        from: { head: grant.sourceCommit, fingerprint: index === 0 ? '9'.repeat(64) : fingerprint },
+        to: { head, fingerprint }, canonicalHead: HEAD, phase,
+        sourceAuthority: { ...Object.fromEntries(['executionId', 'generation', 'contractId',
+          'productionAuthorityDigest', 'controllerGrantDigest', 'actionCeiling', 'issuedAt', 'expiresAt']
+          .map(key => [key, authority[key]])) },
+        digestAlgorithm: 'sha256', digestEncoding: 'canonical-json-v1' };
+      const sourceTransition = { ...payload, digest: sourceTransitionCanonicalDigest(payload) };
+      const renewal = {
+        ...Object.fromEntries(['projectSlug', 'taskId', 'actorUserId', 'actorUsername', 'conversationId',
+          'dshSessionId', 'rpcId', 'promptTextDigest'].map(key => [key, input[key]])),
+        contractId: originalContractId, source: sourceTransition.to, sourceTransition,
+      };
+      if (index === 1) {
+        for (const [name, change] of [
+          ['RPC', request => { request.rpcId = 'another-rpc'; }],
+          ['prompt', request => { request.promptTextDigest = '0'.repeat(64); }],
+          ['actor', request => { request.sourceTransition.task.actorUserId = randomUUID(); }],
+          ['contract', request => { request.sourceTransition.sourceAuthority.contractId = '0'.repeat(64); }],
+          ['production claim', request => { request.sourceTransition.sourceAuthority.productionAuthorityDigest = '0'.repeat(64); }],
+          ['controller grant', request => { request.sourceTransition.sourceAuthority.controllerGrantDigest = '0'.repeat(64); }],
+          ['checkpoint content', request => { request.sourceTransition.from.fingerprint = grant.workspaceFingerprint; }],
+          ['invalid phase', request => { request.sourceTransition.phase = 'unknown'; }],
+        ]) {
+          const changed = structuredClone(renewal);
+          change(changed);
+          const { digest, ...changedPayload } = changed.sourceTransition;
+          changed.sourceTransition.digest = sourceTransitionCanonicalDigest(changedPayload);
+          await assert.rejects(value.service.renewConversationExecution(changed),
+            error => ['CONVERSATION_SOURCE_TRANSITION_MISMATCH', 'CONVERSATION_EXECUTION_RENEWAL_DENIED'].includes(error.code), name);
+        }
+      }
+      const previousAuthority = authority;
+      authority = await readProtectedExecutionContext({ ...contextInput, sourceTransition,
+        renew: async (current, acceptedTransition) => {
+          assert.equal(current.executionId, previousAuthority.executionId);
+          assert.equal(acceptedTransition.digest, sourceTransition.digest);
+          issued = await value.service.renewConversationExecution(renewal);
+          return issued;
+        } });
+      grant = await value.service.readProductionTaskGrant(input.taskId);
+      assert.equal(authority.generation, previousAuthority.generation + (phase === 'integrated' ? 1 : 0));
+      if (phase === 'integrated') assert.notEqual(authority.executionId, previousAuthority.executionId);
+      else assert.equal(authority.executionId, previousAuthority.executionId);
+      assert.equal(grant.claim.rpcId, input.rpcId);
+      assert.equal(grant.taskContract.contractId, originalContractId);
+      assert.equal(grant.actionCeiling, 'release');
+      const record = await value.service.readRecord(input.taskId);
+      assert.deepEqual(record.acceptanceContract.candidate.source, sourceTransition.to);
+      assert.equal(record.sourceAuthorityBinding, null, 'renewal does not fabricate a Host binding');
+      assert.equal((await value.service.resolve({ taskId: input.taskId })).releaseAuthorization.authorized, true,
+        'accepted same-request source transitions retain the proven publication endpoint');
+      assert.deepEqual(record.receipts, [], 'prior candidate checks are not accepted for the edited source');
+      assert.equal(record.signedVerdict, null);
+      const checksBeforeReplay = checks;
+      const repeated = await value.service.renewConversationExecution(renewal);
+      assert.equal(repeated.idempotent, true);
+      assert.equal(repeated.authority.authorityId, issued.authority.authorityId);
+      assert.equal((await value.service.readProductionTaskGrant(input.taskId)).grantId, grant.grantId);
+      if (previousRenewal) {
+        await assert.rejects(value.service.renewConversationExecution(previousRenewal),
+          { code: 'CONVERSATION_EXECUTION_RENEWAL_DENIED' });
+        assert.equal((await value.service.readProductionTaskGrant(input.taskId)).sourceCommit, head);
+      }
+      assert.equal(checks, checksBeforeReplay, 'duplicate and obsolete receipts cannot reissue authority');
+      previousRenewal = renewal;
+    }
+    assert.equal(checks, 3, 'each source transition rechecks the current account and session authority');
   });
-  value.service.currentExecutionAuthority = async authority => ({ ...authority,
-    authorizedActionCeiling: 'git-checkpoint', checkedAt: new Date(clockMs).toISOString() });
-  for (const [name, mutate] of [
-    ['actor', candidate => { candidate.task.actorUserId = randomUUID(); }],
-    ['source HEAD', candidate => { candidate.from.head = '9'.repeat(40); }],
-    ['changed content during checkpoint', candidate => { candidate.from.fingerprint = admittedFingerprint; }],
-    ['integration is not a checkpoint', candidate => { candidate.phase = 'integrated'; }],
-    ['execution', candidate => { candidate.sourceAuthority.executionId = randomUUID(); }],
-    ['generation', candidate => { candidate.sourceAuthority.generation += 1; }],
-    ['contract', candidate => { candidate.sourceAuthority.contractId = '9'.repeat(64); }],
-    ['production authority', candidate => { candidate.sourceAuthority.productionAuthorityDigest = '9'.repeat(64); }],
-    ['controller grant', candidate => { candidate.sourceAuthority.controllerGrantDigest = '9'.repeat(64); }],
-    ['grant creation is not claim time', candidate => { candidate.sourceAuthority.issuedAt = grant.issuedAt; }],
-    ['authority expiry', candidate => { candidate.sourceAuthority.expiresAt = new Date(clockMs + 600_000).toISOString(); }],
-  ]) await t.test(name, async () => {
-    const changed = structuredClone(payload);
-    mutate(changed);
-    await assert.rejects(value.service.renewConversationExecution(requestFor(changed)),
+});
+
+test('direct source transition renews after editing an already Host-bound candidate without another admission', async t => {
+  for (const phase of ['checkpointed', 'integrated']) await t.test(phase, async t => {
+    directDevelopmentEnvironment(t);
+    let clockMs = NOW.getTime();
+    const value = await fixture({ developmentMode: 'direct',
+      clock: () => new Date(clockMs += 19) });
+    t.after(() => rm(value.root, { recursive: true, force: true }));
+    const input = writerAuthorityRequest(writerGrantSpec({ promptText: '修改页面并保存，本轮不发布。' }), {
+      workspaceWriteAuthorized: true, authorizedActionCeiling: 'git-checkpoint' });
+    const issued = await value.service.issueExecutionAuthority(input);
+    const grant = await value.service.readProductionTaskGrant(input.taskId);
+    const classified = classifyPinnedDshPromptBody(Buffer.from(JSON.stringify({
+      type: 'client-request', rpcId: input.rpcId, method: 'session.prompt',
+      payload: { sessionId: input.dshSessionId, mode: 'queue', content: [{ type: 'text', text: input.promptText }] },
+    })), 'session.prompt');
+    const runtimeAuthority = await prepareProtectedExecutionContext({ projectRoot: value.root,
+      projectSlug: input.projectSlug, taskMetadata: { schemaVersion: 2, projectSlug: input.projectSlug,
+        taskId: input.taskId, actorUserId: input.actorUserId, actorId: input.actorUsername,
+        conversationId: input.conversationId, status: 'active', accessMode: 'conversation' },
+      request: { ...classified, actorUserId: input.actorUserId, actorUsername: input.actorUsername,
+        conversationId: input.conversationId, requestId: 'request:bound-direct-transition' },
+      now: NOW.getTime() + 1000, policyPath: path.resolve('docker/harness/forge-execution-policy.json'),
+      trustedPolicyInput: issued.trustedPolicyInput });
+    assert.notEqual(runtimeAuthority.issuedAt, grant.claim.claimedAt);
+    assert.notEqual(runtimeAuthority.expiresAt, grant.expiresAt);
+    const bound = candidateBinding(issued, grant, { actionCeiling: 'git-checkpoint',
+      executionId: runtimeAuthority.executionId, generation: runtimeAuthority.generation });
+    const admittedFingerprint = 'c'.repeat(64);
+    const editedFingerprint = 'f'.repeat(64);
+    await value.service.bindCandidate({ taskId: input.taskId, contractId: grant.taskContract.contractId,
+      candidateBinding: bound, admissionReceipt: hostAdmissionReceipt({
+        fingerprint: admittedFingerprint, issuedAt: new Date(clockMs),
+      }) });
+    const before = await value.service.readRecord(input.taskId);
+    assert.equal(grant.workspaceFingerprint, SOURCE);
+    assert.equal(before.acceptanceContract.candidate.source.fingerprint, admittedFingerprint);
+    assert.equal(before.sourceAuthorityBinding.authorityWorkspaceFingerprint, SOURCE);
+    assert.notEqual(grant.claim.claimedAt, grant.issuedAt, 'claim signing follows grant creation');
+    const payload = { schemaVersion: 1, operationId: randomUUID(),
+      task: Object.fromEntries(['projectSlug', 'taskId', 'actorUserId', 'actorUsername', 'conversationId', 'dshSessionId']
+        .map(key => [key, input[key]])),
+      from: { head: HEAD, fingerprint: editedFingerprint },
+      to: { head: 'd'.repeat(40), fingerprint: phase === 'integrated' ? 'e'.repeat(64) : editedFingerprint },
+      canonicalHead: HEAD, phase, sourceAuthority: {
+        ...Object.fromEntries(['executionId', 'generation', 'contractId', 'productionAuthorityDigest',
+          'controllerGrantDigest', 'actionCeiling'].map(key => [key, bound[key]])),
+        issuedAt: runtimeAuthority.issuedAt, expiresAt: runtimeAuthority.expiresAt,
+      }, digestAlgorithm: 'sha256', digestEncoding: 'canonical-json-v1' };
+    const requestFor = candidate => ({
+      ...Object.fromEntries(['projectSlug', 'taskId', 'actorUserId', 'actorUsername', 'conversationId',
+        'dshSessionId', 'rpcId', 'promptTextDigest'].map(key => [key, input[key]])),
+      contractId: grant.taskContract.contractId, source: candidate.to,
+      sourceTransition: { ...candidate, digest: sourceTransitionCanonicalDigest(candidate) },
+    });
+    value.service.currentExecutionAuthority = async authority => ({ ...authority,
+      authorizedActionCeiling: 'git-checkpoint', checkedAt: new Date(clockMs).toISOString() });
+    for (const [name, mutate] of [
+      ['actor', candidate => { candidate.task.actorUserId = randomUUID(); }],
+      ['source HEAD', candidate => { candidate.from.head = '9'.repeat(40); }],
+      ...(phase === 'checkpointed' ? [
+        ['changed content during checkpoint', candidate => { candidate.from.fingerprint = admittedFingerprint; }],
+      ] : []),
+      ['unfinished integration', candidate => { candidate.phase = 'conflict-open'; }],
+      ['execution', candidate => { candidate.sourceAuthority.executionId = randomUUID(); }],
+      ['generation', candidate => { candidate.sourceAuthority.generation += 1; }],
+      ['contract', candidate => { candidate.sourceAuthority.contractId = '9'.repeat(64); }],
+      ['production authority', candidate => { candidate.sourceAuthority.productionAuthorityDigest = '9'.repeat(64); }],
+      ['controller grant', candidate => { candidate.sourceAuthority.controllerGrantDigest = '9'.repeat(64); }],
+    ]) await t.test(name, async () => {
+      const changed = structuredClone(payload);
+      mutate(changed);
+      await assert.rejects(value.service.renewConversationExecution(requestFor(changed)),
+        error => ['CONVERSATION_SOURCE_TRANSITION_MISMATCH', 'CONVERSATION_EXECUTION_RENEWAL_DENIED'].includes(error.code));
+    });
+    await assert.rejects(value.service.renewConversationExecution({ ...requestFor(payload), rpcId: 'other-rpc' }),
+      { code: 'CONVERSATION_EXECUTION_RENEWAL_DENIED' });
+    value.service.developmentMode = 'controlled';
+    await assert.rejects(value.service.renewConversationExecution(requestFor(payload)),
       error => ['CONVERSATION_SOURCE_TRANSITION_MISMATCH', 'CONVERSATION_EXECUTION_RENEWAL_DENIED'].includes(error.code));
+    value.service.developmentMode = 'direct';
+    value.service.currentExecutionAuthority = async authority => ({ ...authority,
+      authorizedActionCeiling: 'workspace-write', checkedAt: new Date(clockMs).toISOString() });
+    await assert.rejects(value.service.renewConversationExecution(requestFor(payload)),
+      { code: 'CONVERSATION_EXECUTION_RENEWAL_DENIED' });
+    value.service.currentExecutionAuthority = async authority => ({ ...authority,
+      authorizedActionCeiling: 'git-checkpoint', checkedAt: new Date(clockMs).toISOString() });
+    const renewed = await value.service.renewConversationExecution(requestFor(payload));
+    assert.equal(renewed.authority.sourceCommit, payload.to.head);
+    assert.equal(renewed.authority.workspaceFingerprint, payload.to.fingerprint);
+    assert.equal(renewed.authority.contractId, issued.authority.contractId);
+    const after = await value.service.readRecord(input.taskId);
+    assert.deepEqual(after.acceptanceContract.candidate.source, payload.to);
+    assert.equal(after.sourceAuthorityBinding, null, 'edited content must not retain the old Host binding');
+    assert.deepEqual(after.receipts, []);
+    assert.equal(after.signedVerdict, null);
   });
-  await assert.rejects(value.service.renewConversationExecution({ ...requestFor(payload), rpcId: 'other-rpc' }),
-    { code: 'CONVERSATION_EXECUTION_RENEWAL_DENIED' });
-  value.service.developmentMode = 'controlled';
-  await assert.rejects(value.service.renewConversationExecution(requestFor(payload)),
-    error => ['CONVERSATION_SOURCE_TRANSITION_MISMATCH', 'CONVERSATION_EXECUTION_RENEWAL_DENIED'].includes(error.code));
-  value.service.developmentMode = 'direct';
-  value.service.currentExecutionAuthority = async authority => ({ ...authority,
-    authorizedActionCeiling: 'workspace-write', checkedAt: new Date(clockMs).toISOString() });
-  await assert.rejects(value.service.renewConversationExecution(requestFor(payload)),
-    { code: 'CONVERSATION_EXECUTION_RENEWAL_DENIED' });
-  value.service.currentExecutionAuthority = async authority => ({ ...authority,
-    authorizedActionCeiling: 'git-checkpoint', checkedAt: new Date(clockMs).toISOString() });
-  const renewed = await value.service.renewConversationExecution(requestFor(payload));
-  assert.equal(renewed.authority.sourceCommit, payload.to.head);
-  assert.equal(renewed.authority.workspaceFingerprint, editedFingerprint);
-  assert.equal(renewed.authority.contractId, issued.authority.contractId);
-  const after = await value.service.readRecord(input.taskId);
-  assert.deepEqual(after.acceptanceContract.candidate.source, payload.to);
-  assert.equal(after.sourceAuthorityBinding, null, 'edited content must not retain the old Host binding');
-  assert.deepEqual(after.receipts, []);
-  assert.equal(after.signedVerdict, null);
 });
 
 test('direct edited checkpoint preserves API evidence only for unchanged candidate content', async t => {
@@ -12547,5 +12687,188 @@ test('direct workpod original edit-then-release and ceiling requests reach both 
     const grant = await value.service.readProductionTaskGrant(input.taskId);
     assert.equal(grant.actionCeiling, 'release');
     assert.equal(grant.promptTextDigest, input.promptTextDigest);
+  });
+});
+test('direct isolated checkpoint request does not treat no integration as no saving', async t => {
+  directDevelopmentEnvironment(t);
+  const originalPrompt = await readFile(new URL('./fixtures/env-3212-checkpoint-request.txt', import.meta.url), 'utf8');
+  assert.equal(createHash('sha256').update(originalPrompt).digest('hex'),
+    'e7b4eb6569a88dca2cead6663b532af127c83e30d33e935540ea5e3a4de87524');
+  for (const [name, promptText, accountCeiling, ceiling] of [
+    ['actual submitted request', originalPrompt, 'release', 'git-checkpoint'],
+    ['saving denied', `${originalPrompt}\n本轮不要保存。`, 'release', 'workspace-write'],
+    ['account ceiling', originalPrompt, 'workspace-write', 'workspace-write'],
+  ]) await t.test(name, async sub => {
+    const value = await fixture({ developmentMode: 'direct', clock: () => new Date() });
+    sub.after(() => rm(value.root, { recursive: true, force: true }));
+    const input = writerAuthorityRequest(writerGrantSpec({ promptText }), {
+      workspaceWriteAuthorized: true, authorizedActionCeiling: accountCeiling,
+    });
+    const issued = await value.service.issueExecutionAuthority(input);
+    const grant = await value.service.readProductionTaskGrant(input.taskId);
+    assert.equal(issued.authority.actionCeiling, ceiling);
+    assert.equal(issued.trustedPolicyInput.taskAuthority.contract.actionCeiling, ceiling);
+    assert.equal(grant.actionCeiling, ceiling);
+    assert.equal(grant.promptTextDigest, input.promptTextDigest);
+    for (const key of ['actorUserId', 'conversationId', 'dshSessionId', 'rpcId']) {
+      assert.equal(issued.authority[key], input[key]);
+    }
+    const scope = JSON.parse(await readFile(path.join(value.service.config.stateRoot,
+      'conversation-task-scopes', `${input.taskId}.json`), 'utf8'));
+    assert.equal(scope.goal, promptText, 'the full original no-integration instruction remains intact');
+    const metadata = { schemaVersion: 2, projectSlug: input.projectSlug, taskId: input.taskId,
+      actorUserId: input.actorUserId, actorId: input.actorUsername, conversationId: input.conversationId,
+      status: 'active', accessMode: 'conversation' };
+    const classified = classifyPinnedDshPromptBody(Buffer.from(JSON.stringify({
+      type: 'client-request', rpcId: input.rpcId, method: 'session.prompt',
+      payload: { sessionId: input.dshSessionId, mode: 'queue', content: [{ type: 'text', text: promptText }] },
+    })), 'session.prompt');
+    await prepareProtectedExecutionContext({ projectRoot: value.root, projectSlug: input.projectSlug,
+      taskMetadata: metadata, request: { ...classified, actorUserId: input.actorUserId,
+        actorUsername: input.actorUsername, conversationId: input.conversationId, requestId: 'request:isolated-checkpoint' },
+      policyPath: path.resolve('docker/harness/forge-execution-policy.json'), trustedPolicyInput: issued.trustedPolicyInput });
+    const context = await readProtectedExecutionContext({ projectRoot: value.root, taskMetadata: metadata, lookup: {
+      ...Object.fromEntries(['projectSlug', 'taskId', 'actorUserId', 'conversationId', 'dshSessionId', 'rpcId']
+        .map(key => [key, input[key]])), textDigest: input.promptTextDigest } });
+    const handlers = new Map();
+    const controller = installPhaseBudgetGuard({ on(name, handler) { handlers.set(name, handler); },
+      tools: { guard() { return () => {}; } } }, message => message, { resolveExecutionContext: async () => context });
+    const agent = { session: { id: input.dshSessionId, events: [] }, steer() {}, cancel() {} };
+    await handlers.get('agent/pre-step')({ agent, turn: 1, step: 1, signal: new AbortController().signal },
+      async () => ({ kind: 'enter', messages: [{ role: 'user', source: { kind: 'user' },
+        content: [{ type: 'text', text: promptText }] }] }));
+    const state = controller.states.get(agent);
+    assert.equal(state.taskContract.contractId, grant.taskContract.contractId);
+    const command = `forge-release checkpoint --path docs/platform-context-checkpoint-verification-20261018.md --message-base64 cGxhdGZvcm0 --expected-head ${input.source.head} --expected-fingerprint ${input.source.fingerprint}`;
+    const checkpointDenial = toolDenialReason(state, { name: 'bash', arguments: { command } });
+    if (ceiling === 'git-checkpoint') assert.equal(checkpointDenial, undefined);
+    else assert.match(checkpointDenial, /exceeds the protected contract ceiling/u);
+    assert.match(toolDenialReason(state, { name: 'bash', arguments: { command:
+      'forge-release release --services forge-admin --version v1.0.0 --approval-ref isolated-checkpoint' } }),
+    /exceeds the protected contract ceiling/u);
+  });
+});
+
+
+test('direct second-person release request preserves explicit permission boundaries', async t => {
+  directDevelopmentEnvironment(t);
+  const original = '我授权你可以做所有事情，你发版。';
+  const cases = [
+    ['original owner request', original, 'release'],
+    ['direct imperative', '你发版。', 'release'],
+    ['polite imperative', '请你发布。', 'release'],
+    ['direct adverb', '你直接发版。', 'release'],
+    ['blanket wording alone', '我授权你可以做所有事情。', 'not-release'],
+    ['current denial', original + '本轮不要发布。', 'not-release'],
+    ['read only', original + '只读分析，不修改。', 'not-release'],
+    ['hypothetical', '如果管理员同意，你发版。', 'not-release'],
+    ['pending approval', '等我确认后，你发版。', 'not-release'],
+    ['quoted example', '文档示例：\n我授权你可以做所有事情，你发版。', 'not-release'],
+    ['quoted UI copy', '按钮文案改成“你发版”。', 'not-release'],
+    ['question', '你发版？', 'not-release'],
+    ['account ceiling', original, 'not-release', 'git-checkpoint'],
+  ];
+  for (const [name, promptText, expected, ceiling = 'release'] of cases) await t.test(name, async sub => {
+    const value = await fixture({ developmentMode: 'direct' });
+    sub.after(() => rm(value.root, { recursive: true, force: true }));
+    const input = writerAuthorityRequest(writerGrantSpec({ promptText }), {
+      workspaceWriteAuthorized: true, authorizedActionCeiling: ceiling,
+    });
+    let result;
+    try { result = await value.service.issueExecutionAuthority(input); }
+    catch (error) {
+      if (ceiling === 'git-checkpoint') return assert.equal(error.code, 'CONVERSATION_ACTION_NOT_AUTHORIZED');
+      throw error;
+    }
+    if (expected === 'not-release') return assert.notEqual(result.authority?.actionCeiling, 'release');
+    assert.equal(result.authority.actionCeiling, 'release');
+    assert.equal(result.trustedPolicyInput.taskAuthority.contract.actionCeiling, 'release');
+    const grant = await value.service.readProductionTaskGrant(input.taskId);
+    assert.equal(grant.actionCeiling, 'release');
+    assert.equal(grant.promptTextDigest, input.promptTextDigest);
+  });
+});
+
+test('direct publication denial synonyms cannot be overridden by an earlier affirmative action', async t => {
+  directDevelopmentEnvironment(t);
+  for (const promptText of ['修改页面并发布。本轮不准发版。', '修改页面并发布。本轮不允许发布。',
+    '修改页面并发布。本轮不授权发布。', '发布当前候选，不发布其他服务以及当前候选。']) await t.test(promptText, async sub => {
+    const value = await fixture({ developmentMode: 'direct' });
+    sub.after(() => rm(value.root, { recursive: true, force: true }));
+    const input = writerAuthorityRequest(writerGrantSpec({ promptText }), {
+      workspaceWriteAuthorized: true, authorizedActionCeiling: 'release' });
+    const issued = await value.service.issueExecutionAuthority(input);
+    assert.notEqual(issued.authority?.actionCeiling, 'release');
+  });
+});
+
+test('direct release resolver preserves trusted semantic endpoints through status resume and source refresh', async t => {
+  directDevelopmentEnvironment(t);
+  const value = await fixture({ developmentMode: 'direct' });
+  t.after(() => rm(value.root, { recursive: true, force: true }));
+  let sequence = 0;
+  const issue = async (text, decision = {}) => {
+    const input = semanticRequest(text, `resolver-sequence-${++sequence}`, decision);
+    await value.service.issueExecutionAuthority(input);
+    return input;
+  };
+  const status = async input => value.service.resolve({ taskId: input.taskId });
+  const explicit = await issue('能不能修复页面并发布一个版本？', {
+    requestedAction: 'release', actionEvidence: '发布一个版本', goal: '修复页面，完成定向检查后交付当前版本' });
+  const released = await status(explicit);
+  assert.equal(released.releaseAuthorization.authorized, true, 'validated semantic authority does not require reparsing goal wording');
+  assert.equal(released.releaseAuthorization.rpcId, explicit.rpcId);
+  assert.equal(released.releaseAuthorization.promptTextDigest, explicit.promptTextDigest);
+  const observed = await issue('当前进度怎样？', { kind: 'observe', continuity: 'same-task' });
+  assert.equal((await status(observed)).releaseAuthorization.authorized, true);
+  assert.equal((await status(observed)).releaseAuthorization.rpcId, explicit.rpcId, 'an observation does not replace the release scope');
+  const continued = await issue('接着推进吧', { continuity: 'same-task' });
+  assert.equal((await status(continued)).releaseAuthorization.authorized, true);
+  assert.equal((await status(continued)).releaseAuthorization.rpcId, continued.rpcId);
+  const paused = await issue('先停一下', { kind: 'pause', continuity: 'same-task' });
+  assert.equal((await status(paused)).releaseAuthorization.authorized, false);
+  assert.equal((await status(await issue('现在进度怎样？', { kind: 'observe', continuity: 'same-task' }))).releaseAuthorization.authorized, false);
+  const resumed = await issue('接着做吧', { continuity: 'same-task' });
+  assert.equal((await status(resumed)).releaseAuthorization.authorized, true);
+  const newTask = await issue('另外增加用户筛选条件', { continuity: 'new-task' });
+  assert.equal((await status(newTask)).releaseAuthorization.authorized, false);
+  assert.equal((await status(await issue('继续', { continuity: 'same-task' }))).releaseAuthorization.authorized, false);
+  const nextRelease = await issue('发布当前修改', { continuity: 'same-task', requestedAction: 'release', actionEvidence: '发布当前修改' });
+  assert.equal((await status(nextRelease)).releaseAuthorization.authorized, true);
+  const cancelled = await issue('取消当前任务', { kind: 'cancel', continuity: 'same-task' });
+  assert.equal((await status(cancelled)).releaseAuthorization.authorized, false);
+  const fresh = await issue('修改另一个页面并发布', { requestedAction: 'release', actionEvidence: '发布' });
+  assert.equal((await status(fresh)).releaseAuthorization.authorized, true);
+  const denied = await issue('继续修改，本轮不要发布', { continuity: 'same-task', prohibitedActions: ['release'] });
+  assert.equal((await status(denied)).releaseAuthorization.authorized, false);
+});
+
+test('direct release resolver rejects legacy ceilings and changed goals without rewriting editing grants', async t => {
+  directDevelopmentEnvironment(t);
+  for (const condition of ['legacy-no-proof', 'legacy-no-goal', 'changed-goal']) await t.test(condition, async sub => {
+    const value = await fixture({ developmentMode: 'direct' });
+    sub.after(() => rm(value.root, { recursive: true, force: true }));
+    const input = semanticRequest('发布当前修改', 'resolver-original', { requestedAction: 'release', actionEvidence: '发布当前修改' });
+    await value.service.issueExecutionAuthority(input);
+    const scopeFile = path.join(value.service.config.stateRoot, 'conversation-task-scopes', `${input.taskId}.json`);
+    const scope = JSON.parse(await readFile(scopeFile, 'utf8'));
+    if (condition.startsWith('legacy-')) delete scope.releaseAuthorizedGoalDigest;
+    else scope.goal = '修改页面，增加筛选条件';
+    if (condition === 'legacy-no-goal') delete scope.goal;
+    delete scope.recordDigest;
+    scope.recordDigest = canonicalSha256(scope);
+    await writeFile(scopeFile, JSON.stringify(scope));
+    const before = await value.service.readProductionTaskGrant(input.taskId);
+    const resolved = await value.service.resolve({ taskId: input.taskId });
+    assert.equal(resolved.releaseAuthorization.authorized, false);
+    assert.equal(protectedCompletionProjectionNotRequired(resolved), true);
+    assert.deepEqual(await value.service.readProductionTaskGrant(input.taskId), before);
+    const continued = semanticRequest('接着做', 'resolver-legacy-continue', { continuity: 'same-task' });
+    assert.equal((await value.service.issueExecutionAuthority(continued)).authority.actionCeiling, 'release', 'editing grant remains usable');
+    assert.equal((await value.service.resolve({ taskId: input.taskId })).releaseAuthorization.authorized, false,
+      'continuation cannot turn an old ceiling into proof of publication intent');
+    const fresh = semanticRequest('发布当前修改', 'resolver-fresh-release', { continuity: 'same-task', requestedAction: 'release', actionEvidence: '发布当前修改' });
+    await value.service.issueExecutionAuthority(fresh);
+    assert.equal((await value.service.resolve({ taskId: input.taskId })).releaseAuthorization.authorized, true);
   });
 });

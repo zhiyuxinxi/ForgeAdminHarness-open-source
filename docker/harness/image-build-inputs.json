@@ -127,6 +127,8 @@
     { "source": "docker/harness/harness-directory-scope.js", "destination": "usr/local/lib/harness-directory-scope.js", "type": "file", "mode": "0644" },
     { "source": "docker/harness/conversation-output.js", "destination": "usr/local/lib/conversation-output.js", "type": "file", "mode": "0644" },
     { "source": "docker/harness/conversation-prompt-queue.js", "destination": "usr/local/lib/conversation-prompt-queue.js", "type": "file", "mode": "0644" },
+    { "source": "docker/harness/conversation-message-queue.mjs", "destination": "usr/local/lib/conversation-message-queue.mjs", "type": "file", "mode": "0644" },
+    { "source": "docker/harness/conversation-message-queue-runtime.mjs", "destination": "usr/local/lib/conversation-message-queue-runtime.mjs", "type": "file", "mode": "0644" },
     { "source": "docker/harness/conversation-output-store.mjs", "destination": "usr/local/lib/conversation-output-store.mjs", "type": "file", "mode": "0644" },
     { "source": "docker/harness/output-file-presentation.mjs", "destination": "usr/local/lib/output-file-presentation.mjs", "type": "file", "mode": "0644" },
     { "source": "docker/harness/phase-work-package-files.mjs", "destination": "usr/local/lib/phase-work-package-files.mjs", "type": "file", "mode": "0644" },

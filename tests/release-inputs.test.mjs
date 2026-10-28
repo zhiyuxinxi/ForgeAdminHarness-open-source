@@ -9,6 +9,30 @@ const snapshot = contents => new Map(Object.entries(contents).map(([file, value]
 const collect = (model, contents) => collectReleaseInputs(model, snapshot(contents), file => contents[file]);
 const baseline = input => ({ commit: 'a'.repeat(40), inputDigest: input.digest, inputFiles: input.files });
 
+test('release input definitions accept bounded checks and reject malformed protected input metadata', () => {
+  const paths = Array.from({ length: 256 }, (_, index) => `web/input-${index}`);
+  const valid = { schemaVersion: 1, services: { web: { ...tree(['web']), optionalInputs: [...paths],
+    checks: Array.from({ length: 256 }, () => ({ profile: `a${'b'.repeat(63)}`, selectors: {}, inputRoots: [...paths] })),
+  } } };
+  assert.equal(validateReleaseInputs(valid, ['web']), valid);
+  const cases = [
+    ['selectors must be an object', unit => { unit.checks[0].selectors = 1; }],
+    ['profile stays a string', unit => { unit.checks[0].profile = true; }],
+    ['profile must be an identifier', unit => { unit.checks[0].profile = '../unexpected'; }],
+    ['profile length is bounded', unit => { unit.checks[0].profile += 'a'; }],
+    ['optional inputs are unique', unit => { unit.optionalInputs[1] = unit.optionalInputs[0]; }],
+    ['optional inputs are bounded', unit => { unit.optionalInputs.push('web/extra'); }],
+    ['checks are bounded', unit => { unit.checks.push({ profile: 'web-build', selectors: {} }); }],
+    ['check input roots are unique', unit => { unit.checks[0].inputRoots[1] = unit.checks[0].inputRoots[0]; }],
+    ['check input roots are bounded', unit => { unit.checks[0].inputRoots.push('web/extra'); }],
+  ];
+  for (const [label, mutate] of cases) {
+    const invalid = structuredClone(valid);
+    mutate(invalid.services.web);
+    assert.throws(() => validateReleaseInputs(invalid, ['web']), { code: 'RELEASE_INPUTS_UNRESOLVED' }, label);
+  }
+});
+
 test('impact comparison base does not change artifact identity or allow a different candidate', () => {
   const candidate = { source: 'taskspace', taskId: 'one', actorId: 'actor', conversationId: 'chat', candidateCommit: 'a'.repeat(40) };
   assert.equal(sameReleaseCandidate(candidate, { ...candidate, sourceBaseCommit: 'b'.repeat(40) }), true);

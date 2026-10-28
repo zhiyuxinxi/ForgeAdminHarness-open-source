@@ -241,27 +241,23 @@ test('a navigation change immediately before fetch is explicitly unaccepted', as
   assert.equal(f.calls.some(call => call.body.method === 'session.prompt'), false);
 });
 
-test('the result area displays only the current session queue and exposes cancellation only before dispatch', () => {
-  let state = null, listener, subscribedSession, cleanup, cancelled = 0, detached = false, mounted = false;
+test('the result area subscribes to the server workpod queue with the current session identity and detaches on unmount', () => {
+  let state = null, listener, subscribedSession, cleanup, detached = false, mounted = false;
   const jsx = (type, props) => ({ type, props });
   const ui = vm.createContext({ document: { querySelector: () => ({}) }, react_jsx_runtime: { jsx, jsxs: jsx },
     react: { useState: () => [state, value => { state = value; }], useEffect: callback => { if (!mounted) { mounted = true; cleanup = callback(); } } },
     __forgeSubscribePromptQueue: (sessionId, update) => { subscribedSession = sessionId; listener = update; return () => { detached = true; }; },
   });
   vm.runInContext(source, ui);
-  assert.equal(ui.ForgePromptQueueStatus({ sessionId: target.sessionId }), null);
+  const queueProps = { sessionId: target.sessionId, useSessions: select => select({ byId: {} }), openSession() {} };
+  assert.equal(ui.ForgePromptQueueStatus(queueProps), null);
   assert.equal(subscribedSession, target.sessionId);
-  listener({ phase: 'waiting', seconds: 42, cancel: () => { cancelled++; } });
-  let view = ui.ForgePromptQueueStatus({ sessionId: target.sessionId });
-  assert.match(view.props.children[0].props.children, /尚未发送.*42 秒/);
-  assert.equal(view.props.children[1].props.children, '取消等待');
-  view.props.children[1].props.onClick();
-  assert.equal(cancelled, 1);
-  listener({ phase: 'submitting', seconds: 42, cancel: null });
-  view = ui.ForgePromptQueueStatus({ sessionId: target.sessionId });
-  assert.match(view.props.children[0].props.children, /正在提交.*等待接纳/);
-  assert.equal(view.props.children[1], null);
+  listener({ items: [], pausedSessions: [], busyIds: [], refresh() {} });
+  let view = ui.ForgePromptQueueStatus(queueProps);
+  assert.equal(view.props['aria-label'], '工作舱消息队列');
+  assert.equal(view.props.children[0].props.children[0].props.children, '工作舱消息队列');
+  assert.match(view.props.children[1].props.children, /可以继续发送多条消息/);
   listener(null);
-  assert.equal(ui.ForgePromptQueueStatus({ sessionId: target.sessionId }), null);
+  assert.equal(ui.ForgePromptQueueStatus(queueProps), null);
   cleanup(); assert.equal(detached, true);
 });

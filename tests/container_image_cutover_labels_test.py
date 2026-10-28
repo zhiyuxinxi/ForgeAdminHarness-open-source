@@ -32,6 +32,41 @@ def label_programs():
 
 
 class ContainerImageCutoverLabelsTest(unittest.TestCase):
+    @unittest.skipUnless(JQ, "jq is required to execute the actual shell helper filters")
+    def test_create_request_preserves_init_for_image_and_runtime_template_cutovers(self):
+        match = re.search(
+            r'if ! jq --arg image "\$\{target_image_id\}".*?'
+            r'--slurpfile original "\$\{inspect_file\}" \'\n(.*?)\n'
+            r'  \' "\$\{runtime_template_file\}" >"\$\{request_file\}";',
+            HELPER.read_text(encoding="utf-8"), re.DOTALL,
+        )
+        self.assertIsNotNone(match, "Expected the real cutover create-request filter")
+        for runtime_template_mode in (False, True):
+            for init in (False, True):
+                with self.subTest(runtime_template_mode=runtime_template_mode, init=init):
+                    original = {
+                        "Id": "a" * 64, "Config": {"Labels": {}},
+                        "HostConfig": {"Init": not init, "PidsLimit": 1024, "NetworkMode": "fixture"},
+                        "NetworkSettings": {"Networks": {}},
+                    }
+                    selected = json.loads(json.dumps(original))
+                    selected["HostConfig"]["Init"] = init
+                    if not runtime_template_mode:
+                        original = selected
+                    process = subprocess.run(
+                        [JQ, "--arg", "image", "sha256:" + "b" * 64,
+                         "--arg", "config_hash", "", "--arg", "primary_network", "",
+                         "--argjson", "source_image_labels", "{}",
+                         "--argjson", "target_image_labels", "{}",
+                         "--argjson", "runtime_template_mode", json.dumps(runtime_template_mode),
+                         "--argjson", "original", json.dumps([[original]]), match.group(1)],
+                        input=json.dumps([selected]), capture_output=True, text=True, timeout=10,
+                    )
+                    self.assertEqual(process.returncode, 0, process.stderr)
+                    host_config = json.loads(process.stdout)["HostConfig"]
+                    self.assertIs(host_config["Init"], init)
+                    self.assertEqual(host_config["PidsLimit"], 1024)
+
     def test_creation_and_both_equivalence_consumers_share_compose_preservation(self):
         programs = label_programs()
         self.assertEqual(len({re.sub(r"\s+", " ", program) for program in programs}), 1)

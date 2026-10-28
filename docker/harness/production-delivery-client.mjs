@@ -2,10 +2,14 @@ import http from 'node:http';
 import path from 'node:path';
 
 const PREFIX='/forge-gateway/api/production/';
+// The stop worker allows 3600s for the complete sequential deployment stop.
+// Keep the normal 20s response margin without extending other production calls.
+const STOP_TIMEOUT_MS=3620000;
 export function createProductionDeliveryClient({socketPath,timeoutMs=20000}) {
   if(!path.isAbsolute(socketPath??''))throw new Error('PRODUCTION_SOCKET_INVALID');
   function call({method='GET',path:requestPath,body,actor,range},download=false) {
     if(!requestPath.startsWith(PREFIX))throw new Error('PRODUCTION_PATH_INVALID');
+    const stop=method==='POST'&&/^jobs\/[a-z0-9-]+\/stop$/.test(requestPath.slice(PREFIX.length).split('?')[0]);
     const bytes=body===undefined?null:Buffer.from(JSON.stringify(body));
     return new Promise((resolve,reject)=>{
       const headers={'content-type':'application/json'};if(bytes)headers['content-length']=bytes.length;
@@ -15,7 +19,7 @@ export function createProductionDeliveryClient({socketPath,timeoutMs=20000}) {
         let size=0;const chunks=[];res.on('data',chunk=>{size+=chunk.length;if(size>8*1024*1024)req.destroy(new Error('PRODUCTION_RESPONSE_TOO_LARGE'));else chunks.push(chunk);});
         res.on('error',reject);res.on('end',()=>{try{const result=JSON.parse(Buffer.concat(chunks));if(res.statusCode>=400)reject(Object.assign(new Error(result.message??'生产交付请求失败。'),{code:result.code,status:res.statusCode}));else resolve(result);}catch(error){reject(error);}});
       });
-      req.setTimeout(timeoutMs,()=>req.destroy(Object.assign(new Error('生产交付服务响应超时。'),{code:'PRODUCTION_TIMEOUT',status:503})));
+      req.setTimeout(stop?STOP_TIMEOUT_MS:timeoutMs,()=>req.destroy(Object.assign(new Error('生产交付服务响应超时。'),{code:'PRODUCTION_TIMEOUT',status:503})));
       req.on('error',reject);req.end(bytes);
     });
   }

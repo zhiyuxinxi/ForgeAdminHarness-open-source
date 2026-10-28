@@ -251,7 +251,7 @@ function hasProductionActionDenial(prompt) {
     && (CURRENT_TASK_OBJECT.test(target) || /(?:当前|本次|本轮|本批)/u.test(target));
   const namedCurrent = /(?:本批|本次|本轮|当前)\s*(?!候选|任务|范围|改动|修改|变更|已|上述|这个|那个)(?:[A-Za-z][A-Za-z0-9_-]*|[\u3400-\u9fff]{2,24})/u.test(target);
   return prompt.split(/[，,。；;！？!?\r\n]+/u).some(clause => {
-    const denial = /(?:不要|不得|禁止|暂不|先不|无需|不必|不)\s*(?:受控\s*)?(?:提交|发版|发布|部署|上线)/u.exec(clause);
+    const denial = /(?:不要|不得|不准|不允许|不授权|禁止|暂不|先不|无需|不必|不)\s*(?:受控\s*)?(?:提交|发版|发布|部署|上线)/u.exec(clause);
     if (denial === null) return false;
     const subject = clause.slice(0, denial.index).trim();
     if (currentRelease && /^(?:其他|其它|另外的|另一)(?:候选|任务)$/u.test(subject)) return false;
@@ -506,7 +506,7 @@ function requestedProductionAction(prompt) {
 }
 
 function directCheckpointDenied(prompt) {
-  return /(?:不要|不得|不准|禁止|暂不|先不|不允许|不授权|不必|无需|不)\s*(?:受控\s*)?(?:提交|保存|集成)/u.test(prompt);
+  return /(?:不要|不得|不准|禁止|暂不|先不|不允许|不授权|不必|无需|不)\s*(?:受控\s*)?(?:提交|保存)/u.test(prompt);
 }
 
 function requestedDirectProductionAction(prompt) {
@@ -533,7 +533,9 @@ function requestedDirectProductionAction(prompt) {
       || /(?:引用|示例|文档|日志|工具输出)[^。；;\r\n]*[：:]\s*$/u.test(sentences[index - 1] ?? '')) return false;
     // A completion clause states the current task's release endpoint. It must
     // end as an action, not a UI label such as "改完发版按钮".
-    return /(?:^|[，,])\s*(?:请\s*)?(?:改(?:完|好)|修(?:完|好)|(?:修改|修复|调整)(?:完|完成))(?:后|之后)?(?:直接|再)?(?:发布|发版|部署|上线)\s*$/u.test(text)
+    return (!/(?:等|等待)[^，,。；;\r\n]{0,16}(?:确认|批准|同意|授权)/u.test(text)
+      && /(?:^|[，,])\s*(?:请\s*)?你(?:现在|直接)?(?:发布|发版|部署|上线)(?:吧|一下)?\s*$/u.test(text))
+      || /(?:^|[，,])\s*(?:请\s*)?(?:改(?:完|好)|修(?:完|好)|(?:修改|修复|调整)(?:完|完成))(?:后|之后)?(?:直接|再)?(?:发布|发版|部署|上线)\s*$/u.test(text)
       // The owner may name the already authorized task or state its desired
       // release endpoint. Preserve sentence/attribution and denial checks above.
       || /(?:^|[，,])\s*(?:请\s*)?(?:继续)?完成(?:我)?(?:此前|之前|当前|本轮|本次)?已授权的[^，,。；;！？!?\r\n]{0,64}?(?:发布|发版|部署|上线)\s*$/u.test(text)
@@ -1890,6 +1892,7 @@ export class ProtectedAcceptanceService {
       'dshSessionId', 'sourceCommit', 'ownedPaths', 'taskProfiles', 'promptTextDigest', 'recordDigest',
       'implementationRequested', 'rpcId', 'requestDigest', 'grantId',
       ...(Object.hasOwn(scope, 'goal') ? ['goal'] : []),
+      ...(Object.hasOwn(scope, 'releaseAuthorizedGoalDigest') ? ['releaseAuthorizedGoalDigest'] : []),
       ...(Object.hasOwn(scope, 'paused') ? ['paused'] : []),
       ...(Object.hasOwn(scope, 'dualReview') ? ['dualReview'] : []),
       ...(Object.hasOwn(scope, 'roleGrantDecisions') ? ['roleGrantDecisions'] : []),
@@ -1899,6 +1902,7 @@ export class ProtectedAcceptanceService {
       ...(Object.hasOwn(scope, 'sourceTransitionDigest') ? ['sourceTransitionDigest', 'sourceTransitionFromFingerprint'] : [])], 'conversation task scope');
     if (scope.schemaVersion !== 1 || typeof scope.implementationRequested !== 'boolean'
       || (Object.hasOwn(scope, 'paused') && typeof scope.paused !== 'boolean')
+      || (Object.hasOwn(scope, 'releaseAuthorizedGoalDigest') && !/^sha256:[0-9a-f]{64}$/u.test(scope.releaseAuthorizedGoalDigest))
       || (Object.hasOwn(scope, 'goal')
         && (typeof scope.goal !== 'string' || scope.goal.length < 1
           || Buffer.byteLength(scope.goal, 'utf8') > 1024 * 1024))
@@ -2224,19 +2228,19 @@ export class ProtectedAcceptanceService {
     const currentClaimedMergeAuthority = currentClaimedRequest
       && (previous.workspaceFingerprint === transition.from.fingerprint || directEditedTransition);
     // A Host admission may bind edits without changing the original authority's
-    // fingerprint. Further same-request edits can still be checkpointed under
+    // fingerprint. Further same-request edits can be saved or integrated under
     // that exact authority; the old Host evidence is discarded after migration.
-    const directEditedCheckpoint = this.developmentMode === 'direct'
+    // Execution times belong to the Broker-validated runtime authority, not the
+    // separately minted AS grant or claim.
+    const directEditedBoundTransition = this.developmentMode === 'direct'
       && isForgeDirectDevelopmentContract(record?.taskContract)
       && record?.acceptanceContract?.developmentMode === 'direct'
-      && transition.phase === 'checkpointed'
-      && transition.from.fingerprint === transition.to.fingerprint
+      && (transition.phase === 'integrated' || (transition.phase === 'checkpointed'
+        && transition.from.fingerprint === transition.to.fingerprint))
       && sameBoundAuthority && currentClaimedRequest
-      && input.rpcId === scope.rpcId && input.promptTextDigest === scope.promptTextDigest
-      && transition.sourceAuthority.issuedAt === previous.claim.claimedAt
-      && transition.sourceAuthority.expiresAt === previous.expiresAt;
+      && input.rpcId === scope.rpcId && input.promptTextDigest === scope.promptTextDigest;
     const candidateContentMatches = transition.from.fingerprint === candidateSource?.fingerprint
-      || directEditedTransition || directEditedCheckpoint;
+      || directEditedTransition || directEditedBoundTransition;
     if (!exactCandidate || !candidateContentMatches || (!sameBoundAuthority && !currentClaimedMergeAuthority)) {
       fail('CONVERSATION_SOURCE_TRANSITION_MISMATCH', '源码迁移事实与原授权、任务身份或当前受控源码不一致。', 409);
     }
@@ -2682,12 +2686,18 @@ export class ProtectedAcceptanceService {
     if (!refreshPrepared) await this.#rememberConversationTaskRequest({ ...input, conversationTaskPreparationSupported: true }, taskId);
     if (!writable) {
       const newTask = input.conversationIntent?.decision.continuity === 'new-task';
-      if ((stop || newTask) && previousScope !== null) await this.#saveConversationScope(taskId, sealRecord({
-        ...recordPayload(previousScope), implementationRequested: false, grantId: null,
-        paused: !newTask && input.conversationIntent?.decision.kind === 'pause',
-        ...(newTask ? {goal:input.conversationIntent.decision.goal,actionCeiling:'git-checkpoint'} : {}),
-        rpcId: input.rpcId, promptTextDigest: input.promptTextDigest, requestDigest: canonicalSha256(input),
-      }));
+      if ((stop || newTask) && previousScope !== null) {
+        const { releaseAuthorizedGoalDigest, ...stoppedScope } = recordPayload(previousScope);
+        const paused = !newTask && input.conversationIntent?.decision.kind === 'pause';
+        await this.#saveConversationScope(taskId, sealRecord({
+          ...stoppedScope, implementationRequested: false, grantId: null, paused,
+          // A pause prevents publication now; an explicit same-task resume can
+          // retain its earlier proven endpoint. Cancellation/new work cannot.
+          ...(paused && releaseAuthorizedGoalDigest !== undefined ? { releaseAuthorizedGoalDigest } : {}),
+          ...(newTask ? {goal:input.conversationIntent.decision.goal,actionCeiling:'git-checkpoint'} : {}),
+          rpcId: input.rpcId, promptTextDigest: input.promptTextDigest, requestDigest: canonicalSha256(input),
+        }));
+      }
       return { authority: null, trustedPolicyInput: null, idempotent: false };
     }
     const requestName = rpcId => crypto.createHash('sha256').update(rpcId).digest('hex');
@@ -2722,11 +2732,19 @@ export class ProtectedAcceptanceService {
     for (const rpcId of new Set([previousScope?.rpcId, previous?.claim?.rpcId].filter(id => id && id !== input.rpcId))) {
       await this.#saveConversationRecord(history, requestName(rpcId), { schemaVersion: 1, taskId, rpcId }, { archive: true });
     }
+    const goal = semantic?.goal ?? (continuation ? previousScope.goal ?? input.promptText : input.promptText);
+    // Preserve the issuer's validated intent, not a second interpretation of
+    // goal wording. Legacy ceilings without this proof cannot authorize release.
+    const releaseAuthorized = actionCeiling === 'release'
+      && ((semantic ? input.conversationIntent.decision.requestedAction === 'release' : requestedAction === 'release')
+        || (continuation && typeof previousScope.goal === 'string'
+          && previousScope.releaseAuthorizedGoalDigest === canonicalSha256(previousScope.goal)));
     await this.#saveConversationScope(taskId, sealRecord({
       schemaVersion: 1, ...Object.fromEntries(identity.map(key => [key, input[key]])), sourceCommit: input.source.head,
       ownedPaths: ['.'], taskProfiles: ['project-files'], implementationRequested: true, actionCeiling,
       promptTextDigest: input.promptTextDigest, rpcId: input.rpcId, requestDigest: canonicalSha256(input), grantId: grant.grantId,
-      goal: semantic?.goal ?? (continuation ? previousScope.goal ?? input.promptText : input.promptText),
+      goal,
+      ...(releaseAuthorized ? { releaseAuthorizedGoalDigest: canonicalSha256(goal) } : {}),
       ...(checkpointScope === null ? {} : {
         sourceTransition: structuredClone(checkpointScope.sourceTransition),
         sourceTransitionDigest: checkpointScope.sourceTransitionDigest,
@@ -4837,12 +4855,28 @@ export class ProtectedAcceptanceService {
     if (this.developmentMode === 'direct' && isForgeDirectDevelopmentContract(record.taskContract)) {
       const contract = validateAcceptanceContract(record.acceptanceContract, this.trustPolicy);
       if (contract.developmentMode !== 'direct') fail('ACCEPTANCE_CONTRACT_MISMATCH', 'Direct status requires its signed direct contract.', 409);
+      const scope = await this.#readConversationScope(record.taskId);
+      const grant = await this.readProductionTaskGrant(record.taskId, { allowExpired: true });
+      const identity = ['projectSlug', 'taskId', 'actorUserId', 'actorUsername', 'conversationId', 'dshSessionId'];
+      const releaseAuthorization = {
+        authorized: scope !== null && grant !== null && scope.implementationRequested === true
+          && scope.grantId === grant.grantId && scope.actionCeiling === 'release'
+          && grant.actionCeiling === 'release' && grant.taskContract.contractId === record.taskContract.contractId
+          && identity.every(key => scope[key] === grant[key])
+          && scope.sourceCommit === grant.sourceCommit && grant.sourceCommit === contract.candidate.source.head
+          && grant.workspaceFingerprint === contract.candidate.source.fingerprint
+          && scope.rpcId === grant.claim?.rpcId && scope.promptTextDigest === grant.promptTextDigest
+          && typeof scope.goal === 'string' && scope.releaseAuthorizedGoalDigest === canonicalSha256(scope.goal),
+        ...Object.fromEntries(['actorUserId', 'actorUsername', 'conversationId', 'dshSessionId', 'rpcId']
+          .map(key => [key, scope?.[key] ?? null])),
+        promptTextDigest: scope?.promptTextDigest ?? null,
+      };
       const status = {
         schemaVersion: 1, projectionType: 'forge-direct-development-status/v1',
         developmentMode: 'direct', status: 'not_required',
         projectSlug: contract.projectSlug, taskId: record.taskId, taskContractId: record.taskContract.contractId,
         source: structuredClone(contract.candidate.source), evaluatedAt: this.clock().toISOString(),
-        verification: 'not_claimed', release: 'not_claimed',
+        verification: 'not_claimed', release: 'not_claimed', releaseAuthorization,
       };
       return { ...status, statusDigest: canonicalSha256(status) };
     }

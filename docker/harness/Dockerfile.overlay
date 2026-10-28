@@ -274,6 +274,8 @@ COPY --chmod=0644 \
   docker/harness/harness-directory-scope.js \
   docker/harness/conversation-output.js \
   docker/harness/conversation-prompt-queue.js \
+  docker/harness/conversation-message-queue.mjs \
+  docker/harness/conversation-message-queue-runtime.mjs \
   docker/harness/conversation-output-store.mjs \
   docker/harness/output-file-presentation.mjs \
   docker/harness/phase-work-package-files.mjs \
