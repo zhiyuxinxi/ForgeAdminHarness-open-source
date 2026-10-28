@@ -1,5 +1,7 @@
 # Forge Admin Harness · 交付隔离台
 
+2026-10-28 已同步维护主干的最新可公开源码；变更、验证与未覆盖项见[版本状态](docs/release-status.md)。
+
 **面向团队的 AI 开发与交付平台：将对话、独立工作空间、开发规范、验证和受控发布组织到同一条工作流程。**
 
 由 [zhiyuxinxi](https://github.com/zhiyuxinxi) 维护，基于 DeepSeek Harness 的运行基础扩展，并与 Forge Admin 应用生态配合使用。用户在自己的项目和对话中开展需求分析、代码开发与修复；平台提供任务隔离、资料读取、规范化工具和交付状态管理。
