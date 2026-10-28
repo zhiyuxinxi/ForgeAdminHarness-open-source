@@ -43,7 +43,8 @@ function resolveTaskspaceTransport(environment = process.env) {
   const taskspaceId = environment.FORGE_TASKSPACE_ID;
   if (typeof taskspaceId === 'string' && taskspaceId.length > 0) {
     const brokerUrlValue = environment.FORGE_TASKSPACE_BROKER_URL || TASKSPACE_BROKER_URL;
-    if (!TASKSPACE_BROKER_URLS.has(brokerUrlValue)) {
+    if (!TASKSPACE_BROKER_URLS.has(brokerUrlValue)
+      && !/^http:\/\/taskspace-broker-(?:stable|enhanced)-r[1-9][0-9]{0,5}:3100$/u.test(brokerUrlValue)) {
       throw new Error('FORGE_TASKSPACE_BROKER_URL must be an exact trusted TaskSpace Broker origin.');
     }
     const tokenFile = environment.FORGE_TASKSPACE_TOKEN_FILE;

@@ -1128,7 +1128,8 @@ export function createBrokerAdmissionClient({
   if (typeof brokerUrl !== 'string' || typeof tokenFile !== 'string') return undefined;
   const endpoint = new URL(brokerUrl);
   if (endpoint.protocol !== 'http:'
-    || !['taskspace-broker', 'taskspace-broker-stable', 'taskspace-broker-enhanced', '127.0.0.1', 'localhost'].includes(endpoint.hostname)
+    || (!['taskspace-broker', 'taskspace-broker-stable', 'taskspace-broker-enhanced', '127.0.0.1', 'localhost'].includes(endpoint.hostname)
+      && !/^taskspace-broker-(?:stable|enhanced)-r[1-9][0-9]{0,5}$/u.test(endpoint.hostname))
     || endpoint.username || endpoint.password || (endpoint.pathname !== '/' && endpoint.pathname !== '')) {
     throw new Error('FORGE_TASKSPACE_BROKER_URL must name the fixed internal Broker endpoint.');
   }
@@ -1195,7 +1196,8 @@ export function createBrokerExecutionContextResolver({
     .some((value) => typeof value !== 'string' || value.length === 0)) return undefined;
   const endpoint = new URL(brokerUrl);
   if (endpoint.protocol !== 'http:'
-    || !['taskspace-broker', 'taskspace-broker-stable', 'taskspace-broker-enhanced', '127.0.0.1', 'localhost'].includes(endpoint.hostname)
+    || (!['taskspace-broker', 'taskspace-broker-stable', 'taskspace-broker-enhanced', '127.0.0.1', 'localhost'].includes(endpoint.hostname)
+      && !/^taskspace-broker-(?:stable|enhanced)-r[1-9][0-9]{0,5}$/u.test(endpoint.hostname))
     || endpoint.username || endpoint.password || (endpoint.pathname !== '/' && endpoint.pathname !== '')
     || !tokenFile.startsWith('/run/forge-taskspace/')
     || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 30_000

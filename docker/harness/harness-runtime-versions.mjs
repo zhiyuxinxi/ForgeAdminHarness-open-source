@@ -40,7 +40,8 @@ export function normalizeRuntimeVersion(input, projectRoot) {
   const root = path.join(projectRoot, 'runtime-versions', channel);
   const skillBundleRoot = protectedPath(input.skillBundleRoot, root, 'Skills 路径');
   const managerSocket = protectedPath(input.managerSocket, root, '版本管理服务路径');
-  if (input.brokerUrl !== `http://taskspace-broker-${channel}:3100`) fail('运行版本 Broker 必须属于当前项目及所选版本。');
+  if (input.brokerUrl !== `http://taskspace-broker-${channel}:3100`
+    && !new RegExp(`^http://taskspace-broker-${channel}-r[1-9][0-9]{0,5}:3100$`, 'u').test(input.brokerUrl ?? '')) fail('运行版本 Broker 必须属于当前项目及所选版本。');
   if (!/^[a-f0-9]{64}$/u.test(input.skillBundleSha256 ?? '')) fail('Skills 版本摘要无效。');
   if (!input.environment || typeof input.environment !== 'object' || Array.isArray(input.environment)) fail('运行版本配置缺少功能开关。');
   const environment = {};
@@ -64,6 +65,26 @@ export function publicRuntimeVersion(version) {
   if (!version) return undefined;
   const { channel, label, sourceBranch, sourceCommit, harnessImage, versionId, skillBundleSha256 } = version;
   return { channel, label, sourceBranch, sourceCommit, harnessImage, versionId, skillBundleSha256, available: true };
+}
+// The caller owns the maintenance lock and atomic publication. This same
+// transformation is used for a retained workpod upgrade and is idempotent.
+export function rebindTaskspaceRuntime(metadata, taskEnvironment, target, projectRoot) {
+  const previous = normalizeRuntimeVersion(metadata.runtimeVersion, projectRoot);
+  const version = normalizeRuntimeVersion(target, projectRoot);
+  if (previous.channel !== version.channel) fail('工作舱升级不能切换运行通道。');
+  if (!new RegExp(`^http://taskspace-broker-${version.channel}-r[1-9][0-9]{0,5}:3100$`, 'u').test(version.brokerUrl)) {
+    fail('升级必须绑定固定版本 Broker，不能使用移动通道别名。');
+  }
+  const values = value => ({ HARNESS_IMAGE: value.harnessImage,
+    FORGE_SKILL_BUNDLE_ROOT: value.skillBundleRoot, FORGE_TASKSPACE_BROKER_URL: value.brokerUrl,
+    TASKSPACE_RUNTIME_BROKER_HOST: new URL(value.brokerUrl).hostname, ...value.environment });
+  const before = values(previous), after = values(version), lines = taskEnvironment.split(/\r?\n/u);
+  for (const [key, expected] of Object.entries(before)) {
+    const matching = lines.map((line, index) => line.startsWith(`${key}=`) ? index : -1).filter(index => index >= 0);
+    if (matching.length !== 1 || lines[matching[0]].slice(key.length + 1) !== expected) fail(`工作舱运行绑定不一致：${key}`);
+    lines[matching[0]] = `${key}=${after[key]}`;
+  }
+  return { metadata: { ...metadata, runtimeVersion: version }, taskEnvironment: lines.join('\n') };
 }
 export async function loadRuntimeVersions(catalogPath) {
   let info;

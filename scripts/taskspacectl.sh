@@ -375,7 +375,8 @@ assert_taskspace_broker_healthy() {
   local broker_url="${1:-http://taskspace-broker:3100}" service container
   case "${broker_url}" in
     http://taskspace-broker:3100|http://taskspace-broker-stable:3100|http://taskspace-broker-enhanced:3100) ;;
-    *) die "TaskSpace runtime Broker URL is invalid." ;;
+    *) [[ "${broker_url}" =~ ^http://taskspace-broker-(stable|enhanced)-r[1-9][0-9]{0,5}:3100$ ]] \
+      || die "TaskSpace runtime Broker URL is invalid." ;;
   esac
   service="${broker_url#http://}"
   service="${service%:3100}"

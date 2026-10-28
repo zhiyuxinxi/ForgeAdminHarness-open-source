@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import test from 'node:test';
 import { loadRuntimeVersions, resolveRuntimeVersion, normalizeRuntimeVersion, publicRuntimeVersion,
-  RUNTIME_ENVIRONMENT_KEYS } from '../docker/harness/harness-runtime-versions.mjs';
+  RUNTIME_ENVIRONMENT_KEYS, rebindTaskspaceRuntime } from '../docker/harness/harness-runtime-versions.mjs';
 import { routeRuntimeManagerRequest } from '../docker/harness/runtime-manager-routing.mjs';
 
 function entry(root, channel = 'stable') {
@@ -24,6 +24,20 @@ async function fixture(t) {
   await writeFile(file, JSON.stringify(catalog));
   return { root, file, catalog };
 }
+test('version-specific Broker stays frozen and cannot cross channels or accept arbitrary origins', async t => {
+  const { root } = await fixture(t);
+  const original = entry(root);
+  const pinned = normalizeRuntimeVersion({ ...original, brokerUrl: 'http://taskspace-broker-stable-r11:3100' }, root);
+  assert.equal(pinned.brokerUrl, 'http://taskspace-broker-stable-r11:3100');
+  assert.deepEqual(normalizeRuntimeVersion(pinned, root), pinned);
+  assert.notEqual(pinned.versionId, normalizeRuntimeVersion(original, root).versionId);
+  for (const brokerUrl of ['http://taskspace-broker-enhanced-r11:3100', 'http://taskspace-broker-stable-r0:3100',
+    'http://taskspace-broker-stable-r11:3100/evil', 'http://taskspace-broker-stable-r11.evil:3100',
+    'http://user@taskspace-broker-stable-r11:3100', 'https://taskspace-broker-stable-r11:3100']) {
+    assert.throws(() => normalizeRuntimeVersion({ ...original, brokerUrl }, root), { code: 'RUNTIME_CATALOG_INVALID' });
+  }
+});
+
 test('installed channels have fixed branch, image, bundle and reproducible identity', async t => {
   const { file } = await fixture(t);
   const catalog = await loadRuntimeVersions(file);
@@ -34,6 +48,27 @@ test('installed channels have fixed branch, image, bundle and reproducible ident
   assert.equal(visible.sourceBranch, '32.12');
   assert.equal(visible.skillBundleRoot, undefined);
   assert.equal(visible.managerSocket, undefined);
+});
+
+test('retained workpod upgrade atomically prepares matching metadata and environment, preserves unrelated state, and is idempotent', async t => {
+  const { root } = await fixture(t);
+  const previous = normalizeRuntimeVersion(entry(root), root);
+  const target = normalizeRuntimeVersion({ ...entry(root), brokerUrl: 'http://taskspace-broker-stable-r11:3100',
+    harnessImage: `sha256:${'d'.repeat(64)}` }, root);
+  const metadata = { taskId: 'task-one', baseCommit: 'retain', runtimeVersion: previous };
+  const env = Object.entries({ HARNESS_IMAGE: previous.harnessImage, FORGE_SKILL_BUNDLE_ROOT: previous.skillBundleRoot,
+    FORGE_TASKSPACE_BROKER_URL: previous.brokerUrl, TASKSPACE_RUNTIME_BROKER_HOST: 'taskspace-broker-stable',
+    ...previous.environment, UNRELATED: 'retained' }).map(([key, value]) => `${key}=${value}`).join('\n');
+  const upgraded = rebindTaskspaceRuntime(metadata, env, target, root);
+  assert.equal(upgraded.metadata.baseCommit, 'retain');
+  assert.equal(upgraded.metadata.runtimeVersion.versionId, target.versionId);
+  assert.ok(upgraded.taskEnvironment.includes('UNRELATED=retained'));
+  assert.ok(upgraded.taskEnvironment.includes('TASKSPACE_RUNTIME_BROKER_HOST=taskspace-broker-stable-r11'));
+  assert.deepEqual(rebindTaskspaceRuntime(upgraded.metadata, upgraded.taskEnvironment, target, root), upgraded);
+  assert.throws(() => rebindTaskspaceRuntime(metadata, env.replace('UNRELATED=retained', 'HARNESS_IMAGE=drift'), target, root));
+  assert.throws(() => rebindTaskspaceRuntime(metadata, env, previous, root));
+  assert.throws(() => rebindTaskspaceRuntime(metadata, env, normalizeRuntimeVersion({ ...entry(root, 'enhanced'),
+    brokerUrl: 'http://taskspace-broker-enhanced-r11:3100' }, root), root));
 });
 test('renamed stable branch preserves existing legacy snapshots and their identity', async t => {
   const { root } = await fixture(t);
